@@ -1,0 +1,15 @@
+# CMSSW
+__init__.py
+*.pyc
+
+# ROOT
+*.d
+*.so
+*.root
+AutoDict_*
+
+# Other
+*~
+*.log
+*.orig
+*.bak
