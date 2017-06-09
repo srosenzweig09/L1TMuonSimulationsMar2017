@@ -1,0 +1,11 @@
+<Flags CXXFLAGS="-O3 -Wno-error=unused-but-set-variable -Wno-error=unused-variable -Wno-error=unused-function"/>
+
+<use name="FWCore/Framework"/>
+<use name="FWCore/MessageLogger"/>
+<use name="FWCore/PluginManager"/>
+<use name="FWCore/ParameterSet"/>
+<use name="CommonTools/UtilAlgos"/>
+<use name="DataFormats/Common"/>
+<use name="DataFormats/JetReco"/>
+<use name="DataFormats/METReco"/>
+<flags EDM_PLUGIN="1"/>
