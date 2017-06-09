@@ -56,9 +56,15 @@ FlatRandomPtGunProducer2::FlatRandomPtGunProducer2(const ParameterSet& pset) :
   fRStarForEta   = pgun_params.exists("RStarForEta")   ? pgun_params.getParameter<double>("RStarForEta")     : 0.;
   fRandomCharge  = pgun_params.exists("RandomCharge")  ? pgun_params.getParameter<bool>("RandomCharge")      : false;
   fPtSpectrum    = pgun_params.exists("PtSpectrum")    ? pgun_params.getParameter<std::string>("PtSpectrum") : "flatPt";
+  fAppend        = pgun_params.exists("Append")        ? pgun_params.getParameter<bool>("Append")            : false;
+  fAppendTag     = pgun_params.exists("AppendTag")     ? pgun_params.getParameter<std::string>("AppendTag")  : "";
 
   produces<HepMCProduct>("unsmeared");
   produces<GenEventInfoProduct>();
+
+  if (fAppend) {
+    fAppendToken = consumes<edm::HepMCProduct>(edm::InputTag(fAppendTag, "unsmeared"));
+  }
 }
 
 FlatRandomPtGunProducer2::~FlatRandomPtGunProducer2()
@@ -157,6 +163,19 @@ void FlatRandomPtGunProducer2::produce(Event &e, const EventSetup& es)
     }
 
   }
+
+  // Hack to append gen particles from another HepMC event
+  if ( fAppend ) {
+    edm::Handle<edm::HepMCProduct> tmpHandle;
+    bool found = e.getByToken(fAppendToken, tmpHandle);
+    if (found) {
+      const HepMC::GenEvent * tmpEvt = tmpHandle->GetEvent();
+      for ( HepMC::GenEvent::particle_const_iterator p = tmpEvt->particles_begin(); p != tmpEvt->particles_end(); ++p ) {
+        Vtx->add_particle_out(*p);
+      }
+    }
+  }
+
 
   fEvt->add_vertex(Vtx) ;
   fEvt->set_event_number(e.id().event()) ;

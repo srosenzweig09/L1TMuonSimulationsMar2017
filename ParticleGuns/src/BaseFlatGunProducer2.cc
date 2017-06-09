@@ -75,7 +75,7 @@ BaseFlatGunProducer2::BaseFlatGunProducer2( const ParameterSet& pset ) :
 
    fAddAntiParticle = pset.getParameter<bool>("AddAntiParticle") ;
 
-   produces<GenRunInfoProduct, InRun>();
+   produces<GenRunInfoProduct, Transition::EndRun>();
 }
 
 BaseFlatGunProducer2::~BaseFlatGunProducer2()

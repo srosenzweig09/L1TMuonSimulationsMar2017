@@ -9,6 +9,9 @@
 
 #include "L1TMuonSimulations/ParticleGuns/interface/BaseFlatGunProducer2.h"
 
+#include "SimDataFormats/GeneratorProducts/interface/HepMCProduct.h"
+#include "FWCore/Framework/interface/Event.h"
+
 namespace edm
 {
 
@@ -36,6 +39,9 @@ namespace edm
     double            fRStarForEta    ;
     bool              fRandomCharge   ;
     std::string       fPtSpectrum     ;
+    bool                                fAppend      ;
+    std::string                         fAppendTag   ;
+    edm::EDGetTokenT<edm::HepMCProduct> fAppendToken ;
 
   };
 }
