@@ -80,7 +80,7 @@ process.generator = cms.EDProducer("FlatRandomPtGunProducer2",
         MaxEta = cms.double(2.5),
         MaxPhi = cms.double(3.14159265359),
         MaxPt = cms.double(7000.0),
-        MinEta = cms.double(1.0),
+        MinEta = cms.double(1.2),
         MinPhi = cms.double(-3.14159265359),
         MinPt = cms.double(2.0),
         PartID = cms.vint32(-13),
@@ -128,9 +128,8 @@ process = customiseEarlyDelete(process)
 
 # ______________________________________________________________________________
 # Modify output
-#process.RAWSIMoutput.outputCommands = ['drop *', 'keep *_genParticles_*_*', 'keep *_simCscTriggerPrimitiveDigis_*_*', 'keep *_simMuonRPCDigis_*_*', 'keep *_simMuonGEMDigis_*_*', 'keep *_simEmtfDigis_*_*']
 process.RAWSIMoutput.outputCommands += ['keep *_mix_MergedTrackTruth_*']
-process.RAWSIMoutput.outputCommands += ['keep *_simMuonGEMDigis_*_*', 'keep *_simMuonGEMPadDigis_*_*', 'keep *_simMuonGEMPadDigiClusters_*_*']
+process.RAWSIMoutput.outputCommands += ['keep *_genParticles_*_*', 'keep *_simCscTriggerPrimitiveDigis_*_*', 'keep *_simMuonRPCDigis_*_*', 'keep *_simMuonGEMDigis_*_*', 'keep *_simMuonGEMPadDigis_*_*', 'keep *_simMuonGEMPadDigiClusters_*_*', 'keep *_simEmtfDigis_*_*']
 
 # My paths and schedule definitions
 if False:
