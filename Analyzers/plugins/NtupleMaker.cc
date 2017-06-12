@@ -90,7 +90,7 @@ private:
   std::unique_ptr<std::vector<int16_t> >  vh_chamber;
   std::unique_ptr<std::vector<int16_t> >  vh_cscid;
   std::unique_ptr<std::vector<int16_t> >  vh_bx;
-  std::unique_ptr<std::vector<int16_t> >  vh_type;  // subsystem: DT=1,CSC=2,RPC=3,GEM=4
+  std::unique_ptr<std::vector<int16_t> >  vh_type;  // subsystem: DT=0,CSC=1,RPC=2,GEM=3
   //
   std::unique_ptr<std::vector<int16_t> >  vh_strip;
   std::unique_ptr<std::vector<int16_t> >  vh_wire;
@@ -98,6 +98,7 @@ private:
   std::unique_ptr<std::vector<int16_t> >  vh_pattern;
   std::unique_ptr<std::vector<int16_t> >  vh_quality;
   std::unique_ptr<std::vector<int16_t> >  vh_bend;
+  std::unique_ptr<std::vector<int16_t> >  vh_fr;
   //
   std::unique_ptr<std::vector<int32_t> >  vh_emtf_phi;
   std::unique_ptr<std::vector<int32_t> >  vh_emtf_theta;
@@ -105,13 +106,29 @@ private:
   std::unique_ptr<std::vector<float  > >  vh_sim_phi;
   std::unique_ptr<std::vector<float  > >  vh_sim_theta;
   std::unique_ptr<std::vector<float  > >  vh_sim_eta;
+  //
+  std::unique_ptr<int32_t              >  vh_size;
 
   // Tracks
+  std::unique_ptr<std::vector<float  > >  vt_pt;
+  std::unique_ptr<std::vector<float  > >  vt_phi;
+  std::unique_ptr<std::vector<float  > >  vt_eta;
+  std::unique_ptr<std::vector<float  > >  vt_theta;
+  std::unique_ptr<std::vector<int16_t> >  vt_q;  // charge
+  //
+  std::unique_ptr<std::vector<int16_t> >  vt_mode;
+  std::unique_ptr<std::vector<int16_t> >  vt_endcap;
+  std::unique_ptr<std::vector<int16_t> >  vt_sector;
+  //
+  std::unique_ptr<int32_t              >  vt_size;
+
+  // Gen particles
   std::unique_ptr<std::vector<float  > >  vp_pt;
-  std::unique_ptr<std::vector<float  > >  vp_eta;
   std::unique_ptr<std::vector<float  > >  vp_phi;
-  std::unique_ptr<std::vector<float  > >  vp_p;  // |p|
-  std::unique_ptr<std::vector<float  > >  vp_q;  // charge
+  std::unique_ptr<std::vector<float  > >  vp_eta;
+  std::unique_ptr<std::vector<float  > >  vp_theta;
+  std::unique_ptr<std::vector<int16_t> >  vp_q;  // charge
+  std::unique_ptr<int32_t              >  vp_size;
 };
 
 
@@ -189,10 +206,43 @@ void NtupleMaker::getHandles(const edm::Event& iEvent) {
   genParts_.clear();
   for (const auto& part : (*genParts_handle)) {
     //if (!(part.pt() >= 2.))     continue;  // only pT > 2
-    if (!(1.24 <= part.eta() && part.eta() <= 2.4))  continue;  // only positive endcap
+    if (!(1.2 <= part.eta() && part.eta() <= 2.4))  continue;  // only positive endcap
     genParts_.push_back(part);
   }
 }
+
+// _____________________________________________________________________________
+// Functions
+
+// from RecoMuon/DetLayers/src/MuonCSCDetLayerGeometryBuilder.cc
+//      RecoMuon/DetLayers/src/MuonRPCDetLayerGeometryBuilder.cc
+//      RecoMuon/DetLayers/src/MuonGEMDetLayerGeometryBuilder.cc
+auto isFront_detail = [](int subsystem, int station, int ring, int chamber, int subsector) {
+  bool result = false;
+
+  if (subsystem == TriggerPrimitive::kCSC) {
+    bool isOverlapping = !(station == 1 && ring == 3);
+    // not overlapping means back
+    if(isOverlapping)
+    {
+      bool isEven = (chamber % 2 == 0);
+      // odd chambers are bolted to the iron, which faces
+      // forward in 1&2, backward in 3&4, so...
+      result = (station < 3) ? isEven : !isEven;
+    }
+  } else if (subsystem == TriggerPrimitive::kRPC) {
+    // 10 degree rings have odd subsectors in front
+    result = (subsector % 2 == 0);
+  } else if (subsystem == TriggerPrimitive::kGEM) {
+    //
+    result = (chamber % 2 == 0);
+  }
+  return result;
+};
+
+auto isFront = [](const auto& hit) {
+  return isFront_detail(hit.Subsystem(), hit.Station(), hit.Ring(), hit.Chamber(), (hit.Subsystem() == TriggerPrimitive::kRPC ? hit.Subsector_RPC() : hit.Subsector()));
+};
 
 // _____________________________________________________________________________
 void NtupleMaker::process() {
@@ -215,6 +265,7 @@ void NtupleMaker::process() {
     vh_pattern    ->push_back(hit.Pattern());
     vh_quality    ->push_back(hit.Quality());
     vh_bend       ->push_back(hit.Bend());
+    vh_fr         ->push_back(isFront(hit));
     //
     vh_emtf_phi   ->push_back(hit.Phi_fp());
     vh_emtf_theta ->push_back(hit.Theta_fp());
@@ -223,17 +274,34 @@ void NtupleMaker::process() {
     vh_sim_theta  ->push_back(hit.Theta_sim());
     vh_sim_eta    ->push_back(hit.Eta_sim());
   }
+  (*vh_size) = emuHits_.size();
 
   // Tracks
+  for (const auto& trk : emuTracks_) {
+    vt_pt         ->push_back(trk.Pt());
+    vt_phi        ->push_back(trk.Phi_glob());
+    vt_eta        ->push_back(trk.Eta());
+    vt_theta      ->push_back(trk.Theta());
+    vt_q          ->push_back(trk.Charge());
+    //
+    vt_mode       ->push_back(trk.Mode());
+    vt_endcap     ->push_back(trk.Endcap());
+    vt_sector     ->push_back(trk.Sector());
+  }
+  (*vt_size) = emuTracks_.size();
+
+  // Gen particles
   for (const auto& part : genParts_) {
     vp_pt         ->push_back(part.pt());
-    vp_eta        ->push_back(part.eta());
     vp_phi        ->push_back(part.phi());
-    vp_p          ->push_back(part.p());
+    vp_eta        ->push_back(part.eta());
+    vp_theta      ->push_back(part.theta());
     vp_q          ->push_back(part.charge());
   }
+  (*vp_size) = genParts_.size();
 
-  assert(vp_pt->size() <= 1);  // expect 0 or 1 gen particle
+  assert(static_cast<size_t>(*vp_size) == vp_pt->size());
+  assert((*vp_size) <= 1);  // expect 0 or 1 gen particle
 
 
   // Fill
@@ -256,6 +324,7 @@ void NtupleMaker::process() {
   vh_pattern    ->clear();
   vh_quality    ->clear();
   vh_bend       ->clear();
+  vh_fr         ->clear();
   //
   vh_emtf_phi   ->clear();
   vh_emtf_theta ->clear();
@@ -263,13 +332,29 @@ void NtupleMaker::process() {
   vh_sim_phi    ->clear();
   vh_sim_theta  ->clear();
   vh_sim_eta    ->clear();
+  //
+  (*vh_size)    = 0;
 
   // Tracks
+  vt_pt         ->clear();
+  vt_phi        ->clear();
+  vt_eta        ->clear();
+  vt_theta      ->clear();
+  vt_q          ->clear();
+  //
+  vt_mode       ->clear();
+  vt_endcap     ->clear();
+  vt_sector     ->clear();
+  //
+  (*vt_size)    = 0;
+
+  // Gen particles
   vp_pt         ->clear();
-  vp_eta        ->clear();
   vp_phi        ->clear();
-  vp_p          ->clear();
+  vp_eta        ->clear();
+  vp_theta      ->clear();
   vp_q          ->clear();
+  (*vp_size)    = 0;
 }
 
 // _____________________________________________________________________________
@@ -305,6 +390,7 @@ void NtupleMaker::makeTree() {
   vh_pattern    .reset(new std::vector<int16_t>());
   vh_quality    .reset(new std::vector<int16_t>());
   vh_bend       .reset(new std::vector<int16_t>());
+  vh_fr         .reset(new std::vector<int16_t>());
   //
   vh_emtf_phi   .reset(new std::vector<int32_t>());
   vh_emtf_theta .reset(new std::vector<int32_t>());
@@ -312,13 +398,29 @@ void NtupleMaker::makeTree() {
   vh_sim_phi    .reset(new std::vector<float  >());
   vh_sim_theta  .reset(new std::vector<float  >());
   vh_sim_eta    .reset(new std::vector<float  >());
+  //
+  vh_size       .reset(new int32_t(0)            );
 
   // Tracks
+  vt_pt         .reset(new std::vector<float  >());
+  vt_phi        .reset(new std::vector<float  >());
+  vt_eta        .reset(new std::vector<float  >());
+  vt_theta      .reset(new std::vector<float  >());
+  vt_q          .reset(new std::vector<int16_t>());
+  //
+  vt_mode       .reset(new std::vector<int16_t>());
+  vt_endcap     .reset(new std::vector<int16_t>());
+  vt_sector     .reset(new std::vector<int16_t>());
+  //
+  vt_size       .reset(new int32_t(0)            );
+
+  // Gen particles
   vp_pt         .reset(new std::vector<float  >());
-  vp_eta        .reset(new std::vector<float  >());
   vp_phi        .reset(new std::vector<float  >());
-  vp_p          .reset(new std::vector<float  >());
-  vp_q          .reset(new std::vector<float  >());
+  vp_eta        .reset(new std::vector<float  >());
+  vp_theta      .reset(new std::vector<float  >());
+  vp_q          .reset(new std::vector<int16_t>());
+  vp_size       .reset(new int32_t(0)            );
 
   // Set branches
   // Hits
@@ -338,6 +440,7 @@ void NtupleMaker::makeTree() {
   tree->Branch("vh_pattern"   , &(*vh_pattern   ));
   tree->Branch("vh_quality"   , &(*vh_quality   ));
   tree->Branch("vh_bend"      , &(*vh_bend      ));
+  tree->Branch("vh_fr"        , &(*vh_fr        ));
   //
   tree->Branch("vh_emtf_phi"  , &(*vh_emtf_phi  ));
   tree->Branch("vh_emtf_theta", &(*vh_emtf_theta));
@@ -345,13 +448,29 @@ void NtupleMaker::makeTree() {
   tree->Branch("vh_sim_phi"   , &(*vh_sim_phi   ));
   tree->Branch("vh_sim_theta" , &(*vh_sim_theta ));
   tree->Branch("vh_sim_eta"   , &(*vh_sim_eta   ));
+  //
+  tree->Branch("vh_size"      , &(*vh_size      ));
 
   // Tracks
+  tree->Branch("vt_pt"        , &(*vt_pt        ));
+  tree->Branch("vt_phi"       , &(*vt_phi       ));
+  tree->Branch("vt_eta"       , &(*vt_eta       ));
+  tree->Branch("vt_theta"     , &(*vt_theta     ));
+  tree->Branch("vt_q"         , &(*vt_q         ));
+  //
+  tree->Branch("vt_mode"      , &(*vt_mode      ));
+  tree->Branch("vt_endcap"    , &(*vt_endcap    ));
+  tree->Branch("vt_sector"    , &(*vt_sector    ));
+  //
+  tree->Branch("vt_size"      , &(*vt_size      ));
+
+  // Gen particles
   tree->Branch("vp_pt"        , &(*vp_pt        ));
-  tree->Branch("vp_eta"       , &(*vp_eta       ));
   tree->Branch("vp_phi"       , &(*vp_phi       ));
-  tree->Branch("vp_p"         , &(*vp_p         ));
+  tree->Branch("vp_eta"       , &(*vp_eta       ));
+  tree->Branch("vp_theta"     , &(*vp_theta     ));
   tree->Branch("vp_q"         , &(*vp_q         ));
+  tree->Branch("vp_size"      , &(*vp_size      ));
 
 }
 

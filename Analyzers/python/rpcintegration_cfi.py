@@ -8,7 +8,7 @@ rpcintegration = cms.EDAnalyzer('RPCIntegration',
     verbosity = cms.untracked.int32(0),
 )
 
-ntuplemaker = cms.EDAnalyzer('NtupleMaker',
+ntupler = cms.EDAnalyzer('NtupleMaker',
     emuHitTag = cms.InputTag('simEmtfDigis'),
     emuTrackTag = cms.InputTag('simEmtfDigis'),
     genPartTag = cms.InputTag('genParticles'),
