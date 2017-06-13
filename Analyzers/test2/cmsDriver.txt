@@ -20,3 +20,14 @@ cmsDriver.py L1TMuonSimulations/Configuration/python/SingleMuonFlatOneOverPt2To7
   --fileout file:SingleMuon_PositiveEndCap.root \
   --no_exec --nThreads 4 -n 100
 
+cmsDriver.py L1TMuonSimulations/Configuration/python/PPD-PhaseIITDRSpring17GS-00003-fragment.py \
+  --step GEN,SIM \
+  --mc --eventcontent RAWSIM --datatier GEN-SIM \
+  --conditions auto:phase2_realistic \
+  --beamspot HLLHC14TeV \
+  --geometry Extended2023D11 \
+  --era Phase2C2_timing \
+  --python_filename pset_MinBias_TuneCUETP8M1_14TeV-pythia8.py \
+  --fileout file:MinBias.root \
+  --no_exec --nThreads 4 -n 100
+
