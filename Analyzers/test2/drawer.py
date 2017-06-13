@@ -28,7 +28,7 @@ class MyDrawer(object):
     # Setup basic drawer
     gROOT.LoadMacro("tdrstyle.C")
     gROOT.ProcessLine("setTDRStyle();")
-    gROOT.ProcessLine("gErrorIgnoreLevel = kWarning;")
+    #gROOT.ProcessLine("gErrorIgnoreLevel = kWarning;")
     gROOT.SetBatch(True)
     gStyle.SetNdivisions(510, "Y")
     gStyle.SetEndErrorSize(0)
