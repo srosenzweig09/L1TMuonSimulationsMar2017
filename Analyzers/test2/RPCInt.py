@@ -14,21 +14,21 @@ process.source = cms.Source("PoolSource",
 process.maxEvents.input = cms.untracked.int32(-1)
 
 fileNames = [
-    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170610_075611/0000/SingleMuon_PositiveEndCap_1.root",
-    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170610_075611/0000/SingleMuon_PositiveEndCap_2.root",
-    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170610_075611/0000/SingleMuon_PositiveEndCap_3.root",
-    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170610_075611/0000/SingleMuon_PositiveEndCap_4.root",
-    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170610_075611/0000/SingleMuon_PositiveEndCap_5.root",
-    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170610_075611/0000/SingleMuon_PositiveEndCap_6.root",
-    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170610_075611/0000/SingleMuon_PositiveEndCap_7.root",
-    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170610_075611/0000/SingleMuon_PositiveEndCap_8.root",
-    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170610_075611/0000/SingleMuon_PositiveEndCap_9.root",
-    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170610_075611/0000/SingleMuon_PositiveEndCap_10.root",
+    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170613_001230/0000/SingleMuon_PositiveEndCap_71.root",
+    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170613_001230/0000/SingleMuon_PositiveEndCap_72.root",
+    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170613_001230/0000/SingleMuon_PositiveEndCap_73.root",
+    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170613_001230/0000/SingleMuon_PositiveEndCap_74.root",
+    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170613_001230/0000/SingleMuon_PositiveEndCap_75.root",
+    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170613_001230/0000/SingleMuon_PositiveEndCap_76.root",
+    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170613_001230/0000/SingleMuon_PositiveEndCap_77.root",
+    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170613_001230/0000/SingleMuon_PositiveEndCap_78.root",
+    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170613_001230/0000/SingleMuon_PositiveEndCap_79.root",
+    "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170613_001230/0000/SingleMuon_PositiveEndCap_80.root",
 ]
 process.source.fileNames = cms.untracked.vstring(fileNames)
-if False:
+if True:
   import glob
-  dirname = '/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170610_075611/0000/'
+  dirname = '/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170613_001230/0000/'
   fileNames_glob = glob.glob('/cms/data'+dirname+'*.root')
   fileNames_glob = [x[9:] for x in fileNames_glob]
   process.source.fileNames = fileNames_glob
@@ -38,8 +38,10 @@ if True:
   process.RAWSIMoutput.outputCommands += ['keep *_genParticles_*_*', 'keep *_simCscTriggerPrimitiveDigis_*_*', 'keep *_simMuonRPCDigis_*_*', 'keep *_simMuonGEMDigis_*_*', 'keep *_simMuonGEMPadDigis_*_*', 'keep *_simMuonGEMPadDigiClusters_*_*', 'keep *_simEmtfDigis_*_*']
 
 # My paths and schedule definitions
-process.step1 = cms.Path((process.simCscTriggerPrimitiveDigis) + process.simEmtfDigis)
+#process.step1 = cms.Path((process.simCscTriggerPrimitiveDigis) + process.simEmtfDigis)
+process.step1 = cms.Path(process.simEmtfDigis)
 process.RAWSIMoutput.SelectEvents.SelectEvents = cms.vstring('step1')
+process.RAWSIMoutput_step = cms.EndPath(process.RAWSIMoutput)
 process.schedule = cms.Schedule(process.step1, process.RAWSIMoutput_step)
 
 
@@ -50,4 +52,7 @@ process.MessageLogger.cerr.FwkReport.reportEvery = 1
 # Dump the full python config
 with open("dump.py", "w") as f:
     f.write(process.dumpPython())
+
+# Run in unscheduled mode
+process.options.allowUnscheduled = cms.untracked.bool(True)
 

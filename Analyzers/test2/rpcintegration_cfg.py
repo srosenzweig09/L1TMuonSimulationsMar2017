@@ -13,7 +13,8 @@ process.maxEvents = cms.untracked.PSet(
 
 # Input source
 process.source = cms.Source("PoolSource",
-    fileNames = cms.untracked.vstring('file:SingleMuon_PositiveEndCap_RPCInt.0.root'),
+    #fileNames = cms.untracked.vstring('file:SingleMuon_PositiveEndCap_RPCInt.0.root'),
+    fileNames = cms.untracked.vstring('file:SingleMuon_PositiveEndCap_RPCInt.1.root'),
 )
 
 process.options = cms.untracked.PSet()
