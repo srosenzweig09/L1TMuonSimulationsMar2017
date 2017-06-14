@@ -2,7 +2,7 @@
 # using: 
 # Revision: 1.19 
 # Source: /local/reps/CMSSW/CMSSW/Configuration/Applications/python/ConfigBuilder.py,v 
-# with command line options: L1TMuonSimulations/Configuration/python/PPD-PhaseIITDRSpring17GS-00003-fragment.py --step GEN,SIM --mc --eventcontent RAWSIM --datatier GEN-SIM --conditions auto:phase2_realistic --beamspot HLLHC14TeV --geometry Extended2023D11 --era Phase2C2_timing --python_filename pset_MinBias_TuneCUETP8M1_14TeV-pythia8.py --fileout file:MinBias.root --no_exec --nThreads 4 -n 100
+# with command line options: L1TMuonSimulations/Configuration/python/PPD-PhaseIITDRSpring17GS-00003-fragment.py --step GEN,SIM --mc --eventcontent RAWSIM --datatier GEN-SIM --conditions auto:phase2_realistic --beamspot HLLHC14TeV --geometry Extended2023D17 --era Phase2C2_timing --python_filename pset_MinBias_TuneCUETP8M1_14TeV-pythia8.py --fileout file:MinBias.root --no_exec --nThreads 4 -n 100
 import FWCore.ParameterSet.Config as cms
 
 from Configuration.StandardSequences.Eras import eras
@@ -15,8 +15,8 @@ process.load('SimGeneral.HepPDTESSource.pythiapdt_cfi')
 process.load('FWCore.MessageService.MessageLogger_cfi')
 process.load('Configuration.EventContent.EventContent_cff')
 process.load('SimGeneral.MixingModule.mixNoPU_cfi')
-process.load('Configuration.Geometry.GeometryExtended2023D11Reco_cff')
-process.load('Configuration.Geometry.GeometryExtended2023D11_cff')
+process.load('Configuration.Geometry.GeometryExtended2023D17Reco_cff')
+process.load('Configuration.Geometry.GeometryExtended2023D17_cff')
 process.load('Configuration.StandardSequences.MagneticField_cff')
 process.load('Configuration.StandardSequences.Generator_cff')
 process.load('IOMC.EventVertexGenerators.VtxSmearedHLLHC14TeV_cfi')

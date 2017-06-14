@@ -3,7 +3,7 @@ cmsDriver.py l1NtupleMC \
   --mc --eventcontent RAWSIM --nThreads 4 \
   --conditions auto:phase2_realistic \
   --beamspot HLLHC14TeV \
-  --geometry Extended2023D11 \
+  --geometry Extended2023D17 \
   --era Phase2C2_timing \
   --filein file:dummy.root \
   -n 100 --no_exec
@@ -13,7 +13,7 @@ cmsDriver.py L1TMuonSimulations/Configuration/python/SingleMuonFlatOneOverPt2To7
   --mc --eventcontent RAWSIM --datatier GEN-SIM-DIGI-RAW --processName RAWSIM \
   --conditions auto:phase2_realistic \
   --beamspot HLLHC14TeV \
-  --geometry Extended2023D11 \
+  --geometry Extended2023D17 \
   --era Phase2C2_timing \
   --pileup NoPileUp \
   --python_filename pset_SingleMuon_PositiveEndCap.py \
@@ -25,7 +25,7 @@ cmsDriver.py L1TMuonSimulations/Configuration/python/PPD-PhaseIITDRSpring17GS-00
   --mc --eventcontent RAWSIM --datatier GEN-SIM \
   --conditions auto:phase2_realistic \
   --beamspot HLLHC14TeV \
-  --geometry Extended2023D11 \
+  --geometry Extended2023D17 \
   --era Phase2C2_timing \
   --python_filename pset_MinBias_TuneCUETP8M1_14TeV-pythia8.py \
   --fileout file:MinBias.root \
