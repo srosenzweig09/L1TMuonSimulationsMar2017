@@ -31,3 +31,15 @@ cmsDriver.py L1TMuonSimulations/Configuration/python/PPD-PhaseIITDRSpring17GS-00
   --fileout file:MinBias.root \
   --no_exec --nThreads 4 -n 100
 
+cmsDriver.py L1TMuonSimulations/Configuration/python/TSG-PhaseIISpring17GS-00008-fragment.py \
+  --step GEN,SIM,DIGI:pdigi_valid,L1,L1TrackTrigger,DIGI2RAW,RAW2DIGI \
+  --mc --eventcontent RAWSIM --datatier GEN-SIM-DIGI-RAW --processName RAWSIM \
+  --conditions auto:phase2_realistic \
+  --beamspot HLLHC14TeV \
+  --geometry Extended2023D17 \
+  --era Phase2C2_timing \
+  --pileup AVE_140_BX_25ns --pileup_input "dummy.root" \
+  --python_filename pset_SingleNeutrino.py \
+  --fileout file:SingleNeutrino.root \
+  --no_exec --nThreads 4 -n 100
+

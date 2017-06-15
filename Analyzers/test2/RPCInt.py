@@ -26,12 +26,22 @@ fileNames = [
     "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170613_001230/0000/SingleMuon_PositiveEndCap_80.root",
 ]
 process.source.fileNames = cms.untracked.vstring(fileNames)
-if True:
+
+if False:
   import glob
   dirname = '/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170613_001230/0000/'
   fileNames_glob = glob.glob('/cms/data'+dirname+'*.root')
   fileNames_glob = [x[9:] for x in fileNames_glob]
   process.source.fileNames = fileNames_glob
+
+if True:
+  from L1TMuonSimulations.Configuration.tools import *
+  txt = 'L1TMuonSimulations/Configuration/data/input_SingleMuon_PositiveEndCap.txt'
+  txt = os.path.join(os.environ['CMSSW_BASE'], 'src', txt)
+  fileNames_txt = loadFromFile(txt)
+  process.source.fileNames = fileNames_txt
+  process.source.duplicateCheckMode = cms.untracked.string('noDuplicateCheck')
+
 if True:
   process.RAWSIMoutput.fileName = cms.untracked.string('file:SingleMuon_PositiveEndCap_RPCInt.root')
   process.RAWSIMoutput.outputCommands  = ['drop *']

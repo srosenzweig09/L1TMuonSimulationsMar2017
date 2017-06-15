@@ -4,7 +4,7 @@ process = cms.Process("Demo")
 
 # Message logger
 process.load("FWCore.MessageService.MessageLogger_cfi")
-process.MessageLogger.cerr.FwkReport.reportEvery = 1
+process.MessageLogger.cerr.FwkReport.reportEvery = 1000
 
 # Number of events
 process.maxEvents = cms.untracked.PSet(
@@ -14,7 +14,9 @@ process.maxEvents = cms.untracked.PSet(
 # Input source
 process.source = cms.Source("PoolSource",
     #fileNames = cms.untracked.vstring('file:SingleMuon_PositiveEndCap_RPCInt.0.root'),
-    fileNames = cms.untracked.vstring('file:SingleMuon_PositiveEndCap_RPCInt.1.root'),
+    #fileNames = cms.untracked.vstring('file:SingleMuon_PositiveEndCap_RPCInt.1.root'),
+    fileNames = cms.untracked.vstring('file:SingleMuon_PositiveEndCap_RPCInt.2.root'),
+    duplicateCheckMode = cms.untracked.string('noDuplicateCheck')
 )
 
 process.options = cms.untracked.PSet()
