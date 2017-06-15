@@ -67,20 +67,40 @@ for i in xrange(6):
   histograms[hname] = Hist(51, -0.005, 0.505, name=hname, title="; |residual| of (scaled bend - EMTFv5 1/p_{T}) [1/GeV]", type='F')
 
 # Efficiency vs gen pT
-#pt_binning = [0., 0.5, 1., 1.5, 2., 2.5, 3., 4., 5., 6., 7., 8., 9., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 35., 40., 45., 50., 55., 60., 70., 80., 100., 120., 140., 160., 180., 200., 250., 300., 350., 400., 450., 500., 550., 600., 700., 800., 1000.]
-pt_binning = [0., 0.5, 1., 1.5, 2., 2.5, 3., 4., 5., 6., 7., 8., 9., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 35., 40., 45., 50., 60., 70., 90., 120.]
+pt_binning = [0., 2., 4., 6., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 35., 40., 45., 50., 60., 70., 100.]
 for k in ["numer", "denom"]:
   hname = "eff_vs_genpt_l1pt20_%s" % k
   histograms[hname] = Hist(pt_binning, name=hname, title="; gen p_{T} [GeV]", type='F')
   histograms[hname].Sumw2()
-  hname = "eff_vs_genpt_l1pt20_l1bend1_%s" % k
+  hname = "eff_vs_genpt_l1qual_l1pt20_%s" % k
   histograms[hname] = Hist(pt_binning, name=hname, title="; gen p_{T} [GeV]", type='F')
   histograms[hname].Sumw2()
-  hname = "eff_vs_genpt_l1pt20_l1bend2_%s" % k
+  hname = "eff_vs_genpt_l1qual_l1pt20_l1bend1_%s" % k
   histograms[hname] = Hist(pt_binning, name=hname, title="; gen p_{T} [GeV]", type='F')
   histograms[hname].Sumw2()
-  hname = "eff_vs_genpt_l1pt20_l1bend3_%s" % k
+  hname = "eff_vs_genpt_l1qual_l1pt20_l1bend2_%s" % k
   histograms[hname] = Hist(pt_binning, name=hname, title="; gen p_{T} [GeV]", type='F')
+  histograms[hname].Sumw2()
+  hname = "eff_vs_genpt_l1qual_l1pt20_l1bend3_%s" % k
+  histograms[hname] = Hist(pt_binning, name=hname, title="; gen p_{T} [GeV]", type='F')
+  histograms[hname].Sumw2()
+
+# Efficiency vs gen |eta|
+for k in ["numer", "denom"]:
+  hname = "eff_vs_geneta_l1pt20_%s" % k
+  histograms[hname] = Hist(40, 1.7, 2.1, name=hname, title="; gen |#eta|", type='F')
+  histograms[hname].Sumw2()
+  hname = "eff_vs_geneta_l1qual_l1pt20_%s" % k
+  histograms[hname] = Hist(40, 1.7, 2.1, name=hname, title="; gen |#eta|", type='F')
+  histograms[hname].Sumw2()
+  hname = "eff_vs_geneta_l1qual_l1pt20_l1bend1_%s" % k
+  histograms[hname] = Hist(40, 1.7, 2.1, name=hname, title="; gen |#eta|", type='F')
+  histograms[hname].Sumw2()
+  hname = "eff_vs_geneta_l1qual_l1pt20_l1bend2_%s" % k
+  histograms[hname] = Hist(40, 1.7, 2.1, name=hname, title="; gen |#eta|", type='F')
+  histograms[hname].Sumw2()
+  hname = "eff_vs_geneta_l1qual_l1pt20_l1bend3_%s" % k
+  histograms[hname] = Hist(40, 1.7, 2.1, name=hname, title="; gen |#eta|", type='F')
   histograms[hname].Sumw2()
 
 
@@ -95,9 +115,9 @@ kDT, kCSC, kRPC, kGEM = 0, 1, 2, 3
 # Lambdas
 unscale_pt = lambda x: x/1.4
 
-get_common_bend = lambda x, y: (x*2.28395) if y else x
+get_common_bend = lambda x, y: (x*2.29435) if y else x
 
-get_scaled_bend = lambda x: (x*0.267609)
+get_scaled_bend = lambda x: (x*0.266675)
 
 no_xoverflow_pls = lambda x, h: min(x, h.GetBinLowEdge(h.GetNbinsX()))
 
@@ -132,30 +152,79 @@ for ievt, evt in enumerate(tree):
 
   no_genparticles = (len(evt.genparticles) == 0)
 
-  no_hits_me11 = (len([hit for hit in evt.hits if hit.station == 1 and (hit.ring == 1 or hit.ring == 4) and hit.type == kCSC]) == 0)
+  no_genparticles_in_eta_range = (len([part for part in evt.genparticles if 1.7 < abs(part.eta) < 2.1]) == 0)
 
-  no_hits_ge11 = (len([hit for hit in evt.hits if hit.station == 1 and hit.ring == 1 and hit.type == kGEM]) == 0)
+  no_genparticles_pt20 = (len([part for part in evt.genparticles if part.pt > 20]) == 0)
 
   no_tracks = (len(evt.tracks) == 0)
 
   no_tracks_l1pt20 = (len([trk for trk in evt.tracks if trk.pt > 20.]) == 0)
 
-  if not no_genparticles and not no_hits_me11 and not no_hits_ge11:
+  no_tracks_l1qual = (len([trk for trk in evt.tracks if trk.mode in [11,13,14,15]]) == 0)
+
+  no_tracks_l1qual_l1pt20 = (len([trk for trk in evt.tracks if trk.mode in [11,13,14,15] and trk.pt > 20.]) == 0)
+
+  if not no_genparticles and not no_genparticles_in_eta_range:
     k = "denom"
     hname = "eff_vs_genpt_l1pt20_%s" % k
     histograms[hname].fill(evt.genparticles[0].pt)
+    trigger = not no_tracks_l1pt20
+    if trigger:
+      k = "numer"
+      hname = "eff_vs_genpt_l1pt20_%s" % k
+      histograms[hname].fill(evt.genparticles[0].pt)
 
     k = "denom"
-    hname = "eff_vs_genpt_l1pt20_l1bend1_%s" % k
+    hname = "eff_vs_genpt_l1qual_l1pt20_%s" % k
+    histograms[hname].fill(evt.genparticles[0].pt)
+    trigger = not no_tracks_l1qual_l1pt20
+    if trigger:
+      k = "numer"
+      hname = "eff_vs_genpt_l1qual_l1pt20_%s" % k
+      histograms[hname].fill(evt.genparticles[0].pt)
+
+    k = "denom"
+    hname = "eff_vs_genpt_l1qual_l1pt20_l1bend1_%s" % k
     histograms[hname].fill(evt.genparticles[0].pt)
 
     k = "denom"
-    hname = "eff_vs_genpt_l1pt20_l1bend2_%s" % k
+    hname = "eff_vs_genpt_l1qual_l1pt20_l1bend2_%s" % k
     histograms[hname].fill(evt.genparticles[0].pt)
 
     k = "denom"
-    hname = "eff_vs_genpt_l1pt20_l1bend3_%s" % k
+    hname = "eff_vs_genpt_l1qual_l1pt20_l1bend3_%s" % k
     histograms[hname].fill(evt.genparticles[0].pt)
+
+  if not no_genparticles and not no_genparticles_pt20:
+    k = "denom"
+    hname = "eff_vs_geneta_l1pt20_%s" % k
+    histograms[hname].fill(abs(evt.genparticles[0].eta))
+    trigger = not no_tracks_l1pt20
+    if trigger:
+      k = "numer"
+      hname = "eff_vs_geneta_l1pt20_%s" % k
+      histograms[hname].fill(abs(evt.genparticles[0].eta))
+
+    k = "denom"
+    hname = "eff_vs_geneta_l1qual_l1pt20_%s" % k
+    histograms[hname].fill(abs(evt.genparticles[0].eta))
+    trigger = not no_tracks_l1qual_l1pt20
+    if trigger:
+      k = "numer"
+      hname = "eff_vs_geneta_l1qual_l1pt20_%s" % k
+      histograms[hname].fill(abs(evt.genparticles[0].eta))
+
+    k = "denom"
+    hname = "eff_vs_geneta_l1qual_l1pt20_l1bend1_%s" % k
+    histograms[hname].fill(abs(evt.genparticles[0].eta))
+
+    k = "denom"
+    hname = "eff_vs_geneta_l1qual_l1pt20_l1bend2_%s" % k
+    histograms[hname].fill(abs(evt.genparticles[0].eta))
+
+    k = "denom"
+    hname = "eff_vs_geneta_l1qual_l1pt20_l1bend3_%s" % k
+    histograms[hname].fill(abs(evt.genparticles[0].eta))
 
   # ____________________________________________________________________________
   # Filter
@@ -167,23 +236,28 @@ for ievt, evt in enumerate(tree):
   # Skip events if no tracks
   if no_tracks:  continue
 
+  # Skip events if no tracks with SingleMu quality
+  if no_tracks_l1qual:  continue
+
   mypart = evt.genparticles[0]
   #mytrk = evt.tracks[0]
-
   try:
     # Select highest pT track from tracks that have a station 1 hit
-    mytrk = max(filter(lambda x: bool(x.mode & (1<<3)), evt.tracks), key=lambda x: x.pt)
+    mytrk = max(filter(lambda x: (x.mode in [11,13,14,15]), evt.tracks), key=lambda x: x.pt)
   except ValueError:
-    # If no tracks have a station 1 hit, just select highest pT track
-    mytrk = max(evt.tracks, key=lambda x: x.pt)
+    ## If no tracks have a station 1 hit, just select highest pT track
+    #mytrk = max(evt.tracks, key=lambda x: x.pt)
+    raise ValueError(e)
 
   # Skip event if no ME1/1 hit
-  myhits_me11 = [hit for hit in evt.hits if hit.endcap == mytrk.endcap and hit.sector == mytrk.sector and hit.station == 1 and (hit.ring == 1 or hit.ring == 4) and hit.type == kCSC]
-  if not len(myhits_me11): continue
+  myhits_me11 = [hit for hit in evt.hits if hit.station == 1 and (hit.ring == 1 or hit.ring == 4) and hit.type == kCSC]
+  #myhits_me11 = [hit for hit in evt.hits if hit.endcap == mytrk.endcap and hit.sector == mytrk.sector and hit.station == 1 and (hit.ring == 1 or hit.ring == 4) and hit.type == kCSC]
+  if len(myhits_me11) == 0:  continue
 
-  # Skip event if no ME1/1 hit
-  myhits_ge11 = [hit for hit in evt.hits if hit.endcap == mytrk.endcap and hit.sector == mytrk.sector and hit.station == 1 and hit.ring == 1 and hit.type == kGEM]
-  if not len(myhits_ge11): continue
+  # Skip event if no GE1/1 hit
+  myhits_ge11 = [hit for hit in evt.hits if hit.station == 1 and hit.ring == 1 and hit.type == kGEM]
+  #myhits_ge11 = [hit for hit in evt.hits if hit.endcap == mytrk.endcap and hit.sector == mytrk.sector and hit.station == 1 and hit.ring == 1 and hit.type == kGEM]
+  if len(myhits_ge11) == 0:  continue
 
   # ____________________________________________________________________________
   # Make plots
@@ -255,32 +329,67 @@ for ievt, evt in enumerate(tree):
   # ____________________________________________________________________________
   # Quick efficiency studies (numer)
 
-  pass_l1bend1 = abs(mybend_scaled_residual) <= 0.264 # 97%
-  pass_l1bend2 = abs(mybend_scaled_residual) <= 0.164 # 95%
-  pass_l1bend3 = abs(mybend_scaled_residual) <= 0.0627 # 90%
+  pass_l1bend1 = abs(mybend_scaled_residual) <= 0.24714 # 97%
+  pass_l1bend2 = abs(mybend_scaled_residual) <= 0.14190 # 95%
+  pass_l1bend3 = abs(mybend_scaled_residual) <= 0.06067 # 90%
 
-  if not no_genparticles and not no_hits_me11 and not no_hits_ge11:
-    #trigger = not no_tracks
-    trigger = not no_tracks_l1pt20
-    if trigger:
-      k = "numer"
-      hname = "eff_vs_genpt_l1pt20_%s" % k
-      histograms[hname].fill(evt.genparticles[0].pt)
+  if not no_genparticles and not no_genparticles_in_eta_range:
+    #trigger = not no_tracks_l1pt20
+    #if trigger:
+    #  k = "numer"
+    #  hname = "eff_vs_genpt_l1pt20_%s" % k
+    #  histograms[hname].fill(evt.genparticles[0].pt)
+
+    trigger = not no_tracks_l1qual_l1pt20
+    #if trigger:
+    #  k = "numer"
+    #  hname = "eff_vs_genpt_l1qual_l1pt20_%s" % k
+    #  histograms[hname].fill(evt.genparticles[0].pt)
 
     if trigger and pass_l1bend1:
       k = "numer"
-      hname = "eff_vs_genpt_l1pt20_l1bend1_%s" % k
+      hname = "eff_vs_genpt_l1qual_l1pt20_l1bend1_%s" % k
       histograms[hname].fill(evt.genparticles[0].pt)
 
     if trigger and pass_l1bend2:
       k = "numer"
-      hname = "eff_vs_genpt_l1pt20_l1bend2_%s" % k
+      hname = "eff_vs_genpt_l1qual_l1pt20_l1bend2_%s" % k
       histograms[hname].fill(evt.genparticles[0].pt)
 
     if trigger and pass_l1bend3:
       k = "numer"
-      hname = "eff_vs_genpt_l1pt20_l1bend3_%s" % k
+      hname = "eff_vs_genpt_l1qual_l1pt20_l1bend3_%s" % k
       histograms[hname].fill(evt.genparticles[0].pt)
+
+  if not no_genparticles and not no_genparticles_pt20:
+    #trigger = not no_tracks_l1pt20
+    #if trigger:
+    #  k = "numer"
+    #  hname = "eff_vs_geneta_l1pt20_%s" % k
+    #  histograms[hname].fill(abs(evt.genparticles[0].eta))
+
+    trigger = not no_tracks_l1qual_l1pt20
+    #if trigger:
+    #  k = "numer"
+    #  hname = "eff_vs_geneta_l1qual_l1pt20_%s" % k
+    #  histograms[hname].fill(abs(evt.genparticles[0].eta))
+
+    pass_l1bend1 = True  #FIXME
+
+    if trigger and pass_l1bend1:
+      k = "numer"
+      hname = "eff_vs_geneta_l1qual_l1pt20_l1bend1_%s" % k
+      histograms[hname].fill(abs(evt.genparticles[0].eta))
+
+    if trigger and pass_l1bend2:
+      k = "numer"
+      hname = "eff_vs_geneta_l1qual_l1pt20_l1bend2_%s" % k
+      histograms[hname].fill(abs(evt.genparticles[0].eta))
+
+    if trigger and pass_l1bend3:
+      k = "numer"
+      hname = "eff_vs_geneta_l1qual_l1pt20_l1bend3_%s" % k
+      histograms[hname].fill(abs(evt.genparticles[0].eta))
 
   continue  # end loop over event
 
@@ -425,9 +534,9 @@ if make_plots:
   eff = Efficiency(numer, denom, name=hname)
   eff.SetStatisticOption(0)  # kFCP
   eff.SetConfidenceLevel(0.682689492137)  # one sigma
-  eff.linecolor = 'black'
+  eff.linecolor = 'gray'
   eff.linewidth = 2
-  eff.markercolor = 'black'
+  eff.markercolor = 'gray'
   eff.markerstyle = 1
   #
   frame = eff.GetCopyTotalHisto().Clone(hname+"_frame")
@@ -446,12 +555,29 @@ if make_plots:
   gPad.Print(options.outdir + hname + ".png")
   #
   k = "denom"
-  hname = "eff_vs_genpt_l1pt20_l1bend1_%s" % k
+  hname = "eff_vs_genpt_l1qual_l1pt20_%s" % k
   denom = histograms[hname]
   k = "numer"
-  hname = "eff_vs_genpt_l1pt20_l1bend1_%s" % k
+  hname = "eff_vs_genpt_l1qual_l1pt20_%s" % k
   numer = histograms[hname]
-  hname = "eff_vs_genpt_l1pt20_l1bend1"
+  hname = "eff_vs_genpt_l1qual_l1pt20"
+  eff0 = Efficiency(numer, denom, name=hname)
+  eff0.SetStatisticOption(0)  # kFCP
+  eff0.SetConfidenceLevel(0.682689492137)  # one sigma
+  eff0.linecolor = 'black'
+  eff0.linewidth = 2
+  eff0.markercolor = 'black'
+  eff0.markerstyle = 1
+  eff0.Draw("same p")
+  gPad.Print(options.outdir + hname + ".png")
+  #
+  k = "denom"
+  hname = "eff_vs_genpt_l1qual_l1pt20_l1bend1_%s" % k
+  denom = histograms[hname]
+  k = "numer"
+  hname = "eff_vs_genpt_l1qual_l1pt20_l1bend1_%s" % k
+  numer = histograms[hname]
+  hname = "eff_vs_genpt_l1qual_l1pt20_l1bend1"
   eff1 = Efficiency(numer, denom, name=hname)
   eff1.SetStatisticOption(0)  # kFCP
   eff1.SetConfidenceLevel(0.682689492137)  # one sigma
@@ -463,12 +589,12 @@ if make_plots:
   gPad.Print(options.outdir + hname + ".png")
   #
   k = "denom"
-  hname = "eff_vs_genpt_l1pt20_l1bend2_%s" % k
+  hname = "eff_vs_genpt_l1qual_l1pt20_l1bend2_%s" % k
   denom = histograms[hname]
   k = "numer"
-  hname = "eff_vs_genpt_l1pt20_l1bend2_%s" % k
+  hname = "eff_vs_genpt_l1qual_l1pt20_l1bend2_%s" % k
   numer = histograms[hname]
-  hname = "eff_vs_genpt_l1pt20_l1bend2"
+  hname = "eff_vs_genpt_l1qual_l1pt20_l1bend2"
   eff2 = Efficiency(numer, denom, name=hname)
   eff2.SetStatisticOption(0)  # kFCP
   eff2.SetConfidenceLevel(0.682689492137)  # one sigma
@@ -480,12 +606,111 @@ if make_plots:
   gPad.Print(options.outdir + hname + ".png")
   #
   k = "denom"
-  hname = "eff_vs_genpt_l1pt20_l1bend3_%s" % k
+  hname = "eff_vs_genpt_l1qual_l1pt20_l1bend3_%s" % k
   denom = histograms[hname]
   k = "numer"
-  hname = "eff_vs_genpt_l1pt20_l1bend3_%s" % k
+  hname = "eff_vs_genpt_l1qual_l1pt20_l1bend3_%s" % k
   numer = histograms[hname]
-  hname = "eff_vs_genpt_l1pt20_l1bend3"
+  hname = "eff_vs_genpt_l1qual_l1pt20_l1bend3"
+  eff3 = Efficiency(numer, denom, name=hname)
+  eff3.SetStatisticOption(0)  # kFCP
+  eff3.SetConfidenceLevel(0.682689492137)  # one sigma
+  eff3.linecolor = 'green'
+  eff3.linewidth = 2
+  eff3.markercolor = 'green'
+  eff3.markerstyle = 1
+  eff3.Draw("same p")
+  gPad.Print(options.outdir + hname + ".png")
+
+  # Make efficiency vs gen |eta|
+  k = "denom"
+  hname = "eff_vs_geneta_l1pt20_%s" % k
+  denom = histograms[hname]
+  k = "numer"
+  hname = "eff_vs_geneta_l1pt20_%s" % k
+  numer = histograms[hname]
+  hname = "eff_vs_geneta_l1pt20"
+  eff = Efficiency(numer, denom, name=hname)
+  eff.SetStatisticOption(0)  # kFCP
+  eff.SetConfidenceLevel(0.682689492137)  # one sigma
+  eff.linecolor = 'gray'
+  eff.linewidth = 2
+  eff.markercolor = 'gray'
+  eff.markerstyle = 1
+  #
+  frame = eff.GetCopyTotalHisto().Clone(hname+"_frame")
+  frame.Reset()
+  frame.SetMinimum(0)
+  frame.SetMaximum(1.2)
+  frame.GetYaxis().SetTitle("#varepsilon")
+  frame.SetStats(0)
+  frame.Draw()
+  tline = TLine()
+  tline.SetLineColor(1)
+  xmin, xmax = frame.GetXaxis().GetXmin(), frame.GetXaxis().GetXmax()
+  tline.DrawLine(xmin, 1.0, xmax, 1.0)
+  #
+  eff.Draw("same p")
+  gPad.Print(options.outdir + hname + ".png")
+  #
+  k = "denom"
+  hname = "eff_vs_geneta_l1qual_l1pt20_%s" % k
+  denom = histograms[hname]
+  k = "numer"
+  hname = "eff_vs_geneta_l1qual_l1pt20_%s" % k
+  numer = histograms[hname]
+  hname = "eff_vs_geneta_l1qual_l1pt20"
+  eff0 = Efficiency(numer, denom, name=hname)
+  eff0.SetStatisticOption(0)  # kFCP
+  eff0.SetConfidenceLevel(0.682689492137)  # one sigma
+  eff0.linecolor = 'black'
+  eff0.linewidth = 2
+  eff0.markercolor = 'black'
+  eff0.markerstyle = 1
+  eff0.Draw("same p")
+  gPad.Print(options.outdir + hname + ".png")
+  #
+  k = "denom"
+  hname = "eff_vs_geneta_l1qual_l1pt20_l1bend1_%s" % k
+  denom = histograms[hname]
+  k = "numer"
+  hname = "eff_vs_geneta_l1qual_l1pt20_l1bend1_%s" % k
+  numer = histograms[hname]
+  hname = "eff_vs_geneta_l1qual_l1pt20_l1bend1"
+  eff1 = Efficiency(numer, denom, name=hname)
+  eff1.SetStatisticOption(0)  # kFCP
+  eff1.SetConfidenceLevel(0.682689492137)  # one sigma
+  eff1.linecolor = 'red'
+  eff1.linewidth = 2
+  eff1.markercolor = 'red'
+  eff1.markerstyle = 1
+  eff1.Draw("same p")
+  gPad.Print(options.outdir + hname + ".png")
+  #
+  k = "denom"
+  hname = "eff_vs_geneta_l1qual_l1pt20_l1bend2_%s" % k
+  denom = histograms[hname]
+  k = "numer"
+  hname = "eff_vs_geneta_l1qual_l1pt20_l1bend2_%s" % k
+  numer = histograms[hname]
+  hname = "eff_vs_geneta_l1qual_l1pt20_l1bend2"
+  eff2 = Efficiency(numer, denom, name=hname)
+  eff2.SetStatisticOption(0)  # kFCP
+  eff2.SetConfidenceLevel(0.682689492137)  # one sigma
+  eff2.linecolor = 'blue'
+  eff2.linewidth = 2
+  eff2.markercolor = 'blue'
+  eff2.markerstyle = 1
+  eff2.Draw("same p")
+  gPad.Print(options.outdir + hname + ".png")
+  #
+  k = "denom"
+  hname = "eff_vs_geneta_l1qual_l1pt20_l1bend3_%s" % k
+  denom = histograms[hname]
+  k = "numer"
+  hname = "eff_vs_geneta_l1qual_l1pt20_l1bend3_%s" % k
+  numer = histograms[hname]
+  hname = "eff_vs_geneta_l1qual_l1pt20_l1bend3"
   eff3 = Efficiency(numer, denom, name=hname)
   eff3.SetStatisticOption(0)  # kFCP
   eff3.SetConfidenceLevel(0.682689492137)  # one sigma
