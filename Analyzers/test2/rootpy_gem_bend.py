@@ -25,10 +25,30 @@ class Particle(TreeModel):
 
 # Open file
 #infile = root_open('ntuple.0.root')
-infile = root_open('ntuple.1.root')
+#infile = root_open('ntuple.1.root')
+#infile = root_open('ntuple.2.root')
+infile = root_open('ntuple.3.root')
 tree = infile.ntupler.tree
 maxEvents = -1
-#maxEvents = 20000
+#maxEvents = 150000
+
+# Define collection
+tree.define_collection(name='hits', prefix='vh_', size='vh_size')
+tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
+tree.define_collection(name='genparticles', prefix='vp_', size='vp_size')
+
+# Enums
+kDT, kCSC, kRPC, kGEM = 0, 1, 2, 3
+
+# Lambdas
+unscale_pt = lambda x: x/1.4
+
+get_common_bend = lambda x, y: (x*2.3879) if y else x
+
+get_scaled_bend = lambda x: (x*0.278868)
+
+no_xoverflow_pls = lambda x, h: min(x, h.GetBinLowEdge(h.GetNbinsX()))
+
 
 # Book histograms
 histograms = {}
@@ -46,6 +66,9 @@ for i in xrange(3):
 
   hname = "h2_common_bend_vs_genpt_fr%i" % i
   histogram2Ds[hname] = Hist2D(50, 0.0, 0.5, 71, -1.025, 2.525, name=hname, title="; gen 1/p_{T} [1/GeV]; GEM-CSC bend [deg]", type='F')
+
+  hname = "h2_scaled_bend_vs_genpt_fr%i" % i
+  histogram2Ds[hname] = Hist2D(50, 0.0, 0.5, 101, -0.505, 0.505, name=hname, title="; gen 1/p_{T} [1/GeV]; residual of (scaled bend - EMTFv5 1/p_{T}) [1/GeV]", type='F')
 
 # GEM-CSC bend when triggered
 for i in xrange(3):
@@ -68,7 +91,7 @@ for i in xrange(6):
 
 # Efficiency vs gen pT
 pt_binning = [0., 2., 4., 6., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 35., 40., 45., 50., 60., 70., 100.]
-for k in ["numer", "denom"]:
+for k in ["denom", "numer"]:
   hname = "eff_vs_genpt_l1pt20_%s" % k
   histograms[hname] = Hist(pt_binning, name=hname, title="; gen p_{T} [GeV]", type='F')
   histograms[hname].Sumw2()
@@ -86,7 +109,7 @@ for k in ["numer", "denom"]:
   histograms[hname].Sumw2()
 
 # Efficiency vs gen |eta|
-for k in ["numer", "denom"]:
+for k in ["denom", "numer"]:
   hname = "eff_vs_geneta_l1pt20_%s" % k
   histograms[hname] = Hist(40, 1.7, 2.1, name=hname, title="; gen |#eta|", type='F')
   histograms[hname].Sumw2()
@@ -102,24 +125,6 @@ for k in ["numer", "denom"]:
   hname = "eff_vs_geneta_l1qual_l1pt20_l1bend3_%s" % k
   histograms[hname] = Hist(40, 1.7, 2.1, name=hname, title="; gen |#eta|", type='F')
   histograms[hname].Sumw2()
-
-
-# Define collection
-tree.define_collection(name='hits', prefix='vh_', size='vh_size')
-tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
-tree.define_collection(name='genparticles', prefix='vp_', size='vp_size')
-
-# Enums
-kDT, kCSC, kRPC, kGEM = 0, 1, 2, 3
-
-# Lambdas
-unscale_pt = lambda x: x/1.4
-
-get_common_bend = lambda x, y: (x*2.29435) if y else x
-
-get_scaled_bend = lambda x: (x*0.266675)
-
-no_xoverflow_pls = lambda x, h: min(x, h.GetBinLowEdge(h.GetNbinsX()))
 
 
 # Loop over events
@@ -269,6 +274,7 @@ for ievt, evt in enumerate(tree):
   myfr = myhit_me11.fr
   mybend_common = get_common_bend(mybend, myfr)
   mybend_scaled = get_scaled_bend(mybend_common)
+  mybend_scaled_residual = mybend_scaled - 1.0/unscale_pt(mytrk.pt)
 
   myptbin = -1
   if ((1.0/2 - 0.05) < 1.0/mypart.pt <= (1.0/2)):
@@ -300,6 +306,12 @@ for ievt, evt in enumerate(tree):
   hname = "h2_common_bend_vs_genpt_fr%i" % 2  # inclusive
   histogram2Ds[hname].fill(1.0/mypart.pt, mybend_common)
 
+  # GEM-CSC scaled bend residuals vs gen pT
+  hname = "h2_scaled_bend_vs_genpt_fr%i" % myfr
+  histogram2Ds[hname].fill(1.0/mypart.pt, mybend_scaled_residual)
+  hname = "h2_scaled_bend_vs_genpt_fr%i" % 2  # inclusive
+  histogram2Ds[hname].fill(1.0/mypart.pt, mybend_scaled_residual)
+
   # GEM-CSC bend when triggered
   pass_l1pt = unscale_pt(mytrk.pt) > 20.
   pass_genpt = mypart.pt > 20.
@@ -318,7 +330,6 @@ for ievt, evt in enumerate(tree):
     histograms[hname].fill(mybend_common)
 
   # GEM-CSC scaled bend residuals
-  mybend_scaled_residual = mybend_scaled - 1.0/unscale_pt(mytrk.pt)
   if myptbin != -1:
     hname = "h_scaled_bend_pt%i" % myptbin
     histograms[hname].fill(mybend_scaled_residual)
@@ -326,12 +337,14 @@ for ievt, evt in enumerate(tree):
     hname = "h_abs_scaled_bend_pt%i" % myptbin
     histograms[hname].fill(no_xoverflow_pls(abs(mybend_scaled_residual), histograms[hname]))
 
+
   # ____________________________________________________________________________
   # Quick efficiency studies (numer)
 
-  pass_l1bend1 = abs(mybend_scaled_residual) <= 0.24714 # 97%
-  pass_l1bend2 = abs(mybend_scaled_residual) <= 0.14190 # 95%
-  pass_l1bend3 = abs(mybend_scaled_residual) <= 0.06067 # 90%
+  #pass_l1bend1 = True
+  pass_l1bend1 = abs(mybend_scaled_residual) <= 0.3747 # 97%
+  pass_l1bend2 = abs(mybend_scaled_residual) <= 0.2179 # 95%
+  pass_l1bend3 = abs(mybend_scaled_residual) <= 0.0866 # 90%
 
   if not no_genparticles and not no_genparticles_in_eta_range:
     #trigger = not no_tracks_l1pt20
@@ -340,23 +353,26 @@ for ievt, evt in enumerate(tree):
     #  hname = "eff_vs_genpt_l1pt20_%s" % k
     #  histograms[hname].fill(evt.genparticles[0].pt)
 
-    trigger = not no_tracks_l1qual_l1pt20
+    #trigger = not no_tracks_l1qual_l1pt20
     #if trigger:
     #  k = "numer"
     #  hname = "eff_vs_genpt_l1qual_l1pt20_%s" % k
     #  histograms[hname].fill(evt.genparticles[0].pt)
 
-    if trigger and pass_l1bend1:
+    trigger = not no_tracks_l1qual_l1pt20 and pass_l1bend1
+    if trigger:
       k = "numer"
       hname = "eff_vs_genpt_l1qual_l1pt20_l1bend1_%s" % k
       histograms[hname].fill(evt.genparticles[0].pt)
 
-    if trigger and pass_l1bend2:
+    trigger = not no_tracks_l1qual_l1pt20 and pass_l1bend2
+    if trigger:
       k = "numer"
       hname = "eff_vs_genpt_l1qual_l1pt20_l1bend2_%s" % k
       histograms[hname].fill(evt.genparticles[0].pt)
 
-    if trigger and pass_l1bend3:
+    trigger = not no_tracks_l1qual_l1pt20 and pass_l1bend3
+    if trigger:
       k = "numer"
       hname = "eff_vs_genpt_l1qual_l1pt20_l1bend3_%s" % k
       histograms[hname].fill(evt.genparticles[0].pt)
@@ -368,25 +384,26 @@ for ievt, evt in enumerate(tree):
     #  hname = "eff_vs_geneta_l1pt20_%s" % k
     #  histograms[hname].fill(abs(evt.genparticles[0].eta))
 
-    trigger = not no_tracks_l1qual_l1pt20
+    #trigger = not no_tracks_l1qual_l1pt20
     #if trigger:
     #  k = "numer"
     #  hname = "eff_vs_geneta_l1qual_l1pt20_%s" % k
     #  histograms[hname].fill(abs(evt.genparticles[0].eta))
 
-    pass_l1bend1 = True  #FIXME
-
-    if trigger and pass_l1bend1:
+    trigger = not no_tracks_l1qual_l1pt20 and pass_l1bend1
+    if trigger:
       k = "numer"
       hname = "eff_vs_geneta_l1qual_l1pt20_l1bend1_%s" % k
       histograms[hname].fill(abs(evt.genparticles[0].eta))
 
-    if trigger and pass_l1bend2:
+    trigger = not no_tracks_l1qual_l1pt20 and pass_l1bend2
+    if trigger:
       k = "numer"
       hname = "eff_vs_geneta_l1qual_l1pt20_l1bend2_%s" % k
       histograms[hname].fill(abs(evt.genparticles[0].eta))
 
-    if trigger and pass_l1bend3:
+    trigger = not no_tracks_l1qual_l1pt20 and pass_l1bend3
+    if trigger:
       k = "numer"
       hname = "eff_vs_geneta_l1qual_l1pt20_l1bend3_%s" % k
       histograms[hname].fill(abs(evt.genparticles[0].eta))
@@ -406,10 +423,13 @@ if make_plots:
   # Print
   for hname, h in histograms.iteritems():
     h.Draw("COLZ")
+    print("TH1: {0} (N={1})".format(hname, h.GetEntries()))
     gPad.Print(options.outdir + hname + ".png")
   for hname, h in histogram2Ds.iteritems():
     h.Draw("COLZ")
+    print("TH2: {0} (N={1})".format(hname, h.GetEntries()))
     gPad.Print(options.outdir + hname + ".png")
+
 
   # Make ratio of bend vs gen pT
   denom_ifr = 1
