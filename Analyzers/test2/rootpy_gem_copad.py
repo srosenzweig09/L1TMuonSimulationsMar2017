@@ -217,7 +217,7 @@ if make_plots:
 
   # Print
   for hname, h in histograms.iteritems():
-    h.Draw("COLZ")
+    h.Draw("hist")
     print("TH1: {0} (N={1})".format(hname, h.GetEntries()))
     gPad.Print(options.outdir + hname + ".png")
   for hname, h in histogram2Ds.iteritems():
