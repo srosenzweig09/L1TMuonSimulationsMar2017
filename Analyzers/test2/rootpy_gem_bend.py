@@ -47,7 +47,11 @@ get_common_bend = lambda x, y: (x*2.3879) if y else x
 
 get_scaled_bend = lambda x: (x*0.278868)
 
+no_xunderflow_pls = lambda x, h: max(x, h.GetBinLowEdge(1))
+
 no_xoverflow_pls = lambda x, h: min(x, h.GetBinLowEdge(h.GetNbinsX()))
+
+no_xuoflow_pls = lambda x, h: no_xunderflow_pls(no_xoverflow_pls(x, h), h)
 
 
 # Book histograms
@@ -70,14 +74,13 @@ for i in xrange(3):
   hname = "h2_scaled_bend_vs_genpt_fr%i" % i
   histogram2Ds[hname] = Hist2D(50, 0.0, 0.5, 101, -0.505, 0.505, name=hname, title="; gen 1/p_{T} [1/GeV]; residual of (scaled bend - EMTFv5 1/p_{T}) [1/GeV]", type='F')
 
-# GEM-CSC bend when triggered
-for i in xrange(3):
-  # i=0: gen pT <= 20, i=1: gen pT > 20, i=2: all
-  hname = "h_bend_l1pt20un_gen%i" % i
+# GEM-CSC bend
+for i in xrange(6):
+  # i=0..6: 2, 3, 5, 10, 20, 50 GeV
+  hname = "h_bend_pt%i" % i
   histograms[hname] = Hist(71, -1.025, 2.525, name=hname, title="; GEM-CSC bend [deg]", type='F')
 
-  # i=0: gen pT <= 3, i=1: gen pT > 3, i=2: all
-  hname = "h_bend_l1pt3un_gen%i" % i
+  hname = "h_common_bend_pt%i" % i
   histograms[hname] = Hist(71, -1.025, 2.525, name=hname, title="; GEM-CSC bend [deg]", type='F')
 
 # GEM-CSC scaled bend residuals
@@ -249,7 +252,7 @@ for ievt, evt in enumerate(tree):
   try:
     # Select highest pT track from tracks that have a station 1 hit
     mytrk = max(filter(lambda x: (x.mode in [11,13,14,15]), evt.tracks), key=lambda x: x.pt)
-  except ValueError:
+  except ValueError, e:
     ## If no tracks have a station 1 hit, just select highest pT track
     #mytrk = max(evt.tracks, key=lambda x: x.pt)
     raise ValueError(e)
@@ -277,18 +280,18 @@ for ievt, evt in enumerate(tree):
   mybend_scaled_residual = mybend_scaled - 1.0/unscale_pt(mytrk.pt)
 
   myptbin = -1
-  if ((1.0/2 - 0.05) < 1.0/mypart.pt <= (1.0/2)):
-    myptbin = 0;
-  elif ((1.0/3 - 0.03333) < 1.0/mypart.pt <= (1.0/3)):
-    myptbin = 1;
-  elif ((1.0/5 - 0.03333) < 1.0/mypart.pt <= (1.0/5)):
-    myptbin = 2;
-  elif ((1.0/10 - 0.02) < 1.0/mypart.pt <= (1.0/10)):
-    myptbin = 3;
-  elif ((1.0/20 - 0.02) < 1.0/mypart.pt <= (1.0/20)):
-    myptbin = 4;
-  elif ((1.0/50 - 0.01) < 1.0/mypart.pt <= (1.0/50)):
-    myptbin = 5;
+  if ((1.0/2 - 0.02) < 1.0/mypart.pt <= (1.0/2)):
+    myptbin = 0;  # 2 GeV
+  elif ((1.0/3 - 0.02) < 1.0/mypart.pt <= (1.0/3)):
+    myptbin = 1;  # 3 GeV
+  elif ((1.0/5 - 0.01) < 1.0/mypart.pt <= (1.0/5)):
+    myptbin = 2;  # 5 GeV
+  elif ((1.0/10 - 0.01) < 1.0/mypart.pt <= (1.0/10)):
+    myptbin = 3;  # 10 GeV
+  elif ((1.0/20 - 0.01) < 1.0/mypart.pt <= (1.0/20)):
+    myptbin = 4;  # 20 GeV
+  elif ((1.0/50 - 0.005) < 1.0/mypart.pt <= (1.0/50)):
+    myptbin = 5;  # 50 GeV
 
   # pT vs gen pT
   hname = "h2_pt_vs_genpt"
@@ -312,30 +315,21 @@ for ievt, evt in enumerate(tree):
   hname = "h2_scaled_bend_vs_genpt_fr%i" % 2  # inclusive
   histogram2Ds[hname].fill(1.0/mypart.pt, mybend_scaled_residual)
 
-  # GEM-CSC bend when triggered
-  pass_l1pt = unscale_pt(mytrk.pt) > 20.
-  pass_genpt = mypart.pt > 20.
-  if pass_l1pt:
-    hname = "h_bend_l1pt20un_gen%i" % pass_genpt
-    histograms[hname].fill(mybend_common)
-    hname = "h_bend_l1pt20un_gen%i" % 2  # inclusive
-    histograms[hname].fill(mybend_common)
+  # GEM-CSC bend
+  if myptbin != -1:
+    hname = "h_bend_pt%i" % myptbin
+    histograms[hname].fill(no_xuoflow_pls(mybend, histograms[hname]))
 
-  pass_l1pt = unscale_pt(mytrk.pt) > 3.
-  pass_genpt = mypart.pt > 3.
-  if pass_l1pt:
-    hname = "h_bend_l1pt3un_gen%i" % pass_genpt
-    histograms[hname].fill(mybend_common)
-    hname = "h_bend_l1pt3un_gen%i" % 2  # inclusive
-    histograms[hname].fill(mybend_common)
+    hname = "h_common_bend_pt%i" % myptbin
+    histograms[hname].fill(no_xuoflow_pls(mybend_common, histograms[hname]))
 
   # GEM-CSC scaled bend residuals
   if myptbin != -1:
     hname = "h_scaled_bend_pt%i" % myptbin
-    histograms[hname].fill(mybend_scaled_residual)
+    histograms[hname].fill(no_xuoflow_pls(mybend_scaled_residual, histograms[hname]))
 
     hname = "h_abs_scaled_bend_pt%i" % myptbin
-    histograms[hname].fill(no_xoverflow_pls(abs(mybend_scaled_residual), histograms[hname]))
+    histograms[hname].fill(no_xuoflow_pls(abs(mybend_scaled_residual), histograms[hname]))
 
 
   # ____________________________________________________________________________
@@ -345,6 +339,13 @@ for ievt, evt in enumerate(tree):
   pass_l1bend1 = abs(mybend_scaled_residual) <= 0.3747 # 97%
   pass_l1bend2 = abs(mybend_scaled_residual) <= 0.2179 # 95%
   pass_l1bend3 = abs(mybend_scaled_residual) <= 0.0866 # 90%
+
+  method_sven = False
+  if method_sven:
+    #pass_l1bend1 = True
+    pass_l1bend1 = mybend_common <= 0.7324  # 97%
+    pass_l1bend2 = mybend_common <= 0.4238  # 95%
+    pass_l1bend3 = mybend_common <= 0.3005  # 90%
 
   if not no_genparticles and not no_genparticles_in_eta_range:
     #trigger = not no_tracks_l1pt20
@@ -422,7 +423,7 @@ if make_plots:
 
   # Print
   for hname, h in histograms.iteritems():
-    h.Draw("COLZ")
+    h.Draw("hist")
     print("TH1: {0} (N={1})".format(hname, h.GetEntries()))
     gPad.Print(options.outdir + hname + ".png")
   for hname, h in histogram2Ds.iteritems():
@@ -475,31 +476,19 @@ if make_plots:
   hname = numer.GetName()
   gPad.Print(options.outdir + hname + ".png")
 
-  # Make overlay of GEM-CSC bend when triggered
-  hname = "h_bend_l1pt20un_gen%i" % 2  # inclusive
+  # Study GEM-CSC bend cut for pT = 20
+  i = 4
+  hname = "h_common_bend_pt%i" % i
   h1a = histograms[hname]
-  h1a.linecolor = 'black'
+  in_quantiles = np.array([1.0-0.25, 1.0-0.20, 1.0-0.15, 1.0-0.10, 1.0-0.05, 1.0-0.03, 1.0-0.02, 1.0-0.01], dtype=np.float64)
+  quantiles = np.array([0.] * len(in_quantiles), dtype=np.float64)
+  h1a.GetQuantiles(len(in_quantiles), quantiles, in_quantiles)
+  print "Quantiles for %s" % hname
+  for in_q, q in zip(in_quantiles, quantiles):
+    print "..", in_q, q
+  h1a.linecolor = options.palette[i]
   h1a.linewidth = 2
-  hname = "h_bend_l1pt20un_gen%i" % 1
-  h1b = histograms[hname]
-  h1b.linecolor = 'red'
-  h1b.linewidth = 2
   h1a.Draw("hist")
-  h1b.Draw("same hist")
-  hname = "h_bend_l1pt20un_gen%i" % 99
-  gPad.Print(options.outdir + hname + ".png")
-
-  hname = "h_bend_l1pt3un_gen%i" % 2  # inclusive
-  h1a = histograms[hname]
-  h1a.linecolor = 'black'
-  h1a.linewidth = 2
-  hname = "h_bend_l1pt3un_gen%i" % 1
-  h1b = histograms[hname]
-  h1b.linecolor = 'red'
-  h1b.linewidth = 2
-  h1a.Draw("hist")
-  h1b.Draw("same hist")
-  hname = "h_bend_l1pt3un_gen%i" % 99
   gPad.Print(options.outdir + hname + ".png")
 
   # Make overlay of GEM-CSC scaled bend residuals
@@ -531,7 +520,6 @@ if make_plots:
   i = 4
   hname = "h_abs_scaled_bend_pt%i" % i
   h1a = histograms[hname]
-  #in_quantiles = np.array([0.01/2, 0.02/2, 0.05/2, 0.10/2, 0.15/2, 0.20/2, 0.25/2, 1.0-0.25/2, 1.0-0.20/2, 1.0-0.15/2, 1.0-0.10/2, 1.0-0.05/2, 1.0-0.02/2, 1.0-0.01/2], dtype=np.float64)
   in_quantiles = np.array([1.0-0.25, 1.0-0.20, 1.0-0.15, 1.0-0.10, 1.0-0.05, 1.0-0.03, 1.0-0.02, 1.0-0.01], dtype=np.float64)
   quantiles = np.array([0.] * len(in_quantiles), dtype=np.float64)
   h1a.GetQuantiles(len(in_quantiles), quantiles, in_quantiles)
