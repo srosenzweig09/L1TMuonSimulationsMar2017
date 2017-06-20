@@ -47,12 +47,20 @@ if True:
   process.RAWSIMoutput.outputCommands  = ['drop *']
   process.RAWSIMoutput.outputCommands += ['keep *_genParticles_*_*', 'keep *_simCscTriggerPrimitiveDigis_*_*', 'keep *_simMuonRPCDigis_*_*', 'keep *_simMuonGEMDigis_*_*', 'keep *_simMuonGEMPadDigis_*_*', 'keep *_simMuonGEMPadDigiClusters_*_*', 'keep *_simEmtfDigis_*_*']
 
+if True:
+  process.load("L1TMuonSimulations.Analyzers.rpcintegration_cfi")
+  process.ntupler.outFileName = "ntuple.root"
+  process.ntupler.verbosity = 0
+  process.TFileService = cms.Service("TFileService", fileName = cms.string(process.ntupler.outFileName._value))
+
 # My paths and schedule definitions
 #process.step1 = cms.Path((process.simCscTriggerPrimitiveDigis) + process.simEmtfDigis)
 process.step1 = cms.Path(process.simEmtfDigis)
-process.RAWSIMoutput.SelectEvents.SelectEvents = cms.vstring('step1')
-process.RAWSIMoutput_step = cms.EndPath(process.RAWSIMoutput)
-process.schedule = cms.Schedule(process.step1, process.RAWSIMoutput_step)
+#process.RAWSIMoutput.SelectEvents.SelectEvents = cms.vstring('step1')
+#process.RAWSIMoutput_step = cms.EndPath(process.RAWSIMoutput)
+#process.schedule = cms.Schedule(process.step1, process.RAWSIMoutput_step)
+process.ntuple_step = cms.Path(process.ntupler)
+process.schedule = cms.Schedule(process.step1, process.ntuple_step)
 
 
 # Configure framework report and summary

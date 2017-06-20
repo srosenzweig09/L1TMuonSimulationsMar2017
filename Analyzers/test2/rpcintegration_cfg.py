@@ -15,7 +15,8 @@ process.maxEvents = cms.untracked.PSet(
 process.source = cms.Source("PoolSource",
     #fileNames = cms.untracked.vstring('file:SingleMuon_PositiveEndCap_RPCInt.0.root'),
     #fileNames = cms.untracked.vstring('file:SingleMuon_PositiveEndCap_RPCInt.1.root'),
-    fileNames = cms.untracked.vstring('file:SingleMuon_PositiveEndCap_RPCInt.2.root'),
+    #fileNames = cms.untracked.vstring('file:SingleMuon_PositiveEndCap_RPCInt.2.root'), # default copad, 170614 samples
+    fileNames = cms.untracked.vstring('file:SingleMuon_PositiveEndCap_RPCInt.3.root'), # no copad, 170614 samples
     duplicateCheckMode = cms.untracked.string('noDuplicateCheck')
 )
 
