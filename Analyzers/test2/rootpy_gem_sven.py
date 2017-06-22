@@ -1,7 +1,7 @@
 import numpy as np
 np.random.seed(2023)
 
-from rootpy.plotting import Hist, Hist2D, Efficiency, Legend, Canvas
+from rootpy.plotting import Hist, Hist2D, Graph, Efficiency, Legend, Canvas
 from rootpy.tree import Tree, TreeModel, FloatCol, IntCol, ShortCol
 from rootpy.io import root_open
 from rootpy.memory import keepalive
@@ -29,6 +29,13 @@ deg_to_rad = lambda x: x * np.pi/180.
 
 rad_to_deg = lambda x: x * 180./np.pi
 
+# Functions
+def delta_phi(lhs, rhs):  # in degrees
+  deg = lhs - rhs
+  while deg <  -180.:  deg += 360.
+  while deg >= +180.:  deg -= 360.
+  return deg
+
 
 # Book histograms
 histograms = {}
@@ -44,10 +51,10 @@ for i in xrange(3):
   histograms[hname] = Hist(200, 0, 0.03, name=hname, title="; #Delta#phi(ME1/1,GE1/1) [rad]", type='F')
 
   hname = "h_bend_ge21_pt5_fr%i" % i
-  histograms[hname] = Hist(200, 0, 0.01, name=hname, title="; #Delta#phi(ME2/1,GE2/1) [rad]", type='F')
+  histograms[hname] = Hist(200, 0, 0.03, name=hname, title="; #Delta#phi(ME2/1,GE2/1) [rad]", type='F')
 
   hname = "h_bend_ge21_pt20_fr%i" % i
-  histograms[hname] = Hist(200, 0, 0.01, name=hname, title="; #Delta#phi(ME2/1,GE2/1) [rad]", type='F')
+  histograms[hname] = Hist(200, 0, 0.03, name=hname, title="; #Delta#phi(ME2/1,GE2/1) [rad]", type='F')
 
 
 # Loop over events
@@ -83,8 +90,11 @@ for ievt, evt in enumerate(tree):
 
   #no_genparticles_in_eta_range = (len([part for part in evt.genparticles if 1.7 < abs(part.eta) < 2.1]) == 0)
   no_genparticles_in_eta_range_1 = (len([part for part in evt.genparticles if 1.64 < abs(part.eta) < 2.14]) == 0)
+  if ievt == 0:  print("[INFO] Using eta range of 1.64 to 2.14")
+  #no_genparticles_in_eta_range_2 = (len([part for part in evt.genparticles if 2.14 < abs(part.eta) < 2.4]) == 0)
+  #if ievt == 0:  print("[INFO] Using eta range of 2.14 to 2.4")
 
-  no_genparticles_pt20 = (len([part for part in evt.genparticles if part.pt > 20]) == 0)
+  #no_genparticles_pt20 = (len([part for part in evt.genparticles if part.pt > 20]) == 0)
 
   #no_tracks = (len(evt.tracks) == 0)
 
@@ -101,6 +111,7 @@ for ievt, evt in enumerate(tree):
 
   # Skip events if no gen particles in eta range
   if no_genparticles_in_eta_range_1:  continue
+  #if no_genparticles_in_eta_range_2:  continue
 
   mypart = evt.genparticles[0]
   #mytrk = evt.tracks[0]
@@ -128,7 +139,7 @@ for ievt, evt in enumerate(tree):
   try:
     myhit_me11 = np.random.choice(myhits_me11)
     myhit_ge11 = np.random.choice(myhits_ge11)
-    mybend_ge11 = myhit_me11.sim_phi - myhit_ge11.sim_phi
+    mybend_ge11 = delta_phi(myhit_me11.sim_phi, myhit_ge11.sim_phi)
     if (mypart.q > 0):  mybend_ge11 = -mybend_ge11
     myfr_ge11 = myhit_me11.fr
     is_good_ge11 = True
@@ -139,7 +150,7 @@ for ievt, evt in enumerate(tree):
   try:
     myhit_me21 = np.random.choice(myhits_me21)
     myhit_ge21 = np.random.choice(myhits_ge21)
-    mybend_ge21 = myhit_me21.sim_phi - myhit_ge21.sim_phi
+    mybend_ge21 = delta_phi(myhit_me21.sim_phi, myhit_ge21.sim_phi)
     if (mypart.q > 0):  mybend_ge21 = -mybend_ge21
     myfr_ge21 = myhit_me21.fr
     is_good_ge21 = True
@@ -185,6 +196,8 @@ for ievt, evt in enumerate(tree):
       histograms[hname].fill(deg_to_rad(mybend_ge21))
       hname = "h_bend_ge21_pt20_fr%i" % 2  # inclusive
       histograms[hname].fill(deg_to_rad(mybend_ge21))
+
+  continue  # end loop over event
 
 
 # ______________________________________________________________________________
