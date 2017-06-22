@@ -1,7 +1,7 @@
 import numpy as np
 np.random.seed(2023)
 
-from rootpy.plotting import Hist, Hist2D, Efficiency, Legend, Canvas
+from rootpy.plotting import Hist, Hist2D, Graph, Efficiency, Legend, Canvas
 from rootpy.tree import Tree, TreeModel, FloatCol, IntCol, ShortCol
 from rootpy.io import root_open
 from rootpy.memory import keepalive
@@ -145,6 +145,8 @@ for (itree, tree, tree_label) in treeinfos:
         k = tree_label
         hname = "eff_vs_geneta_me21_ge21_%s" % k
         histograms[hname].fill(abs(evt.genparticles[0].eta))
+
+  continue  # end loop over event
 
 
 # ______________________________________________________________________________
