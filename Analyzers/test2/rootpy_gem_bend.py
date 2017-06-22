@@ -1,7 +1,7 @@
 import numpy as np
 np.random.seed(2023)
 
-from rootpy.plotting import Hist, Hist2D, Efficiency, Legend, Canvas
+from rootpy.plotting import Hist, Hist2D, Graph, Efficiency, Legend, Canvas
 from rootpy.tree import Tree, TreeModel, FloatCol, IntCol, ShortCol
 from rootpy.io import root_open
 
@@ -41,17 +41,28 @@ tree.define_collection(name='genparticles', prefix='vp_', size='vp_size')
 kDT, kCSC, kRPC, kGEM = 0, 1, 2, 3
 
 # Lambdas
+deg_to_rad = lambda x: x * np.pi/180.
+
+rad_to_deg = lambda x: x * 180./np.pi
+
 unscale_pt = lambda x: x/1.4
 
-get_common_bend = lambda x, y: (x*2.3879) if y else x
+get_common_bend = lambda x, y: (x*2.3873) if y else x
 
-get_scaled_bend = lambda x: (x*0.278868)
+get_scaled_bend = lambda x: (x*0.27302)
 
 no_xunderflow_pls = lambda x, h: max(x, h.GetBinLowEdge(1))
 
 no_xoverflow_pls = lambda x, h: min(x, h.GetBinLowEdge(h.GetNbinsX()))
 
 no_xuoflow_pls = lambda x, h: no_xunderflow_pls(no_xoverflow_pls(x, h), h)
+
+# Functions
+def delta_phi(lhs, rhs):  # in degrees
+  deg = lhs - rhs
+  while deg <  -180.:  deg += 360.
+  while deg >= +180.:  deg -= 360.
+  return deg
 
 
 # Book histograms
@@ -78,10 +89,12 @@ for i in xrange(3):
 for i in xrange(6):
   # i=0..6: 2, 3, 5, 10, 20, 50 GeV
   hname = "h_bend_pt%i" % i
-  histograms[hname] = Hist(71, -1.025, 2.525, name=hname, title="; GEM-CSC bend [deg]", type='F')
+  #histograms[hname] = Hist(51, -0.525, 2.025, name=hname, title="; GEM-CSC bend [deg]", type='F')
+  histograms[hname] = Hist(71, -0.155, 0.555, name=hname, title="; GEM-CSC bend [deg]", type='F')
 
   hname = "h_common_bend_pt%i" % i
-  histograms[hname] = Hist(71, -1.025, 2.525, name=hname, title="; GEM-CSC bend [deg]", type='F')
+  #histograms[hname] = Hist(51, -0.525, 2.025, name=hname, title="; GEM-CSC bend [deg]", type='F')
+  histograms[hname] = Hist(71, -0.155, 0.555, name=hname, title="; GEM-CSC bend [deg]", type='F')
 
 # GEM-CSC scaled bend residuals
 for i in xrange(6):
@@ -272,7 +285,7 @@ for ievt, evt in enumerate(tree):
 
   myhit_me11 = np.random.choice(myhits_me11)
   myhit_ge11 = np.random.choice(myhits_ge11)
-  mybend = myhit_me11.sim_phi - myhit_ge11.sim_phi
+  mybend = delta_phi(myhit_me11.sim_phi, myhit_ge11.sim_phi)
   if (mypart.q > 0):  mybend = -mybend
   myfr = myhit_me11.fr
   mybend_common = get_common_bend(mybend, myfr)
@@ -335,17 +348,31 @@ for ievt, evt in enumerate(tree):
   # ____________________________________________________________________________
   # Quick efficiency studies (numer)
 
-  #pass_l1bend1 = True
-  pass_l1bend1 = abs(mybend_scaled_residual) <= 0.3747 # 97%
-  pass_l1bend2 = abs(mybend_scaled_residual) <= 0.2179 # 95%
-  pass_l1bend3 = abs(mybend_scaled_residual) <= 0.0866 # 90%
+  method = 3
 
-  method_sven = False
-  if method_sven:
-    #pass_l1bend1 = True
-    pass_l1bend1 = mybend_common <= 0.7324  # 97%
-    pass_l1bend2 = mybend_common <= 0.4238  # 95%
-    pass_l1bend3 = mybend_common <= 0.3005  # 90%
+  if method == 0:
+    # Cut on |residual|
+    pass_l1bend1 = abs(mybend_scaled_residual) <= 0.3655 # 97%
+    pass_l1bend2 = abs(mybend_scaled_residual) <= 0.2076 # 95%
+    pass_l1bend3 = abs(mybend_scaled_residual) <= 0.0839 # 90%
+
+  elif method == 1:
+    # Cut on residual
+    pass_l1bend1 = mybend_scaled_residual <= 0.1620 # 97%
+    pass_l1bend2 = mybend_scaled_residual <= 0.0738 # 95%
+    pass_l1bend3 = mybend_scaled_residual <= 0.0410 # 90%
+
+  elif method == 2:
+    # Cut on bend, values from Sven
+    pass_l1bend1 = mybend_common <= rad_to_deg(0.00530748) # 97%
+    pass_l1bend2 = mybend_common <= rad_to_deg(0.00506147) # 95%
+    pass_l1bend3 = mybend_common <= rad_to_deg(0.00470086) # 90%
+
+  elif method == 3:
+    # Cut on unscale EMTF
+    pass_l1bend1 = (unscale_pt(mytrk.pt) * 1.2) > 20. # ??
+    pass_l1bend2 = (unscale_pt(mytrk.pt) * 1.2) > 20. # ??
+    pass_l1bend3 = (unscale_pt(mytrk.pt) * 1.2) > 20. # ??
 
   if not no_genparticles and not no_genparticles_in_eta_range:
     #trigger = not no_tracks_l1pt20
@@ -410,6 +437,7 @@ for ievt, evt in enumerate(tree):
       histograms[hname].fill(abs(evt.genparticles[0].eta))
 
   continue  # end loop over event
+
 
 # ______________________________________________________________________________
 # Drawer
@@ -476,21 +504,6 @@ if make_plots:
   hname = numer.GetName()
   gPad.Print(options.outdir + hname + ".png")
 
-  # Study GEM-CSC bend cut for pT = 20
-  i = 4
-  hname = "h_common_bend_pt%i" % i
-  h1a = histograms[hname]
-  in_quantiles = np.array([1.0-0.25, 1.0-0.20, 1.0-0.15, 1.0-0.10, 1.0-0.05, 1.0-0.03, 1.0-0.02, 1.0-0.01], dtype=np.float64)
-  quantiles = np.array([0.] * len(in_quantiles), dtype=np.float64)
-  h1a.GetQuantiles(len(in_quantiles), quantiles, in_quantiles)
-  print "Quantiles for %s" % hname
-  for in_q, q in zip(in_quantiles, quantiles):
-    print "..", in_q, q
-  h1a.linecolor = options.palette[i]
-  h1a.linewidth = 2
-  h1a.Draw("hist")
-  gPad.Print(options.outdir + hname + ".png")
-
   # Make overlay of GEM-CSC scaled bend residuals
   labels = ["2 GeV", "3 GeV", "5 GeV", "10 GeV", "20 GeV", "50 GeV"]
   leg = Legend(len(labels), leftmargin=0.55, textfont=42, textsize=0.03, entryheight=0.04, entrysep=0.01)
@@ -516,7 +529,35 @@ if make_plots:
   hname = "h_scaled_bend_pt%i" % 99
   gPad.Print(options.outdir + hname + ".png")
 
-  # Study GEM-CSC scaled bend residual for pT = 20
+  # Print quantiles
+  i = 4
+  hname = "h_common_bend_pt%i" % i
+  h1a = histograms[hname]
+  in_quantiles = np.array([1.0-0.25, 1.0-0.20, 1.0-0.15, 1.0-0.10, 1.0-0.05, 1.0-0.03, 1.0-0.02, 1.0-0.01], dtype=np.float64)
+  quantiles = np.array([0.] * len(in_quantiles), dtype=np.float64)
+  h1a.GetQuantiles(len(in_quantiles), quantiles, in_quantiles)
+  print "Quantiles for %s" % hname
+  for in_q, q in zip(in_quantiles, quantiles):
+    print "..", in_q, q
+  h1a.linecolor = options.palette[i]
+  h1a.linewidth = 2
+  h1a.Draw("hist")
+  gPad.Print(options.outdir + hname + ".png")
+  #
+  i = 4
+  hname = "h_scaled_bend_pt%i" % i
+  h1a = histograms[hname]
+  in_quantiles = np.array([1.0-0.25, 1.0-0.20, 1.0-0.15, 1.0-0.10, 1.0-0.05, 1.0-0.03, 1.0-0.02, 1.0-0.01], dtype=np.float64)
+  quantiles = np.array([0.] * len(in_quantiles), dtype=np.float64)
+  h1a.GetQuantiles(len(in_quantiles), quantiles, in_quantiles)
+  print "Quantiles for %s" % hname
+  for in_q, q in zip(in_quantiles, quantiles):
+    print "..", in_q, q
+  h1a.linecolor = options.palette[i]
+  h1a.linewidth = 2
+  h1a.Draw("hist")
+  gPad.Print(options.outdir + hname + ".png")
+  #
   i = 4
   hname = "h_abs_scaled_bend_pt%i" % i
   h1a = histograms[hname]
