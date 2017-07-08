@@ -50,7 +50,7 @@ if True:
 if True:
   process.TTStubsFromPhase2TrackerDigis = cms.EDProducer("DummyTTStubBuilder")
 
-if True:
+if False:
   process.load("L1TMuonSimulations.Analyzers.rpcintegration_cfi")
   process.ntupler.outFileName = "ntuple.root"
   process.ntupler.verbosity = 0
@@ -60,11 +60,11 @@ if True:
 #process.step1 = cms.Path((process.simCscTriggerPrimitiveDigis) + process.simEmtfDigis)
 #process.step1 = cms.Path(process.simEmtfDigis)
 process.step1 = cms.Path(process.TTStubsFromPhase2TrackerDigis + process.simEmtfDigis)
-#process.RAWSIMoutput.SelectEvents.SelectEvents = cms.vstring('step1')
-#process.RAWSIMoutput_step = cms.EndPath(process.RAWSIMoutput)
-#process.schedule = cms.Schedule(process.step1, process.RAWSIMoutput_step)
-process.ntuple_step = cms.Path(process.ntupler)
-process.schedule = cms.Schedule(process.step1, process.ntuple_step)
+process.RAWSIMoutput.SelectEvents.SelectEvents = cms.vstring('step1')
+process.RAWSIMoutput_step = cms.EndPath(process.RAWSIMoutput)
+process.schedule = cms.Schedule(process.step1, process.RAWSIMoutput_step)
+#process.ntuple_step = cms.Path(process.ntupler)
+#process.schedule = cms.Schedule(process.step1, process.ntuple_step)
 
 
 # Configure framework report and summary

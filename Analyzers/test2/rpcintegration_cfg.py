@@ -23,15 +23,15 @@ process.source = cms.Source("PoolSource",
 process.options = cms.untracked.PSet()
 
 
-## Plugin: RPCIntegration
-#process.load("L1TMuonSimulations.Analyzers.rpcintegration_cfi")
-#process.rpcintegration.outFileName = "histos.root"
-#process.rpcintegration.verbosity = 1
-
-# Plugin: NtupleMaker
+# Plugin: RPCIntegration
 process.load("L1TMuonSimulations.Analyzers.rpcintegration_cfi")
-process.ntupler.outFileName = "ntuple.root"
-process.ntupler.verbosity = 1
+process.rpcintegration.outFileName = "histos.root"
+process.rpcintegration.verbosity = 1
+
+## Plugin: NtupleMaker
+#process.load("L1TMuonSimulations.Analyzers.rpcintegration_cfi")
+#process.ntupler.outFileName = "ntuple.root"
+#process.ntupler.verbosity = 1
 
 # TFileService (needed for NtupleMaker)
 process.TFileService = cms.Service("TFileService",
@@ -39,6 +39,6 @@ process.TFileService = cms.Service("TFileService",
 )
 
 # Paths
-#process.p = cms.Path(process.rpcintegration)
-process.p = cms.Path(process.ntupler)
+process.p = cms.Path(process.rpcintegration)
+#process.p = cms.Path(process.ntupler)
 
