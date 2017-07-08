@@ -31,7 +31,7 @@ process.load('Configuration.StandardSequences.EndOfProcess_cff')
 process.load('Configuration.StandardSequences.FrontierConditions_GlobalTag_cff')
 
 process.maxEvents = cms.untracked.PSet(
-    input = cms.untracked.int32(100)
+    input = cms.untracked.int32(10)
 )
 
 # Input source
@@ -143,6 +143,7 @@ process.RAWSIMoutput.outputCommands += ['keep *_mix_MergedTrackTruth_*']
 process.RAWSIMoutput.outputCommands += ['keep *_genParticles_*_*', 'keep *_simCscTriggerPrimitiveDigis_*_*', 'keep *_simMuonRPCDigis_*_*', 'keep *_simMuonGEMDigis_*_*', 'keep *_simMuonGEMPadDigis_*_*', 'keep *_simMuonGEMPadDigiClusters_*_*', 'keep *_simEmtfDigis_*_*']
 
 # My paths and schedule definitions
+print("[INFO] Using GlobalTag: %s" % process.GlobalTag.globaltag._value)
 if False:
     from Configuration.StandardSequences.SimL1Emulator_cff import simCscTriggerPrimitiveDigis
     process.simCscTriggerPrimitiveDigis = simCscTriggerPrimitiveDigis
@@ -162,7 +163,7 @@ if True:
     from L1Trigger.L1TMuonEndCap.customise_Phase2C2 import customise as customise_Phase2C2
     process = customise_Phase2C2(process)
 process.step1 = cms.Path((process.simCscTriggerPrimitiveDigis) + process.simEmtfDigis)
-process.schedule.remove(process.L1TrackTrigger_step)
+#process.schedule.remove(process.L1TrackTrigger_step)
 
 
 # Configure framework report and summary

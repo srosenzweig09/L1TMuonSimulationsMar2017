@@ -67,10 +67,10 @@ process.schedule = cms.Schedule(process.step1, process.ntuple_step)
 process.options = cms.untracked.PSet(wantSummary = cms.untracked.bool(True))
 process.MessageLogger.cerr.FwkReport.reportEvery = 1
 
+# Run in unscheduled mode
+process.options.allowUnscheduled = cms.untracked.bool(True)
+
 # Dump the full python config
 with open("dump.py", "w") as f:
     f.write(process.dumpPython())
-
-# Run in unscheduled mode
-process.options.allowUnscheduled = cms.untracked.bool(True)
 
