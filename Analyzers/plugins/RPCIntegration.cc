@@ -16,6 +16,8 @@
 
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/EDAnalyzer.h"
+#include "FWCore/ServiceRegistry/interface/Service.h"
+#include "CommonTools/UtilAlgos/interface/TFileService.h"
 
 #include "FWCore/Framework/interface/Event.h"
 #include "FWCore/Framework/interface/MakerMacros.h"
@@ -269,14 +271,17 @@ void RPCIntegration::process() {
           mode |= (1<<(4-hit.Station()));
         }
       }
-      //if (ideal_track.Mode() < mode) {
-      //  ideal_track.set_mode(mode);
-      //}
-      if (trigger && emuTracks_.front().Sector() == sector) {
+      if (ideal_track.Mode() < mode) {
         ideal_track.set_mode(mode);
       }
+      //if (trigger && emuTracks_.front().Sector() == sector) {
+      //  ideal_track.set_mode(mode);
+      //}
     }
     assert(ideal_track.Mode() <= 15);
+
+    int ideal_mode_bin = !emuHits_.empty() ? get_mode_bin(ideal_track) : -1;
+    mode_bin = ideal_mode_bin;
 
 
     // _________________________________________________________________________
@@ -355,6 +360,12 @@ void RPCIntegration::process() {
         } else if (j == 1) {  // station 2
           std::copy_if(myhits0.begin(), myhits0.end(), std::back_inserter(myhits1), [](const auto& hit) { return (hit.Station() == 2 && hit.Ring() == 1 && hit.Subsystem() == TriggerPrimitive::kGEM); });
           std::copy_if(myhits0.begin(), myhits0.end(), std::back_inserter(myhits2), [](const auto& hit) { return (hit.Station() == 2 && hit.Ring() == 1 && hit.Subsystem() == TriggerPrimitive::kCSC); });
+        } else if (j == 2) {  // station 3 (iRPC)
+          std::copy_if(myhits0.begin(), myhits0.end(), std::back_inserter(myhits1), [](const auto& hit) { return (hit.Station() == 3 && hit.Ring() == 1 && hit.Subsystem() == TriggerPrimitive::kRPC); });
+          std::copy_if(myhits0.begin(), myhits0.end(), std::back_inserter(myhits2), [](const auto& hit) { return (hit.Station() == 3 && hit.Ring() == 1 && hit.Subsystem() == TriggerPrimitive::kCSC); });
+        } else if (j == 3) {  // station 4 (iRPC)
+          std::copy_if(myhits0.begin(), myhits0.end(), std::back_inserter(myhits1), [](const auto& hit) { return (hit.Station() == 4 && hit.Ring() == 1 && hit.Subsystem() == TriggerPrimitive::kRPC); });
+          std::copy_if(myhits0.begin(), myhits0.end(), std::back_inserter(myhits2), [](const auto& hit) { return (hit.Station() == 4 && hit.Ring() == 1 && hit.Subsystem() == TriggerPrimitive::kCSC); });
         } else {
           continue;
         }
@@ -474,11 +485,14 @@ void RPCIntegration::bookHistograms() {
   //   st 0,1,2,3 = st1, st2, st3, st4
   //   pt 0..7 = 2, 3, 5, 10, 20, 50, 100, 200
 
-  for (int j=0; j<2; ++j) {  // station
+  for (int j=0; j<4; ++j) {  // station
     for (int k=0; k<8; ++k) {  // pT
       hname = Form("deflection_gem_csc_st%i_pt%i", j, k);
-      //h = new TH1F(hname, "; GEM #phi - CSC #phi [deg]", 51, -1.02, 1.02);
-      h = new TH1F(hname, "; GEM #phi - CSC #phi [deg]", 51, -1.54, 0.5);
+      if (j == 0 || j == 1) {
+        h = new TH1F(hname, "; GEM #phi - CSC #phi [deg]", 51, -1.54, 0.5);
+      } else if (j == 2 || j == 3) {
+        h = new TH1F(hname, "; iRPC #phi - CSC #phi [deg]", 51, -1.54, 0.5);
+      }
       histograms_[hname] = h;
     }
   }
@@ -486,16 +500,18 @@ void RPCIntegration::bookHistograms() {
 }
 
 void RPCIntegration::writeHistograms() {
+  // TFileService
+  edm::Service<TFileService> fs;
+
+  TH1F* h;
+  TH2F* h2;
+
   TString hname;
   TH1F* denom;
   TH1F* num;
   TEfficiency* eff;
 
-  TFile* f = TFile::Open(outFileName_.c_str(), "RECREATE");
-
   for (const auto& kv : histograms_) {
-    kv.second->SetDirectory(gDirectory);
-
     // Make TEfficiency
     if (kv.first.BeginsWith("denom_")) {
       hname = kv.first;
@@ -504,19 +520,20 @@ void RPCIntegration::writeHistograms() {
       num = histograms_.at(hname);
       hname = kv.first;
       hname.ReplaceAll("denom_", "eff_");
-      eff = new TEfficiency(*num, *denom);
+
+      eff = fs->make<TEfficiency>(*num, *denom);
       eff->SetName(hname);
       eff->SetStatisticOption(TEfficiency::kFCP);
-      eff->SetDirectory(gDirectory);
     }
+
+    h = fs->make<TH1F>(*kv.second);
+    if (h) {}
   }
 
   for (const auto& kv : histogram2Ds_) {
-    kv.second->SetDirectory(gDirectory);
+    h2 = fs->make<TH2F>(*kv.second);
+    if (h2) {}
   }
-
-  f->Write();
-  f->Close();
 }
 
 // _____________________________________________________________________________

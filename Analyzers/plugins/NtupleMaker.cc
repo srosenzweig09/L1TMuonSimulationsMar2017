@@ -231,8 +231,11 @@ auto isFront_detail = [](int subsystem, int station, int ring, int chamber, int 
       result = (station < 3) ? isEven : !isEven;
     }
   } else if (subsystem == TriggerPrimitive::kRPC) {
-    // 10 degree rings have odd subsectors in front
-    result = (subsector % 2 == 0);
+    // 10 degree rings have even subsectors in front
+    // 20 degree rings have odd subsectors in front
+    bool is_10degree = !((station == 3 || station == 4) && (ring == 1));
+    bool isEven = (subsector % 2 == 0);
+    result = (is_10degree) ? isEven : !isEven;
   } else if (subsystem == TriggerPrimitive::kGEM) {
     //
     result = (chamber % 2 == 0);
@@ -243,6 +246,7 @@ auto isFront_detail = [](int subsystem, int station, int ring, int chamber, int 
 auto isFront = [](const auto& hit) {
   return isFront_detail(hit.Subsystem(), hit.Station(), hit.Ring(), hit.Chamber(), (hit.Subsystem() == TriggerPrimitive::kRPC ? hit.Subsector_RPC() : hit.Subsector()));
 };
+
 
 // _____________________________________________________________________________
 void NtupleMaker::process() {
@@ -369,7 +373,7 @@ void NtupleMaker::endJob() {
 // _____________________________________________________________________________
 void NtupleMaker::makeTree() {
 
-  // Create TTree
+  // TFileService
   edm::Service<TFileService> fs;
   tree = fs->make<TTree>("tree", "tree");
 
