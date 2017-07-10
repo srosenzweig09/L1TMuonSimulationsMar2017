@@ -14,7 +14,7 @@ process.simEmtfDigisGEM = process.simEmtfDigis.clone(RPCEnable = True , GEMEnabl
 process.step1.replace(process.simEmtfDigis, process.simEmtfDigisCSC*process.simEmtfDigisRPC*process.simEmtfDigisGEM*process.simEmtfDigis)
 process.RAWSIMoutput.outputCommands.append('keep *_simEmtfDigis*_*_*')
 
-process.RAWSIMoutput.fileName = cms.untracked.string('l1NtupleMC_RAW2DIGI.full.root')
+process.RAWSIMoutput.fileName = cms.untracked.string(process.RAWSIMoutput.fileName.value().replace('.root','.full.root'))
 
 process.maxEvents.input = cms.untracked.int32(-1)
 

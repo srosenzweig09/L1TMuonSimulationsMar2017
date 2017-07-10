@@ -35,15 +35,21 @@ if False:
   process.source.fileNames = fileNames_glob
 
 if True:
+  # Input
   from L1TMuonSimulations.Configuration.tools import *
   txt = 'L1TMuonSimulations/Configuration/data/input_SingleMuon_PositiveEndCap.txt'
+  #txt = 'L1TMuonSimulations/Configuration/data/input_SingleNeutrino_PU50.txt'
+  #txt = 'L1TMuonSimulations/Configuration/data/input_SingleNeutrino_PU100.txt'
+  #txt = 'L1TMuonSimulations/Configuration/data/input_SingleNeutrino_PU140.txt'
   txt = os.path.join(os.environ['CMSSW_BASE'], 'src', txt)
   fileNames_txt = loadFromFile(txt)
   process.source.fileNames = fileNames_txt
   process.source.duplicateCheckMode = cms.untracked.string('noDuplicateCheck')
-
-if True:
+  # Output
   process.RAWSIMoutput.fileName = cms.untracked.string('file:SingleMuon_PositiveEndCap_RPCInt.root')
+  #process.RAWSIMoutput.fileName = cms.untracked.string('file:SingleNeutrino_PU50_RPCInt.root')
+  #process.RAWSIMoutput.fileName = cms.untracked.string('file:SingleNeutrino_PU100_RPCInt.root')
+  #process.RAWSIMoutput.fileName = cms.untracked.string('file:SingleNeutrino_PU140_RPCInt.root')
   process.RAWSIMoutput.outputCommands  = ['drop *']
   process.RAWSIMoutput.outputCommands += ['keep *_genParticles_*_*', 'keep *_simCscTriggerPrimitiveDigis_*_*', 'keep *_simMuonRPCDigis_*_*', 'keep *_simMuonGEMDigis_*_*', 'keep *_simMuonGEMPadDigis_*_*', 'keep *_simMuonGEMPadDigiClusters_*_*', 'keep *_simEmtfDigis_*_*']
 
