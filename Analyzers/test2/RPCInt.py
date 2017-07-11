@@ -53,6 +53,19 @@ if True:
   process.RAWSIMoutput.outputCommands  = ['drop *']
   process.RAWSIMoutput.outputCommands += ['keep *_genParticles_*_*', 'keep *_simCscTriggerPrimitiveDigis_*_*', 'keep *_simMuonRPCDigis_*_*', 'keep *_simMuonGEMDigis_*_*', 'keep *_simMuonGEMPadDigis_*_*', 'keep *_simMuonGEMPadDigiClusters_*_*', 'keep *_simEmtfDigis_*_*']
 
+if True:
+  # From https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideTrackingTruth
+  #process.load("SimGeneral.MixingModule.digitizers_cfi")
+  process.mix.playback = cms.untracked.bool(True)
+  process.trackingParticles.simHitCollections = cms.PSet(
+    pixel = cms.VInputTag(process.trackingParticles.simHitCollections.pixel)
+  )
+  process.mix.digitizers = cms.PSet(
+    pixel = cms.PSet(process.pixelDigitizer),
+    mergedtruth = cms.PSet(process.trackingParticles),
+  )
+  for a in process.aliases: delattr(process, a)
+
 if False:
   process.load("L1TMuonSimulations.Analyzers.rpcintegration_cfi")
   process.ntupler.outFileName = "ntuple.root"
@@ -64,7 +77,9 @@ if False:
 process.step1 = cms.Path(process.simEmtfDigis)
 process.RAWSIMoutput.SelectEvents.SelectEvents = cms.vstring('step1')
 process.RAWSIMoutput_step = cms.EndPath(process.RAWSIMoutput)
-process.schedule = cms.Schedule(process.step1, process.RAWSIMoutput_step)
+process.digitisation_step = cms.Path(cms.SequencePlaceholder("mix"))  # only needed for SingleMuon 170614 sample
+process.L1TrackTrigger_step = cms.Path(process.L1TrackTrigger)        # only needed for SingleMuon 170614 sample
+process.schedule = cms.Schedule(process.digitisation_step, process.L1TrackTrigger_step, process.step1, process.RAWSIMoutput_step)
 #process.ntuple_step = cms.Path(process.ntupler)
 #process.schedule = cms.Schedule(process.step1, process.ntuple_step)
 
