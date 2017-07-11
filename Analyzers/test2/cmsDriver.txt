@@ -41,5 +41,5 @@ cmsDriver.py L1TMuonSimulations/Configuration/python/TSG-PhaseIISpring17GS-00008
   --pileup AVE_140_BX_25ns --pileup_input "dummy.root" \
   --python_filename pset_SingleNeutrino.py \
   --fileout file:SingleNeutrino.root \
-  --no_exec --nThreads 4 -n 100
+  --no_exec --nThreads 4 -n 10
 
