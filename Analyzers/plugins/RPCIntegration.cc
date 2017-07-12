@@ -105,6 +105,9 @@ void RPCIntegration::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
 
 // _____________________________________________________________________________
 void RPCIntegration::getHandles(const edm::Event& iEvent) {
+  std::random_device rd;
+  std::mt19937 genrd(rd());
+  std::uniform_real_distribution<double> rng(0.,1.);
 
   // EMTF hits and tracks
   edm::Handle<decltype(emuHits_)>   emuHits_handle;
@@ -159,6 +162,33 @@ void RPCIntegration::getHandles(const edm::Event& iEvent) {
     //if (!(part.pt() >= 2.))     continue;  // only pT > 2
     if (!(1.24 <= part.eta() && part.eta() <= 2.4))  continue;  // only positive endcap
     genParts_.push_back(part);
+  }
+
+  // Reduced CSC efficiency
+  {
+    l1t::EMTFHitCollection tmp_emuHits;
+    for (const auto& hit : emuHits_) {
+      bool keep = true;
+      if (hit.Subsystem() == TriggerPrimitive::kCSC) {
+        if (hit.Station() == 1) {
+          //double eff = 0.8;
+          //if (!(rng(genrd) < eff))  keep = false;
+        } else if (hit.Station() == 2) {
+          //double eff = 0.8;
+          //if (!(rng(genrd) < eff))  keep = false;
+        } else if (hit.Station() == 3) {
+          //double eff = 0.8;
+          //if (!(rng(genrd) < eff))  keep = false;
+        } else if (hit.Station() == 4) {
+          //double eff = 0.8;
+          //if (!(rng(genrd) < eff))  keep = false;
+        }
+      }
+      if (keep) {
+        tmp_emuHits.push_back(hit);
+      }
+    }
+    std::swap(emuHits_, tmp_emuHits);
   }
 }
 
