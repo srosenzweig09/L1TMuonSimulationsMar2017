@@ -66,7 +66,7 @@ if True:
   )
   for a in process.aliases: delattr(process, a)
 
-if False:
+if True:
   process.load("L1TMuonSimulations.Analyzers.rpcintegration_cfi")
   process.ntupler.outFileName = "ntuple.root"
   process.ntupler.verbosity = 0
@@ -79,9 +79,9 @@ process.RAWSIMoutput.SelectEvents.SelectEvents = cms.vstring('step1')
 process.RAWSIMoutput_step = cms.EndPath(process.RAWSIMoutput)
 process.digitisation_step = cms.Path(cms.SequencePlaceholder("mix"))  # only needed for SingleMuon 170614 sample
 process.L1TrackTrigger_step = cms.Path(process.L1TrackTrigger)        # only needed for SingleMuon 170614 sample
-process.schedule = cms.Schedule(process.digitisation_step, process.L1TrackTrigger_step, process.step1, process.RAWSIMoutput_step)
-#process.ntuple_step = cms.Path(process.ntupler)
-#process.schedule = cms.Schedule(process.step1, process.ntuple_step)
+#process.schedule = cms.Schedule(process.digitisation_step, process.L1TrackTrigger_step, process.step1, process.RAWSIMoutput_step)
+process.ntuple_step = cms.Path(process.ntupler)
+process.schedule = cms.Schedule(process.digitisation_step, process.L1TrackTrigger_step, process.step1, process.ntuple_step)
 
 
 # Configure framework report and summary

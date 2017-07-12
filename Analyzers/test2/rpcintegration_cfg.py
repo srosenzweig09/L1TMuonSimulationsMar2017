@@ -27,7 +27,8 @@ process.options = cms.untracked.PSet()
 
 # TFileService
 process.TFileService = cms.Service("TFileService",
-    fileName = cms.string("histos.root")
+    fileName = cms.string("histos.root"),
+    closeFileFast = cms.untracked.bool(True),
 )
 
 # Load the cfi
