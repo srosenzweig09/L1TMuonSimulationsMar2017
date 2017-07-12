@@ -39,6 +39,12 @@ public:
   enum subsystem_type{kDT,kCSC,kRPC,kGEM,kNSubsystems};
 };
 
+// From L1Trigger/L1TMuonEndCap/interface/TTMuonTriggerPrimitive.h
+class TTTriggerPrimitive {
+public:
+  enum subsystem_type{kTT = 20, kNSubsystems};
+};
+
 
 // _____________________________________________________________________________
 class NtupleMaker : public edm::EDAnalyzer {
@@ -106,6 +112,8 @@ private:
   std::unique_ptr<std::vector<float  > >  vh_sim_phi;
   std::unique_ptr<std::vector<float  > >  vh_sim_theta;
   std::unique_ptr<std::vector<float  > >  vh_sim_eta;
+  std::unique_ptr<std::vector<float  > >  vh_sim_r;
+  std::unique_ptr<std::vector<float  > >  vh_sim_z;
   //
   std::unique_ptr<int32_t              >  vh_size;
 
@@ -127,6 +135,9 @@ private:
   std::unique_ptr<std::vector<float  > >  vp_phi;
   std::unique_ptr<std::vector<float  > >  vp_eta;
   std::unique_ptr<std::vector<float  > >  vp_theta;
+  std::unique_ptr<std::vector<float  > >  vp_vx;
+  std::unique_ptr<std::vector<float  > >  vp_vy;
+  std::unique_ptr<std::vector<float  > >  vp_vz;
   std::unique_ptr<std::vector<int16_t> >  vp_q;  // charge
   std::unique_ptr<int32_t              >  vp_size;
 };
@@ -205,7 +216,7 @@ void NtupleMaker::getHandles(const edm::Event& iEvent) {
 
   genParts_.clear();
   for (const auto& part : (*genParts_handle)) {
-    //if (!(part.pt() >= 2.))     continue;  // only pT > 2
+    if (!(part.pt() >= 2.))     continue;  // only pT > 2
     if (!(1.2 <= part.eta() && part.eta() <= 2.4))  continue;  // only positive endcap
     genParts_.push_back(part);
   }
@@ -247,6 +258,91 @@ auto isFront = [](const auto& hit) {
   return isFront_detail(hit.Subsystem(), hit.Station(), hit.Ring(), hit.Chamber(), (hit.Subsystem() == TriggerPrimitive::kRPC ? hit.Subsector_RPC() : hit.Subsector()));
 };
 
+// z positions
+auto get_zpos_detail = [](int subsystem, int station, int ring, bool fr) {
+  double zpos = 0.;
+
+  static const double z_positions[30] = {
+    586.38 ,
+    615.68 ,
+    684.262,
+    711.662,
+    694.06 ,
+    694.06 ,
+    815.062,
+    839.862,
+    924.138,
+    948.938,
+    1013.64,
+    1038.44,
+    694.935,
+    725.95 ,
+    715.4  ,
+    719.8  ,
+    788.8  ,
+    793.2  ,
+    970.8  ,
+    975.2  ,
+    1061.3 ,
+    1065.69,
+    565.369,
+    567.971,
+    793.599,
+    796.001,
+    964.5  ,
+    968.9  ,
+    1054.99,
+    1059.4 ,
+  };
+
+  if (subsystem == TriggerPrimitive::kCSC) {
+    if (station == 1 && (ring == 1 || ring == 4)) {
+      zpos = fr ? z_positions[0] : z_positions[1];
+    } else if (station == 1 && ring == 2) {
+      zpos = fr ? z_positions[2] : z_positions[3];
+    } else if (station == 1 && ring == 3) {
+      zpos = fr ? z_positions[4] : z_positions[5];
+    } else if (station == 2) {
+      zpos = fr ? z_positions[6] : z_positions[7];
+    } else if (station == 3) {
+      zpos = fr ? z_positions[8] : z_positions[9];
+    } else if (station == 4) {
+      zpos = fr ? z_positions[10] : z_positions[11];
+    }
+  } else if (subsystem == TriggerPrimitive::kRPC) {
+    if (station == 1 && ring == 2) {
+      zpos = fr ? z_positions[12] : z_positions[13];
+    } else if (station == 1 && ring == 3) {
+      zpos = fr ? z_positions[14] : z_positions[15];
+    } else if (station == 2 && (ring == 2 || ring == 3)) {
+      zpos = fr ? z_positions[16] : z_positions[17];
+    } else if (station == 3 && (ring == 2 || ring == 3)) {
+      zpos = fr ? z_positions[18] : z_positions[19];
+    } else if (station == 4 && (ring == 2 || ring == 3)) {
+      zpos = fr ? z_positions[20] : z_positions[21];
+    } else if (station == 3 && ring == 1) {
+      zpos = fr ? z_positions[26] : z_positions[27];
+    } else if (station == 4 && ring == 1) {
+      zpos = fr ? z_positions[28] : z_positions[29];
+    }
+  } else if (subsystem == TriggerPrimitive::kGEM) {
+    if (station == 1 && ring == 1) {
+      zpos = fr ? z_positions[22] : z_positions[23];
+    } else if (station == 2 && ring == 1) {
+      zpos = fr ? z_positions[24] : z_positions[25];
+    }
+  }
+  return zpos;
+};
+
+auto get_zpos = [](const auto& hit) {
+  bool fr = isFront(hit);
+  double zpos = get_zpos_detail(hit.Subsystem(), hit.Station(), hit.Ring(), fr);
+  if (hit.Endcap() == -1)  zpos = -zpos;
+  if (hit.Subsystem() == TTTriggerPrimitive::kTT) { zpos = hit.Time(); }  //FIXME: dirty hack
+  return zpos;
+};
+
 
 // _____________________________________________________________________________
 void NtupleMaker::process() {
@@ -277,6 +373,8 @@ void NtupleMaker::process() {
     vh_sim_phi    ->push_back(hit.Phi_sim());
     vh_sim_theta  ->push_back(hit.Theta_sim());
     vh_sim_eta    ->push_back(hit.Eta_sim());
+    vh_sim_r      ->push_back(hit.Rho_sim());
+    vh_sim_z      ->push_back(hit.Z_sim());
   }
   (*vh_size) = emuHits_.size();
 
@@ -300,6 +398,9 @@ void NtupleMaker::process() {
     vp_phi        ->push_back(part.phi());
     vp_eta        ->push_back(part.eta());
     vp_theta      ->push_back(part.theta());
+    vp_vx         ->push_back(part.vx());
+    vp_vy         ->push_back(part.vy());
+    vp_vz         ->push_back(part.vz());
     vp_q          ->push_back(part.charge());
   }
   (*vp_size) = genParts_.size();
@@ -336,6 +437,8 @@ void NtupleMaker::process() {
   vh_sim_phi    ->clear();
   vh_sim_theta  ->clear();
   vh_sim_eta    ->clear();
+  vh_sim_r      ->clear();
+  vh_sim_z      ->clear();
   //
   (*vh_size)    = 0;
 
@@ -357,6 +460,9 @@ void NtupleMaker::process() {
   vp_phi        ->clear();
   vp_eta        ->clear();
   vp_theta      ->clear();
+  vp_vx         ->clear();
+  vp_vy         ->clear();
+  vp_vz         ->clear();
   vp_q          ->clear();
   (*vp_size)    = 0;
 }
@@ -402,6 +508,8 @@ void NtupleMaker::makeTree() {
   vh_sim_phi    .reset(new std::vector<float  >());
   vh_sim_theta  .reset(new std::vector<float  >());
   vh_sim_eta    .reset(new std::vector<float  >());
+  vh_sim_r      .reset(new std::vector<float  >());
+  vh_sim_z      .reset(new std::vector<float  >());
   //
   vh_size       .reset(new int32_t(0)            );
 
@@ -423,6 +531,9 @@ void NtupleMaker::makeTree() {
   vp_phi        .reset(new std::vector<float  >());
   vp_eta        .reset(new std::vector<float  >());
   vp_theta      .reset(new std::vector<float  >());
+  vp_vx         .reset(new std::vector<float  >());
+  vp_vy         .reset(new std::vector<float  >());
+  vp_vz         .reset(new std::vector<float  >());
   vp_q          .reset(new std::vector<int16_t>());
   vp_size       .reset(new int32_t(0)            );
 
@@ -452,6 +563,8 @@ void NtupleMaker::makeTree() {
   tree->Branch("vh_sim_phi"   , &(*vh_sim_phi   ));
   tree->Branch("vh_sim_theta" , &(*vh_sim_theta ));
   tree->Branch("vh_sim_eta"   , &(*vh_sim_eta   ));
+  tree->Branch("vh_sim_r"     , &(*vh_sim_r     ));
+  tree->Branch("vh_sim_z"     , &(*vh_sim_z     ));
   //
   tree->Branch("vh_size"      , &(*vh_size      ));
 
@@ -473,6 +586,9 @@ void NtupleMaker::makeTree() {
   tree->Branch("vp_phi"       , &(*vp_phi       ));
   tree->Branch("vp_eta"       , &(*vp_eta       ));
   tree->Branch("vp_theta"     , &(*vp_theta     ));
+  tree->Branch("vp_vx"        , &(*vp_vx        ));
+  tree->Branch("vp_vy"        , &(*vp_vy        ));
+  tree->Branch("vp_vz"        , &(*vp_vz        ));
   tree->Branch("vp_q"         , &(*vp_q         ));
   tree->Branch("vp_size"      , &(*vp_size      ));
 
