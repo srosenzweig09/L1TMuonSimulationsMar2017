@@ -51,7 +51,7 @@ if True:
   #process.RAWSIMoutput.fileName = cms.untracked.string('file:SingleNeutrino_PU100_RPCInt.root')
   #process.RAWSIMoutput.fileName = cms.untracked.string('file:SingleNeutrino_PU140_RPCInt.root')
   process.RAWSIMoutput.outputCommands  = ['drop *']
-  process.RAWSIMoutput.outputCommands += ['keep *_genParticles_*_*', 'keep *_simCscTriggerPrimitiveDigis_*_*', 'keep *_simMuonRPCDigis_*_*', 'keep *_simMuonGEMDigis_*_*', 'keep *_simMuonGEMPadDigis_*_*', 'keep *_simMuonGEMPadDigiClusters_*_*', 'keep *_simEmtfDigis_*_*']
+  process.RAWSIMoutput.outputCommands += ['keep *_genParticles_*_*', 'keep *_mix_MergedTrackTruth_*', 'keep *_simCscTriggerPrimitiveDigis_*_*', 'keep *_simMuonRPCDigis_*_*', 'keep *_simMuonGEMDigis_*_*', 'keep *_simMuonGEMPadDigis_*_*', 'keep *_simMuonGEMPadDigiClusters_*_*', 'keep *_simEmtfDigis_*_*']
 
 if True:
   # From https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideTrackingTruth
@@ -69,6 +69,7 @@ if True:
 if True:
   process.load("L1TMuonSimulations.Analyzers.rpcintegration_cfi")
   process.ntupler.outFileName = "ntuple.root"
+  process.ntupler.docString = "SingleNeutrino_PU140,trkParts"
   process.ntupler.verbosity = 0
   process.TFileService = cms.Service("TFileService", fileName = cms.string(process.ntupler.outFileName.value()))
 

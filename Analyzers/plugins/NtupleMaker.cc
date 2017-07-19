@@ -26,6 +26,8 @@
 
 #include "DataFormats/HepMCCandidate/interface/GenParticle.h"
 #include "DataFormats/HepMCCandidate/interface/GenParticleFwd.h"
+#include "SimDataFormats/TrackingAnalysis/interface/TrackingParticle.h"
+#include "SimDataFormats/TrackingAnalysis/interface/TrackingParticleFwd.h"
 
 #include "DataFormats/L1TMuon/interface/EMTFHit.h"
 #include "DataFormats/L1TMuon/interface/EMTFTrack.h"
@@ -69,20 +71,24 @@ private:
   void writeTree();
 
   // Configurables
-  const edm::InputTag emuHitTag_;
-  const edm::InputTag emuTrackTag_;
-  const edm::InputTag genPartTag_;
-  const std::string outFileName_;
+  const edm::InputTag   emuHitTag_;
+  const edm::InputTag   emuTrackTag_;
+  const edm::InputTag   genPartTag_;
+  const edm::InputTag   trkPartTag_;
+  const std::string     outFileName_;
+  const std::string     docString_;
   int verbose_;
 
   // Member data
-  edm::EDGetTokenT<l1t::EMTFHitCollection>   emuHitToken_;
-  edm::EDGetTokenT<l1t::EMTFTrackCollection> emuTrackToken_;
+  edm::EDGetTokenT<l1t::EMTFHitCollection>      emuHitToken_;
+  edm::EDGetTokenT<l1t::EMTFTrackCollection>    emuTrackToken_;
   edm::EDGetTokenT<reco::GenParticleCollection> genPartToken_;
+  edm::EDGetTokenT<TrackingParticleCollection>  trkPartToken_;
 
-  l1t::EMTFHitCollection    emuHits_;
-  l1t::EMTFTrackCollection  emuTracks_;
+  l1t::EMTFHitCollection      emuHits_;
+  l1t::EMTFTrackCollection    emuTracks_;
   reco::GenParticleCollection genParts_;
+  TrackingParticleCollection  trkParts_;
 
   // TTree
   TTree* tree;
@@ -148,12 +154,15 @@ NtupleMaker::NtupleMaker(const edm::ParameterSet& iConfig) :
     emuHitTag_    (iConfig.getParameter<edm::InputTag>("emuHitTag")),
     emuTrackTag_  (iConfig.getParameter<edm::InputTag>("emuTrackTag")),
     genPartTag_   (iConfig.getParameter<edm::InputTag>("genPartTag")),
+    trkPartTag_   (iConfig.getParameter<edm::InputTag>("trkPartTag")),
     outFileName_  (iConfig.getParameter<std::string>  ("outFileName")),
+    docString_    (iConfig.getParameter<std::string>  ("docString")),
     verbose_      (iConfig.getUntrackedParameter<int> ("verbosity"))
 {
   emuHitToken_   = consumes<l1t::EMTFHitCollection>     (emuHitTag_);
   emuTrackToken_ = consumes<l1t::EMTFTrackCollection>   (emuTrackTag_);
   genPartToken_  = consumes<reco::GenParticleCollection>(genPartTag_);
+  trkPartToken_  = consumes<TrackingParticleCollection> (trkPartTag_);
 }
 
 NtupleMaker::~NtupleMaker() {}
@@ -174,7 +183,7 @@ void NtupleMaker::getHandles(const edm::Event& iEvent) {
     iEvent.getByToken(emuHitToken_, emuHits_handle);
   }
   if (!emuHits_handle.isValid()) {
-    edm::LogError("RPCIntegration") << "Cannot get the product: " << emuHitTag_;
+    edm::LogError("NtupleMaker") << "Cannot get the product: " << emuHitTag_;
     return;
   }
 
@@ -182,7 +191,7 @@ void NtupleMaker::getHandles(const edm::Event& iEvent) {
     iEvent.getByToken(emuTrackToken_, emuTracks_handle);
   }
   if (!emuTracks_handle.isValid()) {
-    edm::LogError("RPCIntegration") << "Cannot get the product: " << emuTrackTag_;
+    edm::LogError("NtupleMaker") << "Cannot get the product: " << emuTrackTag_;
     return;
   }
 
@@ -194,7 +203,20 @@ void NtupleMaker::getHandles(const edm::Event& iEvent) {
       iEvent.getByToken(genPartToken_, genParts_handle);
     }
     if (!genParts_handle.isValid()) {
-      edm::LogError("RPCIntegration") << "Cannot get the product: " << genPartTag_;
+      edm::LogError("NtupleMaker") << "Cannot get the product: " << genPartTag_;
+      return;
+    }
+  }
+
+  // Tracking particles
+  edm::Handle<decltype(trkParts_)> trkParts_handle;
+
+  if (!iEvent.isRealData()) {
+    if (!trkPartToken_.isUninitialized()) {
+      iEvent.getByToken(trkPartToken_, trkParts_handle);
+    }
+    if (!genParts_handle.isValid()) {
+      edm::LogError("NtupleMaker") << "Cannot get the product: " << trkPartTag_;
       return;
     }
   }
@@ -203,22 +225,43 @@ void NtupleMaker::getHandles(const edm::Event& iEvent) {
   emuHits_.clear();
   for (const auto& hit : (*emuHits_handle)) {
     if (!(-1 <= hit.BX() && hit.BX() <= 1))  continue;  // only BX=[-1,+1]
-    if (hit.Endcap() != 1)  continue;  // only positive endcap
+    //if (hit.Endcap() != 1)  continue;  // only positive endcap
+    if (hit.Subsystem() == TTTriggerPrimitive::kTT)  continue;  // ignore TTStubs
     emuHits_.push_back(hit);
   }
 
   emuTracks_.clear();
   for (const auto& trk : (*emuTracks_handle)) {
     if (trk.BX() != 0)      continue;  // only BX=0
-    if (trk.Endcap() != 1)  continue;  // only positive endcap
+    //if (trk.Endcap() != 1)  continue;  // only positive endcap
     emuTracks_.push_back(trk);
   }
 
   genParts_.clear();
   for (const auto& part : (*genParts_handle)) {
     if (!(part.pt() >= 2.))     continue;  // only pT > 2
-    if (!(1.2 <= part.eta() && part.eta() <= 2.4))  continue;  // only positive endcap
+    //if (!(1.2 <= part.eta() && part.eta() <= 2.4))  continue;  // only positive endcap
     genParts_.push_back(part);
+  }
+
+  trkParts_.clear();
+  for (const auto& part : (*trkParts_handle)) {
+    if (!(part.pt() >= 2.))     continue;  // only pT > 2
+    //if (!(1.2 <= part.eta() && part.eta() <= 2.4))  continue;  // only positive endcap
+
+    // Signal event
+    bool signal = (part.eventId().event() == 0);
+    // In time bunch-crossing
+    bool intime = (part.eventId().bunchCrossing() == 0);
+    // Primary+charged: pT > 0.2 GeV, |eta| < 2.5, |rho0| < 0.5 cm, |z0| < 30 cm
+    bool primary = (part.charge() != 0 && part.pt() > 0.2 && std::abs(part.eta()) < 2.5 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 0.5 && std::abs(part.vz()) < 30.0);
+    bool is_muon = (std::abs(part.pdgId()) == 13);
+    //if (!signal)  continue;
+    if (!intime)  continue;
+    if (!primary) continue;
+    if (!is_muon) continue;
+
+    trkParts_.push_back(part);
   }
 }
 
@@ -339,13 +382,18 @@ auto get_zpos = [](const auto& hit) {
   bool fr = isFront(hit);
   double zpos = get_zpos_detail(hit.Subsystem(), hit.Station(), hit.Ring(), fr);
   if (hit.Endcap() == -1)  zpos = -zpos;
-  if (hit.Subsystem() == TTTriggerPrimitive::kTT) { zpos = hit.Time(); }  //FIXME: dirty hack
+  if (hit.Subsystem() == TTTriggerPrimitive::kTT) { zpos = hit.Z_sim(); }
   return zpos;
 };
 
 
 // _____________________________________________________________________________
 void NtupleMaker::process() {
+  bool please_use_trkParts = true;
+
+  if (verbose_ > 0) {
+    std::cout << "[DEBUG] # hits: " << emuHits_.size() << " #  tracks: " << emuTracks_.size() << " # gen parts: " << genParts_.size() << " # trk parts: " << trkParts_.size() << std::endl;
+  }
 
   // Hits
   for (const auto& hit : emuHits_) {
@@ -393,21 +441,38 @@ void NtupleMaker::process() {
   (*vt_size) = emuTracks_.size();
 
   // Gen particles
-  for (const auto& part : genParts_) {
-    vp_pt         ->push_back(part.pt());
-    vp_phi        ->push_back(part.phi());
-    vp_eta        ->push_back(part.eta());
-    vp_theta      ->push_back(part.theta());
-    vp_vx         ->push_back(part.vx());
-    vp_vy         ->push_back(part.vy());
-    vp_vz         ->push_back(part.vz());
-    vp_q          ->push_back(part.charge());
+  if (!please_use_trkParts) {
+    for (const auto& part : genParts_) {
+      vp_pt         ->push_back(part.pt());
+      vp_phi        ->push_back(part.phi());
+      vp_eta        ->push_back(part.eta());
+      vp_theta      ->push_back(part.theta());
+      vp_vx         ->push_back(part.vx());
+      vp_vy         ->push_back(part.vy());
+      vp_vz         ->push_back(part.vz());
+      vp_q          ->push_back(part.charge());
+    }
+    (*vp_size) = genParts_.size();
+    assert(static_cast<size_t>(*vp_size) == vp_pt->size());
+    assert((*vp_size) <= 1);  // expect 0 or 1 gen particle
   }
-  (*vp_size) = genParts_.size();
 
-  assert(static_cast<size_t>(*vp_size) == vp_pt->size());
-  assert((*vp_size) <= 1);  // expect 0 or 1 gen particle
-
+  // Tracking particles
+  if (please_use_trkParts) {
+    for (const auto& part : trkParts_) {
+      vp_pt         ->push_back(part.pt());
+      vp_phi        ->push_back(part.phi());
+      vp_eta        ->push_back(part.eta());
+      vp_theta      ->push_back(part.theta());
+      vp_vx         ->push_back(part.vx());
+      vp_vy         ->push_back(part.vy());
+      vp_vz         ->push_back(part.vz());
+      vp_q          ->push_back(part.charge());
+    }
+    (*vp_size) = trkParts_.size();
+    assert(static_cast<size_t>(*vp_size) == vp_pt->size());
+    //assert((*vp_size) <= 1);  // expect 0 or 1 gen particle
+  }
 
   // Fill
   tree->Fill();
@@ -592,6 +657,8 @@ void NtupleMaker::makeTree() {
   tree->Branch("vp_q"         , &(*vp_q         ));
   tree->Branch("vp_size"      , &(*vp_size      ));
 
+  // Add doc string
+  fs->make<TObjString>(docString_.c_str());
 }
 
 void NtupleMaker::writeTree() {

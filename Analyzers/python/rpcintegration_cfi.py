@@ -27,7 +27,9 @@ ntupler = cms.EDAnalyzer('NtupleMaker',
     emuHitTag = cms.InputTag('simEmtfDigis'),
     emuTrackTag = cms.InputTag('simEmtfDigis'),
     genPartTag = cms.InputTag('genParticles'),
+    trkPartTag = cms.InputTag('mix', 'MergedTrackTruth'),
     outFileName = cms.string('ntuple.root'),
+    docString = cms.string(''),
     verbosity = cms.untracked.int32(0),
 )
 
