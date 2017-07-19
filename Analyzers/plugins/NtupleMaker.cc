@@ -15,7 +15,7 @@
 #include "TTree.h"
 
 #include "FWCore/Framework/interface/Frameworkfwd.h"
-#include "FWCore/Framework/interface/EDAnalyzer.h"
+#include "FWCore/Framework/interface/one/EDAnalyzer.h"
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 
@@ -49,7 +49,7 @@ public:
 
 
 // _____________________________________________________________________________
-class NtupleMaker : public edm::EDAnalyzer {
+class NtupleMaker : public edm::one::EDAnalyzer<edm::one::SharedResources> {
 public:
   explicit NtupleMaker(const edm::ParameterSet& iConfig);
   ~NtupleMaker();
@@ -159,6 +159,8 @@ NtupleMaker::NtupleMaker(const edm::ParameterSet& iConfig) :
     docString_    (iConfig.getParameter<std::string>  ("docString")),
     verbose_      (iConfig.getUntrackedParameter<int> ("verbosity"))
 {
+  usesResource("TFileService");
+
   emuHitToken_   = consumes<l1t::EMTFHitCollection>     (emuHitTag_);
   emuTrackToken_ = consumes<l1t::EMTFTrackCollection>   (emuTrackTag_);
   genPartToken_  = consumes<reco::GenParticleCollection>(genPartTag_);

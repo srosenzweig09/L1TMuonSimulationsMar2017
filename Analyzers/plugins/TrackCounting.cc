@@ -15,7 +15,7 @@
 #include "TTree.h"
 
 #include "FWCore/Framework/interface/Frameworkfwd.h"
-#include "FWCore/Framework/interface/EDAnalyzer.h"
+#include "FWCore/Framework/interface/one/EDAnalyzer.h"
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 
@@ -41,7 +41,7 @@ public:
 
 
 // _____________________________________________________________________________
-class TrackCounting : public edm::EDAnalyzer {
+class TrackCounting : public edm::one::EDAnalyzer<edm::one::SharedResources> {
 public:
   explicit TrackCounting(const edm::ParameterSet& iConfig);
   ~TrackCounting();
@@ -90,6 +90,8 @@ TrackCounting::TrackCounting(const edm::ParameterSet& iConfig) :
     outFileName_  (iConfig.getParameter<std::string>  ("outFileName")),
     verbose_      (iConfig.getUntrackedParameter<int> ("verbosity"))
 {
+  usesResource("TFileService");
+
   emuHitToken_   = consumes<l1t::EMTFHitCollection>     (emuHitTag_);
   emuTrackToken_ = consumes<l1t::EMTFTrackCollection>   (emuTrackTag_);
   genPartToken_  = consumes<reco::GenParticleCollection>(genPartTag_);
