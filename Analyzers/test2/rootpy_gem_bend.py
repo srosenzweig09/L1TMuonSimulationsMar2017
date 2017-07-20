@@ -4,6 +4,7 @@ np.random.seed(2023)
 from rootpy.plotting import Hist, Hist2D, Graph, Efficiency, Legend, Canvas
 from rootpy.tree import Tree, TreeModel, FloatCol, IntCol, ShortCol
 from rootpy.io import root_open
+from ROOT import TF1
 
 
 # ______________________________________________________________________________
@@ -72,6 +73,12 @@ histogram2Ds = {}
 # pT vs gen pT
 hname = "h2_pt_vs_genpt"
 histogram2Ds[hname] = Hist2D(50, 0.0, 0.5, 50, 0.0, 0.5, name=hname, title="; gen 1/p_{T} [1/GeV]; EMTFv5 1/p_{T} [1/GeV]", type='F')
+
+# CSC phi-gen phi vs gen pT
+for i in xrange(4):
+  # i=0..3: st1..4
+  hname = "h2_me_dphi_vs_genpt_st%i" % i
+  histogram2Ds[hname] = Hist2D(50, 0.0, 0.5, 121, -30.5, 90.5, name=hname, title="; gen 1/p_{T} [1/GeV]; ME%i #phi - gen #phi [deg]" % (i+1), type='F')
 
 # GEM-CSC bend vs gen pT
 for i in xrange(3):
@@ -292,6 +299,13 @@ for ievt, evt in enumerate(tree):
   mybend_scaled = get_scaled_bend(mybend_common)
   mybend_scaled_residual = mybend_scaled - 1.0/unscale_pt(mytrk.pt)
 
+  myhits_me2 = [hit for hit in evt.hits if hit.station == 2 and hit.type == kCSC]
+  myhits_me3 = [hit for hit in evt.hits if hit.station == 3 and hit.type == kCSC]
+  myhits_me4 = [hit for hit in evt.hits if hit.station == 4 and hit.type == kCSC]
+  myhit_me2 = np.random.choice(myhits_me2) if len(myhits_me2) else None
+  myhit_me3 = np.random.choice(myhits_me3) if len(myhits_me3) else None
+  myhit_me4 = np.random.choice(myhits_me4) if len(myhits_me4) else None
+
   myptbin = -1
   if ((1.0/2 - 0.02) < 1.0/mypart.pt <= (1.0/2)):
     myptbin = 0;  # 2 GeV
@@ -309,6 +323,23 @@ for ievt, evt in enumerate(tree):
   # pT vs gen pT
   hname = "h2_pt_vs_genpt"
   histogram2Ds[hname].fill(1.0/mypart.pt, 1.0/unscale_pt(mytrk.pt))
+
+  # CSC phi-gen phi vs gen pT
+  me_dphi = [0.] * 4
+  for i in xrange(4):
+    if i == 0 and myhit_me11:
+      me_dphi[i] = delta_phi(myhit_me11.sim_phi, rad_to_deg(mypart.phi)) if myhit_me11 else None
+    elif i == 1 and myhit_me2:
+      me_dphi[i] = delta_phi(myhit_me2.sim_phi, rad_to_deg(mypart.phi)) if myhit_me2 else None
+    elif i == 2 and myhit_me3:
+      me_dphi[i] = delta_phi(myhit_me3.sim_phi, rad_to_deg(mypart.phi)) if myhit_me3 else None
+    elif i == 3 and myhit_me4:
+      me_dphi[i] = delta_phi(myhit_me4.sim_phi, rad_to_deg(mypart.phi)) if myhit_me4 else None
+    if me_dphi[i]:
+      #FIXME: need F/R correction
+      if (mypart.q > 0): me_dphi[i] = -me_dphi[i]
+      hname = "h2_me_dphi_vs_genpt_st%i" % i
+      histogram2Ds[hname].fill(1.0/mypart.pt, me_dphi[i])
 
   # bend vs gen pT
   hname = "h2_bend_vs_genpt_fr%i" % myfr
@@ -769,3 +800,13 @@ if make_plots:
   eff3.markerstyle = 1
   eff3.Draw("same p")
   gPad.Print(options.outdir + hname + ".png")
+
+  # CSC phi-gen phi vs gen pT
+  hname = "h2_me_dphi_vs_genpt_st%i" % 1  # ME2
+  h2 = histogram2Ds[hname].Clone(hname + "_tmp")
+  prof = h2.ProfileX(hname + "_tmp_pfx", 1, -1, "s")
+  prof.Draw()
+  f1 = TF1("f1", "[0]*x", 0, 100)
+  prof.Fit("f1", "", "", 0.04, 0.32)
+  gPad.Print(hname + ".C")
+
