@@ -15,6 +15,7 @@ def use_fs_rpcintegration(process):
 trackcounting = cms.EDAnalyzer('TrackCounting',
     emuHitTag = cms.InputTag('simEmtfDigis'),
     emuTrackTag = cms.InputTag('simEmtfDigis'),
+    gmtMuonTag = cms.InputTag('simGmtStage2Digis'),
     genPartTag = cms.InputTag('genParticles'),
     outFileName = cms.string('histos.root'),
     verbosity = cms.untracked.int32(0),

@@ -30,6 +30,9 @@
 #include "DataFormats/L1TMuon/interface/EMTFHit.h"
 #include "DataFormats/L1TMuon/interface/EMTFTrack.h"
 
+#include "DataFormats/L1Trigger/interface/Muon.h"
+#include "SimDataFormats/PileupSummaryInfo/interface/PileupSummaryInfo.h"
+
 #include "L1Trigger/L1TMuonEndCap/interface/TrackTools.h"
 
 
@@ -65,18 +68,24 @@ private:
   // Configurables
   const edm::InputTag emuHitTag_;
   const edm::InputTag emuTrackTag_;
+  const edm::InputTag gmtMuonTag_;
   const edm::InputTag genPartTag_;
-  const std::string outFileName_;
+  const std::string   outFileName_;
   int verbose_;
 
   // Member data
-  edm::EDGetTokenT<l1t::EMTFHitCollection>   emuHitToken_;
-  edm::EDGetTokenT<l1t::EMTFTrackCollection> emuTrackToken_;
-  edm::EDGetTokenT<reco::GenParticleCollection> genPartToken_;
+  edm::EDGetTokenT<l1t::EMTFHitCollection>          emuHitToken_;
+  edm::EDGetTokenT<l1t::EMTFTrackCollection>        emuTrackToken_;
+  edm::EDGetTokenT<l1t::MuonBxCollection>           gmtMuonToken_;
+  edm::EDGetTokenT<reco::GenParticleCollection>     genPartToken_;
+  edm::EDGetTokenT<std::vector<PileupSummaryInfo> > puInfoToken_;
 
-  l1t::EMTFHitCollection    emuHits_;
-  l1t::EMTFTrackCollection  emuTracks_;
+  l1t::EMTFHitCollection      emuHits_;
+  l1t::EMTFTrackCollection    emuTracks_;
+  //l1t::MuonBxCollection       gmtMuons_;
+  std::vector<l1t::Muon>      gmtMuons_;
   reco::GenParticleCollection genParts_;
+  int nPV_;
 
   std::map<TString, TH1F*> histograms_;
   std::map<TString, TH2F*> histogram2Ds_;
@@ -86,15 +95,18 @@ private:
 TrackCounting::TrackCounting(const edm::ParameterSet& iConfig) :
     emuHitTag_    (iConfig.getParameter<edm::InputTag>("emuHitTag")),
     emuTrackTag_  (iConfig.getParameter<edm::InputTag>("emuTrackTag")),
+    gmtMuonTag_   (iConfig.getParameter<edm::InputTag>("gmtMuonTag")),
     genPartTag_   (iConfig.getParameter<edm::InputTag>("genPartTag")),
     outFileName_  (iConfig.getParameter<std::string>  ("outFileName")),
     verbose_      (iConfig.getUntrackedParameter<int> ("verbosity"))
 {
   usesResource("TFileService");
 
-  emuHitToken_   = consumes<l1t::EMTFHitCollection>     (emuHitTag_);
-  emuTrackToken_ = consumes<l1t::EMTFTrackCollection>   (emuTrackTag_);
-  genPartToken_  = consumes<reco::GenParticleCollection>(genPartTag_);
+  emuHitToken_   = consumes<l1t::EMTFHitCollection>         (emuHitTag_);
+  emuTrackToken_ = consumes<l1t::EMTFTrackCollection>       (emuTrackTag_);
+  gmtMuonToken_  = consumes<l1t::MuonBxCollection>          (gmtMuonTag_);
+  genPartToken_  = consumes<reco::GenParticleCollection>    (genPartTag_);
+  puInfoToken_   = consumes<std::vector<PileupSummaryInfo> >(edm::InputTag("addPileupInfo"));
 }
 
 TrackCounting::~TrackCounting() {}
@@ -127,13 +139,53 @@ void TrackCounting::getHandles(const edm::Event& iEvent) {
     return;
   }
 
-  // Object filters
-  emuHits_.clear();
-  for (const auto& hit : (*emuHits_handle)) {
-    if (!(-1 <= hit.BX() && hit.BX() <= 1))  continue;  // only BX=[-1,+1]
-    //if (hit.Endcap() != 1)  continue;  // only positive endcap
-    emuHits_.push_back(hit);
+  // GMT muons
+  //edm::Handle<decltype(gmtMuons_)> gmtMuons_handle;
+  edm::Handle<l1t::MuonBxCollection> gmtMuons_handle;
+
+  if (!gmtMuonToken_.isUninitialized()) {
+    iEvent.getByToken(gmtMuonToken_, gmtMuons_handle);
   }
+  if (!gmtMuons_handle.isValid()) {
+    edm::LogError("TrackCounting") << "Cannot get the product: " << gmtMuonTag_;
+    return;
+  }
+
+  // Pileup summary info
+  edm::Handle<std::vector<PileupSummaryInfo> > puInfos_handle;
+
+  if (!iEvent.isRealData()) {  // MC
+    nPV_ = -1;
+
+    if (!puInfoToken_.isUninitialized()) {
+      iEvent.getByToken(puInfoToken_, puInfos_handle);
+    }
+    if (!puInfos_handle.isValid()) {
+      edm::LogError("TrackCounting") << "Cannot get the product: " << edm::InputTag("addPileupInfo");
+    }
+
+    for (std::vector<PileupSummaryInfo>::const_iterator it = puInfos_handle->begin(); it != puInfos_handle->end(); ++it) {
+      int bx = it->getBunchCrossing();
+      if (bx == 0) {
+        nPV_ = it->getTrueNumInteractions();
+      }
+    }
+    assert(nPV_ != -1);
+
+  } else {  // Data
+    nPV_ = 0;  //FIXME
+  }
+
+
+  // ___________________________________________________________________________
+  // Object filters
+
+  //emuHits_.clear();
+  //for (const auto& hit : (*emuHits_handle)) {
+  //  if (!(-1 <= hit.BX() && hit.BX() <= 1))  continue;  // only BX=[-1,+1]
+  //  //if (hit.Endcap() != 1)  continue;  // only positive endcap
+  //  emuHits_.push_back(hit);
+  //}
 
   emuTracks_.clear();
   for (const auto& trk : (*emuTracks_handle)) {
@@ -141,43 +193,19 @@ void TrackCounting::getHandles(const edm::Event& iEvent) {
     //if (trk.Endcap() != 1)  continue;  // only positive endcap
     emuTracks_.push_back(trk);
   }
+
+  gmtMuons_.clear();
+  for (int ibx = gmtMuons_handle->getFirstBX(); ibx <= gmtMuons_handle->getLastBX(); ++ibx) {
+    if (ibx != 0)  continue;  // only BX=0
+    for (l1t::MuonBxCollection::const_iterator it = gmtMuons_handle->begin(ibx); it != gmtMuons_handle->end(ibx); ++it) {
+      if (!(it->pt() > 0.))  continue;  // only valid muons
+      gmtMuons_.push_back(*it);
+    }
+  }
 }
 
 // _____________________________________________________________________________
 // Functions
-
-// from RecoMuon/DetLayers/src/MuonCSCDetLayerGeometryBuilder.cc
-//      RecoMuon/DetLayers/src/MuonRPCDetLayerGeometryBuilder.cc
-//      RecoMuon/DetLayers/src/MuonGEMDetLayerGeometryBuilder.cc
-auto isFront_detail = [](int subsystem, int station, int ring, int chamber, int subsector) {
-  bool result = false;
-
-  if (subsystem == TriggerPrimitive::kCSC) {
-    bool isOverlapping = !(station == 1 && ring == 3);
-    // not overlapping means back
-    if(isOverlapping)
-    {
-      bool isEven = (chamber % 2 == 0);
-      // odd chambers are bolted to the iron, which faces
-      // forward in 1&2, backward in 3&4, so...
-      result = (station < 3) ? isEven : !isEven;
-    }
-  } else if (subsystem == TriggerPrimitive::kRPC) {
-    // 10 degree rings have even subsectors in front
-    // 20 degree rings have odd subsectors in front
-    bool is_10degree = !((station == 3 || station == 4) && (ring == 1));
-    bool isEven = (subsector % 2 == 0);
-    result = (is_10degree) ? isEven : !isEven;
-  } else if (subsystem == TriggerPrimitive::kGEM) {
-    //
-    result = (chamber % 2 == 0);
-  }
-  return result;
-};
-
-auto isFront = [](const auto& hit) {
-  return isFront_detail(hit.Subsystem(), hit.Station(), hit.Ring(), hit.Chamber(), (hit.Subsystem() == TriggerPrimitive::kRPC ? hit.Subsector_RPC() : hit.Subsector()));
-};
 
 auto modify_ptcut = [](const auto& h) {
   int nbins = h->GetNbinsX();
@@ -195,141 +223,108 @@ void TrackCounting::process() {
   TString hname;
   TH1F* h;
 
-  std::random_device rd;
-  std::mt19937 genrd(rd());
+  // number of events
+  {
+    hname = "nevents";
+    histograms_.at(hname)->Fill(1.0);
+  }
 
-  auto get_mode_bin = [](const auto& trk) {
-    int mode      = trk.Mode();
-    assert(0 < mode && mode <= 15);
-    if (mode == 15)                              return 3;
-    if (mode == 11 || mode == 13 || mode == 14)  return 2;
-    if (mode ==  7 || mode == 10 || mode == 12)  return 1;
-    if (mode ==  3 || mode ==  5 || mode ==  6 || mode == 9)  return 0;
-    return -1;
-  };
+  // number of vertices
+  {
+    hname = "nvertices";
+    histograms_.at(hname)->Fill(nPV_);
+  }
 
-  auto is_in_eta_range = [](const auto& trk) {
-    double absEta = std::abs(trk.Eta());
-    return (1.64 <= absEta && absEta <= 2.14);
-  };
+  // uGMT
+  {
+    decltype(gmtMuons_) mytracks;
+    std::vector<bool> eta_bins(51+2, false);
+    double highest_pt = 0.;
+    auto get_pt = [](const auto& x) { return x->pt(); };
+    auto cmp_pt = [](const auto& lhs, const auto& rhs) { return (lhs.pt() < rhs.pt()); };
+    auto range_pt = [](const auto& x) { return std::min(100.-1e-3, x); };
 
-  auto is_in_bx_range =  [](const auto& trk) {
-    return (trk.BX() == 0);
-  };
+    hname = "highest_muon_absEtaMin0_absEtaMax2.5_qmin12_pt";
+    mytracks.clear();
+    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0. <= std::abs(trk.eta()) && std::abs(trk.eta()) <= 2.5) && (trk.hwQual() >= 12); });
+    if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
+    if (highest_pt > 0.)  histograms_.at(hname)->Fill(range_pt(highest_pt));
 
-  // ___________________________________________________________________________
-  // Hits
-  //for (const auto& hit : emuHits_) {
-  //
-  //}
+    hname = "highest_muon_absEtaMin0_absEtaMax2.1_qmin12_pt";
+    mytracks.clear();
+    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0. <= std::abs(trk.eta()) && std::abs(trk.eta()) <= 2.1) && (trk.hwQual() >= 12); });
+    if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
+    if (highest_pt > 0.)  histograms_.at(hname)->Fill(range_pt(highest_pt));
 
-  // Tracks
-  bool found_leading_muon = false;
+    hname = "highest_muon_absEtaMin0_absEtaMax0.83_qmin12_pt";
+    mytracks.clear();
+    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0. <= std::abs(trk.eta()) && std::abs(trk.eta()) <= 0.83) && (trk.hwQual() >= 12); });
+    if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
+    if (highest_pt > 0.)  histograms_.at(hname)->Fill(range_pt(highest_pt));
 
-  for (const auto& trk : emuTracks_) {
-    bool in_eta_range = is_in_eta_range(trk);
-    bool in_bx_range  = is_in_bx_range(trk);
-    int mode_bin      = get_mode_bin(trk);
+    hname = "highest_muon_absEtaMin0.83_absEtaMax1.24_qmin12_pt";
+    mytracks.clear();
+    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0.83 <= std::abs(trk.eta()) && std::abs(trk.eta()) <= 1.24) && (trk.hwQual() >= 12); });
+    if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
+    if (highest_pt > 0.)  histograms_.at(hname)->Fill(range_pt(highest_pt));
 
-    // Select SingleMu quality BX=0 in 1.64 < eta < 2.14 (only the leading muon)
-    if (in_eta_range && in_bx_range && mode_bin >= 2 && !found_leading_muon) {
-      found_leading_muon = true;
+    hname = "highest_muon_absEtaMin1.24_absEtaMax2.5_qmin12_pt";
+    mytracks.clear();
+    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (1.24 <= std::abs(trk.eta()) && std::abs(trk.eta()) <= 2.5) && (trk.hwQual() >= 12); });
+    if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
+    if (highest_pt > 0.)  histograms_.at(hname)->Fill(range_pt(highest_pt));
 
-      hname = "trk_pt_csc";
-      h = histograms_.at(hname);
-      h->Fill(trk.Pt());
+    hname = "muon_ptmin10_qmin12_eta";
+    h = histograms_.at(hname);
+    mytracks.clear();
+    std::fill(eta_bins.begin(), eta_bins.end(), false);
+    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (trk.pt() > 10.) && (trk.hwQual() >= 12); });
+    for (const auto& trk : mytracks) { int bin = h->FindFixBin(trk.eta()); eta_bins.at(bin) = true; }
+    for (unsigned bin=0; bin < eta_bins.size(); ++bin) { if (eta_bins.at(bin))  h->Fill(h->GetBinCenter(bin)); }
 
-      hname = "trk_ptcut_csc";
-      h = histograms_.at(hname);
-      h->Fill(trk.Pt());
+    hname = "muon_ptmin22_qmin12_eta";
+    h = histograms_.at(hname);
+    mytracks.clear();
+    std::fill(eta_bins.begin(), eta_bins.end(), false);
+    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (trk.pt() > 22.) && (trk.hwQual() >= 12); });
+    for (const auto& trk : mytracks) { int bin = h->FindFixBin(trk.eta()); eta_bins.at(bin) = true; }
+    for (unsigned bin=0; bin < eta_bins.size(); ++bin) { if (eta_bins.at(bin))  h->Fill(h->GetBinCenter(bin)); }
+  }
 
-      bool pass = true;
-      {
-        // Apply gem-csc bending angle cut
-        std::vector<l1t::EMTFHit> myhits0;
-        const int sector = trk.Sector();
-        std::copy_if(emuHits_.begin(), emuHits_.end(), std::back_inserter(myhits0), [sector](const auto& hit) { return (hit.PC_sector() == sector); });
+  // EMTF
+  {
+    decltype(emuTracks_) mytracks;
+    std::vector<bool> eta_bins(51+2, false);
+    double highest_pt = 0.;
+    auto get_pt = [](const auto& x) { return x->Pt(); };
+    auto cmp_pt = [](const auto& lhs, const auto& rhs) { return (lhs.Pt() < rhs.Pt()); };
+    auto range_pt = [](const auto& x) { return std::min(100.-1e-3, x); };
 
-        std::vector<l1t::EMTFHit> myhits1;  // GEM
-        std::vector<l1t::EMTFHit> myhits2;  // CSC
+    hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt";
+    mytracks.clear();
+    std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0. <= std::abs(trk.Eta()) && std::abs(trk.Eta()) <= 2.5) && (trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
+    if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
+    if (highest_pt > 0.)  histograms_.at(hname)->Fill(range_pt(highest_pt));
 
-        std::copy_if(myhits0.begin(), myhits0.end(), std::back_inserter(myhits1), [](const auto& hit) { return (hit.Station() == 1 && (hit.Ring() == 1 || hit.Ring() == 4) && hit.Subsystem() == TriggerPrimitive::kGEM); });
-        std::copy_if(myhits0.begin(), myhits0.end(), std::back_inserter(myhits2), [](const auto& hit) { return (hit.Station() == 1 && (hit.Ring() == 1 || hit.Ring() == 4) && hit.Subsystem() == TriggerPrimitive::kCSC); });
+    hname = "emtf_ptmin10_qmin12_eta";
+    h = histograms_.at(hname);
+    mytracks.clear();
+    std::fill(eta_bins.begin(), eta_bins.end(), false);
+    std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (trk.Pt() > 10.) && (trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
+    for (const auto& trk : mytracks) { int bin = h->FindFixBin(trk.Eta()); eta_bins.at(bin) = true; }
+    for (unsigned bin=0; bin < eta_bins.size(); ++bin) { if (eta_bins.at(bin))  h->Fill(h->GetBinCenter(bin)); }
 
-        int idx = 0;
-        int min_abs_dphi = 9999;
-        int min_abs_dphi_idx = -1;
-        for (const auto& hit : myhits2) {  // CSC
-          int abs_dphi = std::abs(hit.Phi_fp() - trk.Phi_fp());
-          if (min_abs_dphi > abs_dphi) {
-            min_abs_dphi = abs_dphi;
-            min_abs_dphi_idx = idx;
-          }
-          idx++;
-        }
-
-        if (min_abs_dphi_idx != -1) {
-          const l1t::EMTFHit& myhit2 = myhits2.at(min_abs_dphi_idx);
-
-          idx = 0;
-          min_abs_dphi = 9999;
-          min_abs_dphi_idx = -1;
-          for (const auto& hit : myhits1) {  // GEM
-            int abs_dphi = std::abs(hit.Phi_fp() - myhit2.Phi_fp());
-            if (min_abs_dphi > abs_dphi) {
-              min_abs_dphi = abs_dphi;
-              min_abs_dphi_idx = idx;
-            }
-            idx++;
-          }
-
-          if (min_abs_dphi_idx != -1) {
-            const l1t::EMTFHit& myhit1 = myhits1.at(min_abs_dphi_idx);
-            float gem_csc_abs_bend = std::abs(emtf::range_phi_deg(myhit1.Phi_sim() - myhit2.Phi_sim()));
-            bool is_front = isFront(myhit2);  // CSC
-
-            // The cut values from Sven (even is front)
-            // https://raw.githubusercontent.com/dildick/MuJetAnalysis/for-DisplacedMuonL1-PtAssignment-CMSSW-91X/DisplacedL1MuFilter/test/GEMCSCdPhiDict_wholeChamber.py
-            //   'Pt5 ' : { 'odd' :  0.02112152, 'even' : 0.00948039 },
-            //   'Pt7 ' : { 'odd' :  0.01460424, 'even' : 0.00664357 },
-            //   'Pt10' : { 'odd' :  0.01001365, 'even' : 0.00463343 },
-            //   'Pt15' : { 'odd' :  0.00666509, 'even' : 0.00317360 },
-            //   'Pt20' : { 'odd' :  0.00506147, 'even' : 0.00251524 },
-            //   'Pt30' : { 'odd' :  0.00352464, 'even' : 0.00193779 },
-            //   'Pt40' : { 'odd' :  0.00281599, 'even' : 0.00169830 }
-            double the_cut = !is_front ? 0.03 : 0.015;
-            if (trk.Pt() > 5. )  the_cut = !is_front ? 0.02112152 : 0.00948039;
-            if (trk.Pt() > 7. )  the_cut = !is_front ? 0.01460424 : 0.00664357;
-            if (trk.Pt() > 10.)  the_cut = !is_front ? 0.01001365 : 0.00463343;
-            if (trk.Pt() > 15.)  the_cut = !is_front ? 0.00666509 : 0.00317360;
-            if (trk.Pt() > 20.)  the_cut = !is_front ? 0.00506147 : 0.00251524;
-            if (trk.Pt() > 30.)  the_cut = !is_front ? 0.00352464 : 0.00193779;
-            if (trk.Pt() > 40.)  the_cut = !is_front ? 0.00281599 : 0.00169830;
-            the_cut = emtf::rad_to_deg(the_cut);  // convert to degrees
-
-            pass = (gem_csc_abs_bend <= the_cut);
-          } else {
-            pass = false;
-          }
-
-        } else {
-          pass = false;
-        }
-      }  // end gem-csc bending angle cut
-
-      if (pass) {
-        hname = "trk_pt_gem";
-        h = histograms_.at(hname);
-        h->Fill(trk.Pt());
-
-        hname = "trk_ptcut_gem";
-        h = histograms_.at(hname);
-        h->Fill(trk.Pt());
-      }
-    }  // end track selection
-  }  // end loop over tracks
+    hname = "emtf_ptmin22_qmin12_eta";
+    h = histograms_.at(hname);
+    mytracks.clear();
+    std::fill(eta_bins.begin(), eta_bins.end(), false);
+    std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (trk.Pt() > 22.) && (trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
+    for (const auto& trk : mytracks) { int bin = h->FindFixBin(trk.Eta()); eta_bins.at(bin) = true; }
+    for (unsigned bin=0; bin < eta_bins.size(); ++bin) { if (eta_bins.at(bin))  h->Fill(h->GetBinCenter(bin)); }
+  }
 
 }
+
 
 // _____________________________________________________________________________
 void TrackCounting::beginJob() {
@@ -345,20 +340,48 @@ void TrackCounting::bookHistograms() {
   TString hname;
   TH1F* h;
 
-  hname = "trk_pt_csc";
-  h = new TH1F(hname, "; EMTFv5 p_{T} [GeV]; entries", 400, 5., 205.);
+  // number of events
+  hname = "nevents";
+  h = new TH1F(hname, "; count", 5, 0, 5);
   histograms_[hname] = h;
 
-  hname = "trk_ptcut_csc";
-  h = new TH1F(hname, "; EMTFv5 cutoff p_{T} [GeV]; entries", 400, 5., 205.);
+  // number of vertices
+  hname = "nvertices";
+  h = new TH1F(hname, "; # of vertices", 300, 0, 300);
   histograms_[hname] = h;
 
-  hname = "trk_pt_gem";
-  h = new TH1F(hname, "; EMTFv5 p_{T} [GeV]; entries", 400, 5., 205.);
+  // uGMT
+  hname = "highest_muon_absEtaMin0_absEtaMax2.5_qmin12_pt";
+  h = new TH1F(hname, "; p_{T} [GeV]; entries", 200, 0., 100.);
+  histograms_[hname] = h;
+  hname = "highest_muon_absEtaMin0_absEtaMax2.1_qmin12_pt";
+  h = new TH1F(hname, "; p_{T} [GeV]; entries", 200, 0., 100.);
+  histograms_[hname] = h;
+  hname = "highest_muon_absEtaMin0_absEtaMax0.83_qmin12_pt";
+  h = new TH1F(hname, "; p_{T} [GeV]; entries", 200, 0., 100.);
+  histograms_[hname] = h;
+  hname = "highest_muon_absEtaMin0.83_absEtaMax1.24_qmin12_pt";
+  h = new TH1F(hname, "; p_{T} [GeV]; entries", 200, 0., 100.);
+  histograms_[hname] = h;
+  hname = "highest_muon_absEtaMin1.24_absEtaMax2.5_qmin12_pt";
+  h = new TH1F(hname, "; p_{T} [GeV]; entries", 200, 0., 100.);
+  histograms_[hname] = h;
+  hname = "muon_ptmin10_qmin12_eta";
+  h = new TH1F(hname, "; #eta; entries", 51, -2.55, 2.55);
+  histograms_[hname] = h;
+  hname = "muon_ptmin22_qmin12_eta";
+  h = new TH1F(hname, "; #eta; entries", 51, -2.55, 2.55);
   histograms_[hname] = h;
 
-  hname = "trk_ptcut_gem";
-  h = new TH1F(hname, "; EMTFv5 cutoff p_{T} [GeV]; entries", 400, 5., 205.);
+  // emtf
+  hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt";
+  h = new TH1F(hname, "; p_{T} [GeV]; entries", 200, 0., 100.);
+  histograms_[hname] = h;
+  hname = "emtf_ptmin10_qmin12_eta";
+  h = new TH1F(hname, "; #eta; entries", 51, -2.55, 2.55);
+  histograms_[hname] = h;
+  hname = "emtf_ptmin22_qmin12_eta";
+  h = new TH1F(hname, "; #eta; entries", 51, -2.55, 2.55);
   histograms_[hname] = h;
 }
 
@@ -368,15 +391,21 @@ void TrackCounting::writeHistograms() {
 
   TH1F* h;
   TH2F* h2;
+  TString ts_hname;
 
   for (const auto& kv : histograms_) {
-    // Modify cutoff pT histograms
-    if (kv.first == "trk_ptcut_csc" || kv.first == "trk_ptcut_gem") {
-      modify_ptcut(kv.second);
-    }
-
     h = fs->make<TH1F>(*kv.second);
     if (h) {}
+
+    // Modify cutoff pT histograms
+    ts_hname = kv.first;
+    if (ts_hname.EndsWith("_pt")) {
+      ts_hname = ts_hname(0, ts_hname.Sizeof()-4) + "_ptcut";
+      h = kv.second;
+      h = (TH1F*) h->Clone(ts_hname.Data());
+      h = fs->make<TH1F>(*h);
+      modify_ptcut(h);
+    }
   }
 
   for (const auto& kv : histogram2Ds_) {
