@@ -140,7 +140,7 @@ if True:
 
 # Modify output
 process.RAWSIMoutput.outputCommands += ['keep *_mix_MergedTrackTruth_*', 'keep *_mix_Tracker_*']
-process.RAWSIMoutput.outputCommands += ['keep *_genParticles_*_*', 'keep *_simCscTriggerPrimitiveDigis_*_*', 'keep *_simMuonRPCDigis_*_*', 'keep *_simMuonGEMDigis_*_*', 'keep *_simMuonGEMPadDigis_*_*', 'keep *_simMuonGEMPadDigiClusters_*_*', 'keep *_simEmtfDigis_*_*', 'keep *_TTClustersFromPhase2TrackerDigis_*_*', 'keep *_TTStubsFromPhase2TrackerDigis_*_*']
+process.RAWSIMoutput.outputCommands += ['keep *_genParticles_*_*', 'keep *_simCscTriggerPrimitiveDigis_*_*', 'keep *_simMuonRPCDigis_*_*', 'keep *_simMuonGEMDigis_*_*', 'keep *_simMuonGEMPadDigis_*_*', 'keep *_simMuonGEMPadDigiClusters_*_*', 'keep *_simEmtfDigis*_*_*', 'keep *_simGmtStage2Digis_*_*', 'keep *_TTClustersFromPhase2TrackerDigis_*_*', 'keep *_TTStubsFromPhase2TrackerDigis_*_*']
 
 # My paths and schedule definitions
 print("[INFO] Using GlobalTag: %s" % process.GlobalTag.globaltag.value())
