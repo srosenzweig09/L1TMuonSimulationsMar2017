@@ -244,7 +244,7 @@ void TrackCounting::process() {
   // uGMT
   {
     decltype(gmtMuons_) mytracks;
-    std::vector<bool> eta_bins(51+2, false);
+    std::vector<bool> eta_bins(10+2, false);
     double highest_pt = 0.;
     //auto get_pt = [](const auto& x) { return x->pt(); };
     auto get_pt = [](const auto& x) { return std::min(100.-1e-3, (double) x->pt()); };
@@ -290,15 +290,15 @@ void TrackCounting::process() {
     mytracks.clear();
     std::fill(eta_bins.begin(), eta_bins.end(), false);
     std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (trk.pt() > 10.) && (trk.hwQual() >= 12); });
-    for (const auto& trk : mytracks) { int bin = h->FindFixBin(trk.eta()); eta_bins.at(bin) = true; }
+    for (const auto& trk : mytracks) { int bin = h->FindFixBin(std::abs(trk.eta())); eta_bins.at(bin) = true; }
     for (unsigned bin=0; bin < eta_bins.size(); ++bin) { if (eta_bins.at(bin))  h->Fill(h->GetBinCenter(bin)); }
 
-    hname = "muon_ptmin12_qmin12_eta";
+    hname = "muon_ptmin14_qmin12_eta";
     h = histograms_.at(hname);
     mytracks.clear();
     std::fill(eta_bins.begin(), eta_bins.end(), false);
-    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (trk.pt() > 12.) && (trk.hwQual() >= 12); });
-    for (const auto& trk : mytracks) { int bin = h->FindFixBin(trk.eta()); eta_bins.at(bin) = true; }
+    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (trk.pt() > 14.) && (trk.hwQual() >= 12); });
+    for (const auto& trk : mytracks) { int bin = h->FindFixBin(std::abs(trk.eta())); eta_bins.at(bin) = true; }
     for (unsigned bin=0; bin < eta_bins.size(); ++bin) { if (eta_bins.at(bin))  h->Fill(h->GetBinCenter(bin)); }
 
     hname = "muon_ptmin20_qmin12_eta";
@@ -306,7 +306,7 @@ void TrackCounting::process() {
     mytracks.clear();
     std::fill(eta_bins.begin(), eta_bins.end(), false);
     std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (trk.pt() > 20.) && (trk.hwQual() >= 12); });
-    for (const auto& trk : mytracks) { int bin = h->FindFixBin(trk.eta()); eta_bins.at(bin) = true; }
+    for (const auto& trk : mytracks) { int bin = h->FindFixBin(std::abs(trk.eta())); eta_bins.at(bin) = true; }
     for (unsigned bin=0; bin < eta_bins.size(); ++bin) { if (eta_bins.at(bin))  h->Fill(h->GetBinCenter(bin)); }
 
     hname = "muon_ptmin22_qmin12_eta";
@@ -314,14 +314,14 @@ void TrackCounting::process() {
     mytracks.clear();
     std::fill(eta_bins.begin(), eta_bins.end(), false);
     std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (trk.pt() > 22.) && (trk.hwQual() >= 12); });
-    for (const auto& trk : mytracks) { int bin = h->FindFixBin(trk.eta()); eta_bins.at(bin) = true; }
+    for (const auto& trk : mytracks) { int bin = h->FindFixBin(std::abs(trk.eta())); eta_bins.at(bin) = true; }
     for (unsigned bin=0; bin < eta_bins.size(); ++bin) { if (eta_bins.at(bin))  h->Fill(h->GetBinCenter(bin)); }
   }
 
   // EMTF
   {
     decltype(emuTracks_) mytracks;
-    std::vector<bool> eta_bins(51+2, false);
+    std::vector<bool> eta_bins(10+2, false);
     double highest_pt = 0.;
     auto get_pt = [](const auto& x) { return std::min(100.-1e-3, (double) x->Pt()); };
     auto cmp_pt = [](const auto& lhs, const auto& rhs) { return (lhs.Pt() < rhs.Pt()); };
@@ -359,15 +359,15 @@ void TrackCounting::process() {
     mytracks.clear();
     std::fill(eta_bins.begin(), eta_bins.end(), false);
     std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (trk.Pt() > 10.) && (trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
-    for (const auto& trk : mytracks) { int bin = h->FindFixBin(trk.Eta()); eta_bins.at(bin) = true; }
+    for (const auto& trk : mytracks) { int bin = h->FindFixBin(std::abs(trk.Eta())); eta_bins.at(bin) = true; }
     for (unsigned bin=0; bin < eta_bins.size(); ++bin) { if (eta_bins.at(bin))  h->Fill(h->GetBinCenter(bin)); }
 
-    hname = "emtf_ptmin12_qmin12_eta";
+    hname = "emtf_ptmin14_qmin12_eta";
     h = histograms_.at(hname);
     mytracks.clear();
     std::fill(eta_bins.begin(), eta_bins.end(), false);
-    std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (trk.Pt() > 12.) && (trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
-    for (const auto& trk : mytracks) { int bin = h->FindFixBin(trk.Eta()); eta_bins.at(bin) = true; }
+    std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (trk.Pt() > 14.) && (trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
+    for (const auto& trk : mytracks) { int bin = h->FindFixBin(std::abs(trk.Eta())); eta_bins.at(bin) = true; }
     for (unsigned bin=0; bin < eta_bins.size(); ++bin) { if (eta_bins.at(bin))  h->Fill(h->GetBinCenter(bin)); }
 
     hname = "emtf_ptmin20_qmin12_eta";
@@ -375,7 +375,7 @@ void TrackCounting::process() {
     mytracks.clear();
     std::fill(eta_bins.begin(), eta_bins.end(), false);
     std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (trk.Pt() > 20.) && (trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
-    for (const auto& trk : mytracks) { int bin = h->FindFixBin(trk.Eta()); eta_bins.at(bin) = true; }
+    for (const auto& trk : mytracks) { int bin = h->FindFixBin(std::abs(trk.Eta())); eta_bins.at(bin) = true; }
     for (unsigned bin=0; bin < eta_bins.size(); ++bin) { if (eta_bins.at(bin))  h->Fill(h->GetBinCenter(bin)); }
 
     hname = "emtf_ptmin22_qmin12_eta";
@@ -383,7 +383,7 @@ void TrackCounting::process() {
     mytracks.clear();
     std::fill(eta_bins.begin(), eta_bins.end(), false);
     std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (trk.Pt() > 22.) && (trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
-    for (const auto& trk : mytracks) { int bin = h->FindFixBin(trk.Eta()); eta_bins.at(bin) = true; }
+    for (const auto& trk : mytracks) { int bin = h->FindFixBin(std::abs(trk.Eta())); eta_bins.at(bin) = true; }
     for (unsigned bin=0; bin < eta_bins.size(); ++bin) { if (eta_bins.at(bin))  h->Fill(h->GetBinCenter(bin)); }
   }
 
@@ -434,16 +434,16 @@ void TrackCounting::bookHistograms() {
   h = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
   histograms_[hname] = h;
   hname = "muon_ptmin10_qmin12_eta";
-  h = new TH1F(hname, "; #eta; entries", 51, -2.55, 2.55);
+  h = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
   histograms_[hname] = h;
-  hname = "muon_ptmin12_qmin12_eta";
-  h = new TH1F(hname, "; #eta; entries", 51, -2.55, 2.55);
+  hname = "muon_ptmin14_qmin12_eta";
+  h = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
   histograms_[hname] = h;
   hname = "muon_ptmin20_qmin12_eta";
-  h = new TH1F(hname, "; #eta; entries", 51, -2.55, 2.55);
+  h = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
   histograms_[hname] = h;
   hname = "muon_ptmin22_qmin12_eta";
-  h = new TH1F(hname, "; #eta; entries", 51, -2.55, 2.55);
+  h = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
   histograms_[hname] = h;
 
   // emtf
@@ -460,16 +460,16 @@ void TrackCounting::bookHistograms() {
   h = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
   histograms_[hname] = h;
   hname = "emtf_ptmin10_qmin12_eta";
-  h = new TH1F(hname, "; #eta; entries", 51, -2.55, 2.55);
+  h = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
   histograms_[hname] = h;
-  hname = "emtf_ptmin12_qmin12_eta";
-  h = new TH1F(hname, "; #eta; entries", 51, -2.55, 2.55);
+  hname = "emtf_ptmin14_qmin12_eta";
+  h = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
   histograms_[hname] = h;
   hname = "emtf_ptmin20_qmin12_eta";
-  h = new TH1F(hname, "; #eta; entries", 51, -2.55, 2.55);
+  h = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
   histograms_[hname] = h;
   hname = "emtf_ptmin22_qmin12_eta";
-  h = new TH1F(hname, "; #eta; entries", 51, -2.55, 2.55);
+  h = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
   histograms_[hname] = h;
 }
 
