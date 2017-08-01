@@ -30,12 +30,12 @@ if mystate == 0:
   tree_name_i = '/home/jlow/L1MuonTrigger/CRAB3/P2_9_2_3_patch1/crab_projects/crab_ntuple_SingleMuon_PositiveEndCap/results/ntuple_SingleMuon_PositiveEndCap_%i.root'
   tree = TreeChain('ntupler/tree', [(tree_name_i % i) for i in range(1,8+1)])
 elif mystate == 1:
-  tree_name_i = '/home/jlow/L1MuonTrigger/CRAB3/P2_9_2_3_patch1/crab_projects/crab_ntuple_SingleNeutrino_PU140/results/ntuple_SingleNeutrino_PU140_%i.root'
+  tree_name_i = '/home/jlow/L1MuonTrigger/CRAB3/P2_9_2_3_patch1/crab_projects_old/crab_ntuple_SingleNeutrino_PU140_170720_232549/results/ntuple_SingleNeutrino_PU140_%i.root'
   tree = TreeChain('ntupler/tree', [(tree_name_i % i) for i in range(1,90+1)])
 else:
   raise Exception("Unexpected state: %i" % mystate)
-#maxEvents = -1
-maxEvents = 20000
+maxEvents = -1
+#maxEvents = 40000
 
 # Define collection
 tree.define_collection(name='hits', prefix='vh_', size='vh_size')
@@ -58,7 +58,7 @@ def delta_phi(lhs, rhs):  # in degrees
   return deg
 
 # Constants
-pt_bins = [2., 2.5, 3., 3.5, 4., 4.5, 5., 5.5, 6., 6.5, 7., 7.5, 8., 8.5, 9., 10., 11., 12., 13., 14., 15., 16., 17., 18., 19., 20., 22., 24., 26., 28., 30., 32., 36., 40., 45., 50., 55., 60., 70., 80., 100., 120., 140., 160., 180., 200., 250., 300., 400., 600., 1000.]
+pt_bins = [2., 2.5, 3., 3.5, 4., 4.5, 5., 5.5, 6., 6.5, 7., 7.5, 8., 8.5, 9., 9.5, 10., 11., 12., 13., 14., 15., 16., 18., 20., 22., 24., 26., 28., 30., 34., 40., 48., 60., 80., 100., 140., 200., 300., 500., 1000.]
 
 eta_bins = [0., 0.83, 1.24, 1.64, 2.14, 2.5]
 
@@ -77,17 +77,17 @@ class EfficiencyMatrix:
     self._xmin = xmin
     self._xmax = xmax
     self._xwidth = (xmax - xmin) / float(nbinsx)
-    self._xbins = xbins
+    self._xbins = np.array(xbins, dtype=float) if xbins else None
     self._nbinsy = nbinsy
     self._ymin = ymin
     self._ymax = ymax
     self._ywidth = (ymax - ymin) / float(nbinsy)
-    self._ybins = ybins
+    self._ybins = np.array(ybins, dtype=float) if ybins else None
     self._nbinsz = nbinsz
     self._zmin = zmin
     self._zmax = zmax
     self._zwidth = (zmax - zmin) / float(nbinsz)
-    self._zbins = zbins
+    self._zbins = np.array(zbins, dtype=float) if zbins else None
     self._numer = np.zeros((nbinsx, nbinsy, nbinsz), dtype=int)
     self._denom = np.zeros((nbinsx, nbinsy, nbinsz), dtype=int)
     self._effie = np.zeros((nbinsx, nbinsy, nbinsz), dtype=float)
@@ -102,21 +102,22 @@ class EfficiencyMatrix:
 
   def sanity_check(self):
     def is_sorted(a):
-      if not len(a):
+      if a is None:
         return True
       else:
         return np.all(np.less_equal(a[:-1], a[1:]))
 
-    if self._xbins:
+    if self._xbins is not None:
       assert(is_sorted(self._xbins))
-    if self._ybins:
+    if self._ybins is not None:
       assert(is_sorted(self._ybins))
-    if self._zbins:
+    if self._zbins is not None:
       assert(is_sorted(self._zbins))
 
   def find_binx(self, x):
-    if self._xbins:
+    if self._xbins is not None:
       binx = np.searchsorted(self._xbins, x)
+      binx -= 1
     else:
       binx = int(np.floor((x - self._xmin) / self._xwidth))
     if binx < 0: binx = 0
@@ -124,8 +125,9 @@ class EfficiencyMatrix:
     return binx
 
   def find_biny(self, y):
-    if self._ybins:
+    if self._ybins is not None:
       biny = np.searchsorted(self._ybins, y)
+      biny -= 1
     else:
       biny = int(np.floor((y - self._ymin) / self._ywidth))
     if biny < 0: biny = 0
@@ -133,8 +135,9 @@ class EfficiencyMatrix:
     return biny
 
   def find_binz(self, z):
-    if self._zbins:
+    if self._zbins is not None:
       binz = np.searchsorted(self._zbins, z)
+      binz -= 1
     else:
       binz = int(np.floor((z - self._zmin) / self._zwidth))
     if binz < 0: binz = 0
@@ -142,21 +145,21 @@ class EfficiencyMatrix:
     return binz
 
   def find_edgex(self, binx):
-    if self._xbins:
+    if self._xbins is not None:
       edgex = self._xbins[binx]
     else:
       edgex = self._xmin + binx * self._xwidth
     return edgex
 
   def find_edgey(self, biny):
-    if self._ybins:
+    if self._ybins is not None:
       edgey = self._ybins[biny]
     else:
       edgey = self._ymin + biny * self._ywidth
     return edgey
 
   def find_edgez(self, binz):
-    if self._zbins:
+    if self._zbins is not None:
       edgez = self._zbins[binz]
     else:
       edgez = self._zmin + binz * self._zwidth
@@ -167,7 +170,7 @@ class EfficiencyMatrix:
     biny = self.find_biny(gen_pt)
     binz = self.find_binz(l1t_pt)
     #
-    passed = [z >= binz for z in xrange(self._nbinsz)]
+    passed = [z <= binz for z in xrange(self._nbinsz)]
     self._denom[binx, biny, :] += 1
     self._numer[binx, biny, passed] += 1
 
@@ -194,6 +197,16 @@ class EfficiencyMatrix:
     #for i, v in enumerate(a):
     #  if np.isnan(v):
     #    a_[i] = 0.
+    #
+    tmp_numer = self._phi_var.astype(float)
+    tmp_denom = self._phi_cnt.astype(float)
+    tmp_denom = np.where(tmp_denom < 1e-9, 1e-9, tmp_denom)  # avoid division by zero
+    np.true_divide(tmp_numer, tmp_denom, out=self._phi_var)
+    #
+    tmp_numer = self._eta_var.astype(float)
+    tmp_denom = self._eta_cnt.astype(float)
+    tmp_denom = np.where(tmp_denom < 1e-9, 1e-9, tmp_denom)  # avoid division by zero
+    np.true_divide(tmp_numer, tmp_denom, out=self._eta_var)
 
   def sitrep(self):
     print self._effie
@@ -281,3 +294,12 @@ if mystate == 0:
   em.sitrep()
   #np.savetxt('test.out', em._effie, delimiter=',')  # only works for 2D array
   np.savetxt('test.out', em._effie.reshape(-1,em._effie.shape[-1]), delimiter=',')  # reshape to 2D array
+  #
+  try:
+    a = np.loadtxt('test.out', delimiter=',')
+    a.reshape(em._effie.shape)
+  except:
+    raise
+  #
+  np.savetxt('test1.out', em._phi_mean, delimiter=',')
+  np.savetxt('test2.out', em._eta_mean, delimiter=',')
