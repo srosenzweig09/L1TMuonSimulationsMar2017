@@ -23,19 +23,21 @@ class Particle(TreeModel):
 # ______________________________________________________________________________
 # Analyzer
 
-mystate = 0
+mystate = 1
 
 # Open file
 if mystate == 0:
   tree_name_i = '/home/jlow/L1MuonTrigger/CRAB3/P2_9_2_3_patch1/crab_projects/crab_ntuple_SingleMuon_PositiveEndCap/results/ntuple_SingleMuon_PositiveEndCap_%i.root'
   tree = TreeChain('ntupler/tree', [(tree_name_i % i) for i in range(1,8+1)])
 elif mystate == 1:
-  tree_name_i = '/home/jlow/L1MuonTrigger/CRAB3/P2_9_2_3_patch1/crab_projects_old/crab_ntuple_SingleNeutrino_PU140_170720_232549/results/ntuple_SingleNeutrino_PU140_%i.root'
-  tree = TreeChain('ntupler/tree', [(tree_name_i % i) for i in range(1,90+1)])
+  #tree_name_i = '/home/jlow/L1MuonTrigger/CRAB3/P2_9_2_3_patch1/crab_projects_old/crab_ntuple_SingleNeutrino_PU140_170720_232549/results/ntuple_SingleNeutrino_PU140_%i.root'
+  #tree = TreeChain('ntupler/tree', [(tree_name_i % i) for i in range(1,90+1)])
+  tree_name_i = '/home/jlow/L1MuonTrigger/CRAB3/P2_9_2_3_patch1/crab_projects/crab_ntuple_SingleNeutrino_PU200/results/ntuple_SingleNeutrino_PU200_%i.root'
+  tree = TreeChain('ntupler/tree', [(tree_name_i % i) for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 43, 44, 45, 46, 47, 48, 49, 50]])
 else:
   raise Exception("Unexpected state: %i" % mystate)
 maxEvents = -1
-#maxEvents = 40000
+#maxEvents = 2000
 
 # Define collection
 tree.define_collection(name='hits', prefix='vh_', size='vh_size')
@@ -58,9 +60,11 @@ def delta_phi(lhs, rhs):  # in degrees
   return deg
 
 # Constants
-pt_bins = [2., 2.5, 3., 3.5, 4., 4.5, 5., 5.5, 6., 6.5, 7., 7.5, 8., 8.5, 9., 9.5, 10., 11., 12., 13., 14., 15., 16., 18., 20., 22., 24., 26., 28., 30., 34., 40., 48., 60., 80., 100., 140., 200., 300., 500., 1000.]
+#pt_bins = [2., 2.5, 3., 3.5, 4., 4.5, 5., 5.5, 6., 6.5, 7., 7.5, 8., 8.5, 9., 9.5, 10., 11., 12., 13., 14., 15., 16., 18., 20., 22., 24., 26., 28., 30., 34., 40., 48., 60., 80., 100., 140., 200., 300., 500., 1000.]
+#eta_bins = [0., 0.83, 1.24, 1.64, 2.14, 2.5]
 
-eta_bins = [0., 0.83, 1.24, 1.64, 2.14, 2.5]
+pt_bins = list(reversed([100./x for x in xrange(1,51)])) + [250.0]
+eta_bins = [0.0, 0.8] + [1.2 + x * 0.2 for x in xrange(7)]
 
 # Classes
 class EfficiencyMatrix:
@@ -216,8 +220,36 @@ class EfficiencyMatrix:
 histograms = {}
 histogram2Ds = {}
 
+hname = "nevents"
+histograms[hname] = Hist(5, 0, 5, name=hname, title="; count", type='F')
+
+hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"
+histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
+
+hname = "emtf_ptmin14_qmin12_eta"
+histograms[hname] = Hist(10, 1.55, 2.55, name=hname, title="; |#eta|; entries", type='F')
+
+
+
 em = EfficiencyMatrix(xbins=eta_bins, ybins=pt_bins)
 em.sanity_check()
+
+# ______________________________________________________________________________
+# Load efficiency matrix
+
+if mystate == 1:
+  a = np.loadtxt('test.out', delimiter=',')
+  a = a.reshape(em._effie.shape)
+  assert(em._effie.shape == a.shape)
+  em._effie = a
+  #
+  a = np.loadtxt('test1.out', delimiter=',')
+  assert(em._phi_mean.shape == a.shape)
+  em._phi_mean = a
+  #
+  a = np.loadtxt('test2.out', delimiter=',')
+  assert(em._eta_mean.shape == a.shape)
+  em._eta_mean = a
 
 
 # ______________________________________________________________________________
@@ -280,14 +312,36 @@ for ievt, evt in enumerate(tree):
   # Fill efficiency matrix
   elif mystate == 1:
 
-    for ipart, part in enumerate(evt.genparticles):
-      pass
+    #for ipart, part in enumerate(evt.genparticles):
+    #  pass
+
+    h = histograms["nevents"]
+    h.fill(1.0)
+
+    h = histograms["highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"]
+    highest_pt = -999999.
+    for itrk, trk in enumerate(evt.tracks):
+      if (0. <= abs(trk.eta) <= 2.5) and (trk.mode in [11,13,14,15]):
+        if highest_pt < trk.pt:
+          highest_pt = trk.pt
+    if highest_pt > 0.:
+      h.fill(highest_pt)
+
+    h = histograms["emtf_ptmin14_qmin12_eta"]
+    eta_bins = [False] * (10+2)
+    for itrk, trk in enumerate(evt.tracks):
+      if (trk.pt > 14.) and (trk.mode in [11,13,14,15]):
+        b = h.FindFixBin(abs(trk.eta))
+        eta_bins[b] = True
+    for b in xrange(len(eta_bins)):
+      if eta_bins[b]:
+        h.fill(h.GetBinCenter(b))
 
 
   continue  # end loop over event
 
-# ____________________________________________________________________________
-# Print efficiency matrix
+# ______________________________________________________________________________
+# Save efficiency matrix
 
 if mystate == 0:
   em.freeze()
@@ -303,3 +357,14 @@ if mystate == 0:
   #
   np.savetxt('test1.out', em._phi_mean, delimiter=',')
   np.savetxt('test2.out', em._eta_mean, delimiter=',')
+
+# ______________________________________________________________________________
+# Write histograms
+
+if mystate == 1:
+  with root_open("rateplots_rootpy.root", "RECREATE") as f:
+    f.mkdir("trackcounting").cd()
+    for k, v in histograms.iteritems():
+      v.Write()
+    for k, v in histogram2Ds.iteritems():
+      v.Write()
