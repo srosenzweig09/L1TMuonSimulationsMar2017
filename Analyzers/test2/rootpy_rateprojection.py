@@ -4,6 +4,8 @@ np.random.seed(2023)
 from rootpy.plotting import Hist, Hist2D, Graph, Efficiency, Legend, Canvas
 from rootpy.tree import Tree, TreeModel, TreeChain, FloatCol, IntCol, ShortCol
 from rootpy.io import root_open
+from ROOT import gROOT
+from datetime import datetime
 
 
 # ______________________________________________________________________________
@@ -25,6 +27,8 @@ class Particle(TreeModel):
 
 mystate = 1
 
+gROOT.SetBatch(1)
+
 # Open file
 if mystate == 0:
   tree_name_i = '/home/jlow/L1MuonTrigger/CRAB3/P2_9_2_3_patch1/crab_projects/crab_ntuple_SingleMuon_PositiveEndCap/results/ntuple_SingleMuon_PositiveEndCap_%i.root'
@@ -33,7 +37,7 @@ elif mystate == 1:
   #tree_name_i = '/home/jlow/L1MuonTrigger/CRAB3/P2_9_2_3_patch1/crab_projects_old/crab_ntuple_SingleNeutrino_PU140_170720_232549/results/ntuple_SingleNeutrino_PU140_%i.root'
   #tree = TreeChain('ntupler/tree', [(tree_name_i % i) for i in range(1,90+1)])
   tree_name_i = '/home/jlow/L1MuonTrigger/CRAB3/P2_9_2_3_patch1/crab_projects/crab_ntuple_SingleNeutrino_PU200/results/ntuple_SingleNeutrino_PU200_%i.root'
-  tree = TreeChain('ntupler/tree', [(tree_name_i % i) for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 43, 44, 45, 46, 47, 48, 49, 50]])
+  tree = TreeChain('ntupler/tree', [(tree_name_i % i) for i in range(1,51)])
 else:
   raise Exception("Unexpected state: %i" % mystate)
 maxEvents = -1
@@ -60,6 +64,8 @@ def delta_phi(lhs, rhs):  # in degrees
   return deg
 
 # Constants
+INFO = '\033[1;37mINFO\033[0m]'
+
 #pt_bins = [2., 2.5, 3., 3.5, 4., 4.5, 5., 5.5, 6., 6.5, 7., 7.5, 8., 8.5, 9., 9.5, 10., 11., 12., 13., 14., 15., 16., 18., 20., 22., 24., 26., 28., 30., 34., 40., 48., 60., 80., 100., 140., 200., 300., 500., 1000.]
 #eta_bins = [0., 0.83, 1.24, 1.64, 2.14, 2.5]
 
@@ -226,13 +232,30 @@ histograms[hname] = Hist(5, 0, 5, name=hname, title="; count", type='F')
 hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"
 histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
 
-hname = "emtf_ptmin14_qmin12_eta"
-histograms[hname] = Hist(10, 1.55, 2.55, name=hname, title="; |#eta|; entries", type='F')
+for i in xrange(14,22+1):
+  hname = "emtf_ptmin%i_qmin12_eta" % i
+  histograms[hname] = Hist(10, 1.55, 2.55, name=hname, title="; |#eta|; entries", type='F')
 
+
+hname = "tp_emtf_absEtaMin0_absEtaMax2.5_genpt"  # efficiency denom
+histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
+
+for i in xrange(14,22+1):
+  hname = "tp_emtf_absEtaMin0_absEtaMax2.5_qmin12_ptmin%i_genpt" % i  # efficiency numer
+  histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
+
+hname = "tp_emtf_absEtaMin1.65_absEtaMax2.15_genpt"  # efficiency denom
+histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
+
+for i in xrange(14,22+1):
+  hname = "tp_emtf_absEtaMin1.65_absEtaMax2.15_qmin12_ptmin%i_genpt" % i  # efficiency numer
+  histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
 
 
 em = EfficiencyMatrix(xbins=eta_bins, ybins=pt_bins)
 em.sanity_check()
+
+print INFO, "eta_bins=%s" % repr(eta_bins), "pt_bins=%s" % repr(pt_bins)
 
 # ______________________________________________________________________________
 # Load efficiency matrix
@@ -307,6 +330,31 @@ for ievt, evt in enumerate(tree):
     if mytrk:
       em.profile(abs(gen_eta), gen_pt, l1t_phi, abs(l1t_eta))
 
+    def doit():
+      h = histograms[hname]
+      if select(mytrk):
+        h.fill(gen_pt)
+
+    if (0. <= abs(gen_eta) <= 2.5):
+      select = lambda trk: True
+      hname = "tp_emtf_absEtaMin0_absEtaMax2.5_genpt"
+      doit()
+
+      for select_pt in xrange(14, 22+1):
+        select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in [11,13,14,15]) and (trk.pt > float(select_pt))
+        hname = "tp_emtf_absEtaMin0_absEtaMax2.5_qmin12_ptmin%i_genpt" % select_pt
+        doit()
+
+    if (1.65 <= abs(gen_eta) <= 2.15):
+      select = lambda trk: True
+      hname = "tp_emtf_absEtaMin1.65_absEtaMax2.15_genpt"
+      doit()
+
+      for select_pt in xrange(14, 22+1):
+        select = lambda trk: trk and (1.65 <= abs(trk.eta) <= 2.15) and (trk.mode in [11,13,14,15]) and (trk.pt > float(select_pt))
+        hname = "tp_emtf_absEtaMin1.65_absEtaMax2.15_qmin12_ptmin%i_genpt" % select_pt
+        doit()
+
 
   # ____________________________________________________________________________
   # Fill efficiency matrix
@@ -318,25 +366,36 @@ for ievt, evt in enumerate(tree):
     h = histograms["nevents"]
     h.fill(1.0)
 
-    h = histograms["highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"]
-    highest_pt = -999999.
-    for itrk, trk in enumerate(evt.tracks):
-      if (0. <= abs(trk.eta) <= 2.5) and (trk.mode in [11,13,14,15]):
-        if highest_pt < trk.pt:
-          highest_pt = trk.pt
-    if highest_pt > 0.:
-      h.fill(highest_pt)
+    def doit():
+      h = histograms[hname]
+      highest_pt = -999999.
+      for itrk, trk in enumerate(evt.tracks):
+        if select(trk):
+          if highest_pt < trk.pt:
+            highest_pt = trk.pt
+      if highest_pt > 0.:
+        highest_pt = min(100.-1e-3, highest_pt)
+        h.fill(highest_pt)
 
-    h = histograms["emtf_ptmin14_qmin12_eta"]
-    eta_bins = [False] * (10+2)
-    for itrk, trk in enumerate(evt.tracks):
-      if (trk.pt > 14.) and (trk.mode in [11,13,14,15]):
-        b = h.FindFixBin(abs(trk.eta))
-        eta_bins[b] = True
-    for b in xrange(len(eta_bins)):
-      if eta_bins[b]:
-        h.fill(h.GetBinCenter(b))
+    select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in [11,13,14,15])
+    hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"
+    doit()
 
+    def doit():
+      h = histograms[hname]
+      eta_bins = [False] * (10+2)
+      for itrk, trk in enumerate(evt.tracks):
+        if select(trk):
+          b = h.FindFixBin(abs(trk.eta))
+          eta_bins[b] = True
+      for b in xrange(len(eta_bins)):
+        if eta_bins[b]:
+          h.fill(h.GetBinCenter(b))
+
+    for select_pt in xrange(14, 22+1):
+      select = lambda trk: trk and (trk.pt > float(select_pt)) and (trk.mode in [11,13,14,15])
+      hname = "emtf_ptmin%i_qmin12_eta" % select_pt
+      doit()
 
   continue  # end loop over event
 
@@ -361,10 +420,10 @@ if mystate == 0:
 # ______________________________________________________________________________
 # Write histograms
 
-if mystate == 1:
-  with root_open("rateplots_rootpy.root", "RECREATE") as f:
-    f.mkdir("trackcounting").cd()
-    for k, v in histograms.iteritems():
-      v.Write()
-    for k, v in histogram2Ds.iteritems():
-      v.Write()
+tag = '{0:%y}{0:%m}{0:%d}_{0:%H}{0:%M}{0:%S}'.format(datetime.now())
+with root_open('rateplots_rootpy_%s.root' % tag, 'RECREATE') as f:
+  f.mkdir('trackcounting').cd()
+  for k, v in histograms.iteritems():
+    v.Write()
+  for k, v in histogram2Ds.iteritems():
+    v.Write()
