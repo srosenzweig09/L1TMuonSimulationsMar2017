@@ -145,6 +145,7 @@ private:
   std::unique_ptr<std::vector<float  > >  vp_vy;
   std::unique_ptr<std::vector<float  > >  vp_vz;
   std::unique_ptr<std::vector<int16_t> >  vp_q;  // charge
+  std::unique_ptr<std::vector<int32_t> >  vp_pdgid;
   std::unique_ptr<int32_t              >  vp_size;
 };
 
@@ -453,6 +454,7 @@ void NtupleMaker::process() {
       vp_vy         ->push_back(part.vy());
       vp_vz         ->push_back(part.vz());
       vp_q          ->push_back(part.charge());
+      vp_pdgid      ->push_back(part.pdgId());
     }
     (*vp_size) = genParts_.size();
     assert(static_cast<size_t>(*vp_size) == vp_pt->size());
@@ -470,6 +472,7 @@ void NtupleMaker::process() {
       vp_vy         ->push_back(part.vy());
       vp_vz         ->push_back(part.vz());
       vp_q          ->push_back(part.charge());
+      vp_pdgid      ->push_back(part.pdgId());
     }
     (*vp_size) = trkParts_.size();
     assert(static_cast<size_t>(*vp_size) == vp_pt->size());
@@ -531,6 +534,7 @@ void NtupleMaker::process() {
   vp_vy         ->clear();
   vp_vz         ->clear();
   vp_q          ->clear();
+  vp_pdgid      ->clear();
   (*vp_size)    = 0;
 }
 
@@ -602,6 +606,7 @@ void NtupleMaker::makeTree() {
   vp_vy         .reset(new std::vector<float  >());
   vp_vz         .reset(new std::vector<float  >());
   vp_q          .reset(new std::vector<int16_t>());
+  vp_pdgid      .reset(new std::vector<int32_t>());
   vp_size       .reset(new int32_t(0)            );
 
   // Set branches
@@ -657,6 +662,7 @@ void NtupleMaker::makeTree() {
   tree->Branch("vp_vy"        , &(*vp_vy        ));
   tree->Branch("vp_vz"        , &(*vp_vz        ));
   tree->Branch("vp_q"         , &(*vp_q         ));
+  tree->Branch("vp_pdgid"     , &(*vp_pdgid     ));
   tree->Branch("vp_size"      , &(*vp_size      ));
 
   // Add doc string
