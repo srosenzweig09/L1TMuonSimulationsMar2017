@@ -25,19 +25,22 @@ class Particle(TreeModel):
 # ______________________________________________________________________________
 # Analyzer
 
-mystate = 1
+mystate = 0
 
 gROOT.SetBatch(1)
 
 # Open file
 if mystate == 0:
   tree_name_i = '/home/jlow/L1MuonTrigger/CRAB3/P2_9_2_3_patch1/crab_projects/crab_ntuple_SingleMuon_PositiveEndCap/results/ntuple_SingleMuon_PositiveEndCap_%i.root'
-  tree = TreeChain('ntupler/tree', [(tree_name_i % i) for i in range(1,8+1)])
+  tree = TreeChain('ntupler/tree', [(tree_name_i % (i+1)) for i in range(8)])
+  #tree_name_i = '/home/jlow/L1MuonTrigger/CRAB3/P2_9_2_3_patch1/crab_projects/crab_ntuple_SingleMuon_PositiveEndCap_PU200/results/ntuple_SingleMuon_PositiveEndCap_PU200_%i.root'
+  #tree = TreeChain('ntupler/tree', [(tree_name_i % (i+1)) for i in range(50)])
+
 elif mystate == 1:
   #tree_name_i = '/home/jlow/L1MuonTrigger/CRAB3/P2_9_2_3_patch1/crab_projects_old/crab_ntuple_SingleNeutrino_PU140_170720_232549/results/ntuple_SingleNeutrino_PU140_%i.root'
-  #tree = TreeChain('ntupler/tree', [(tree_name_i % i) for i in range(1,90+1)])
+  #tree = TreeChain('ntupler/tree', [(tree_name_i % (i+1)) for i in range(90)])
   tree_name_i = '/home/jlow/L1MuonTrigger/CRAB3/P2_9_2_3_patch1/crab_projects/crab_ntuple_SingleNeutrino_PU200/results/ntuple_SingleNeutrino_PU200_%i.root'
-  tree = TreeChain('ntupler/tree', [(tree_name_i % i) for i in range(1,51)])
+  tree = TreeChain('ntupler/tree', [(tree_name_i % (i+1)) for i in range(50)])
 else:
   raise Exception("Unexpected state: %i" % mystate)
 maxEvents = -1
@@ -74,6 +77,7 @@ eta_bins = [0.0, 0.8] + [1.2 + x * 0.2 for x in xrange(7)]
 
 # Classes
 class EfficiencyMatrix:
+  """Description"""
   def __init__(self, nbinsx=24, xmin=0., xmax=2.4, xbins=None, nbinsy=100, ymin=0., ymax=100., ybins=None, nbinsz=100, zmin=0., zmax=100., zbins=None):
     """
     x: gen_eta
@@ -222,6 +226,96 @@ class EfficiencyMatrix:
     print self._effie
 
 
+class Gemification:
+  """Description"""
+  def __init__(self):
+    self.trk = None
+    self.hit_me11 = None
+    self.hit_ge11 = None
+    self.the_bend = None
+    self.the_cut = None
+    self.cuts_from_sven = {
+      'Pt0'  : { 'odd' :  0.04000000, 'even' : 0.02000000 },  # jftest
+      'Pt5'  : { 'odd' :  0.02112152, 'even' : 0.00948039 },
+      'Pt7'  : { 'odd' :  0.01460424, 'even' : 0.00664357 },
+      'Pt10' : { 'odd' :  0.01001365, 'even' : 0.00463343 },
+      'Pt15' : { 'odd' :  0.00666509, 'even' : 0.00317360 },
+      'Pt20' : { 'odd' :  0.00506147, 'even' : 0.00251524 },
+      'Pt30' : { 'odd' :  0.00352464, 'even' : 0.00193779 },
+      'Pt40' : { 'odd' :  0.00281599, 'even' : 0.00169830 }
+    }
+
+  def reset(self):
+    self.trk = None
+    self.hit_me11 = None
+    self.hit_ge11 = None
+    self.the_bend = None
+    self.the_cut = None
+
+  def associate_hits(self, trk, hits):
+    myhits = filter(lambda hit: (hit.sector == trk.sector) and (hit.bx in [-1, 0, +1]), hits)
+    myhits_me11 = filter(lambda hit: hit.station == 1 and (hit.ring == 1 or hit.ring == 4) and hit.type == kCSC, myhits)
+    myhits_ge11 = filter(lambda hit: hit.station == 1 and (hit.ring == 1 or hit.ring == 4) and hit.type == kGEM, myhits)
+    self.trk = trk
+
+    # Find ME1/1 hit
+    min_abs_dphi_hit = None
+    min_abs_dphi = 9999
+    for myhit in myhits_me11:
+      abs_dphi = abs(delta_phi(myhit.sim_phi, trk.phi))
+      if min_abs_dphi > abs_dphi:
+        min_abs_dphi = abs_dphi
+        min_abs_dphi_hit = myhit
+    self.hit_me11 = min_abs_dphi_hit
+
+    # Find GE1/1 hit
+    min_abs_dphi_hit = None
+    min_abs_dphi = 9999
+    if self.hit_me11:
+      for myhit in myhits_ge11:
+        abs_dphi = abs(delta_phi(myhit.sim_phi, self.hit_me11.sim_phi))
+        if min_abs_dphi > abs_dphi:
+          min_abs_dphi = abs_dphi
+          min_abs_dphi_hit = myhit
+    self.hit_ge11 = min_abs_dphi_hit
+
+  def apply_cuts(self):
+    if not (1.65 <= abs(self.trk.eta) <= 2.15):
+      return True
+
+    if not self.hit_me11:
+      return False
+
+    if not self.hit_ge11:
+      return False
+
+    if (self.hit_me11.chamber % 2) == 0:
+      cat = 'even'
+    else:
+      cat = 'odd'
+
+    the_cut = self.cuts_from_sven['Pt0' ][cat]
+    if self.trk.pt > 5 :  the_cut = self.cuts_from_sven['Pt5' ][cat]
+    if self.trk.pt > 7 :  the_cut = self.cuts_from_sven['Pt7' ][cat]
+    if self.trk.pt > 10:  the_cut = self.cuts_from_sven['Pt10'][cat]
+    if self.trk.pt > 15:  the_cut = self.cuts_from_sven['Pt15'][cat]
+    if self.trk.pt > 20:  the_cut = self.cuts_from_sven['Pt20'][cat]
+    if self.trk.pt > 30:  the_cut = self.cuts_from_sven['Pt30'][cat]
+    if self.trk.pt > 40:  the_cut = self.cuts_from_sven['Pt40'][cat]
+    the_cut = rad_to_deg(the_cut)  # in degrees
+    self.the_cut = the_cut
+
+    the_bend = abs(delta_phi(self.hit_ge11.sim_phi, self.hit_me11.sim_phi))  # in degrees
+    self.the_bend = the_bend
+    return the_bend <= the_cut
+
+  def run(self, trk, hits):
+    self.associate_hits(trk, hits)
+    passed = self.apply_cuts()
+    self.reset()
+    return passed
+
+
 # Book histograms
 histograms = {}
 histogram2Ds = {}
@@ -232,8 +326,13 @@ histograms[hname] = Hist(5, 0, 5, name=hname, title="; count", type='F')
 hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"
 histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
 
+hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_bend1_pt"
+histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
+
 for i in xrange(14,22+1):
   hname = "emtf_ptmin%i_qmin12_eta" % i
+  histograms[hname] = Hist(10, 1.55, 2.55, name=hname, title="; |#eta|; entries", type='F')
+  hname = "emtf_ptmin%i_qmin12_bend1_eta" % i
   histograms[hname] = Hist(10, 1.55, 2.55, name=hname, title="; |#eta|; entries", type='F')
 
 
@@ -244,6 +343,9 @@ for i in xrange(14,22+1):
   hname = "tp_emtf_absEtaMin0_absEtaMax2.5_qmin12_ptmin%i_genpt" % i  # efficiency numer
   histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
 
+  hname = "tp_emtf_absEtaMin0_absEtaMax2.5_qmin12_ptmin%i_bend1_genpt" % i  # efficiency numer
+  histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
+
 hname = "tp_emtf_absEtaMin1.65_absEtaMax2.15_genpt"  # efficiency denom
 histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
 
@@ -251,9 +353,14 @@ for i in xrange(14,22+1):
   hname = "tp_emtf_absEtaMin1.65_absEtaMax2.15_qmin12_ptmin%i_genpt" % i  # efficiency numer
   histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
 
+  hname = "tp_emtf_absEtaMin1.65_absEtaMax2.15_qmin12_ptmin%i_bend1_genpt" % i  # efficiency numer
+  histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
+
 
 em = EfficiencyMatrix(xbins=eta_bins, ybins=pt_bins)
 em.sanity_check()
+
+genny = Gemification()
 
 print INFO, "eta_bins=%s" % repr(eta_bins), "pt_bins=%s" % repr(pt_bins)
 
@@ -291,10 +398,10 @@ for ievt, evt in enumerate(tree):
 
     # Hits
     for ihit, hit in enumerate(evt.hits):
-      print(".. hit  {0} {1} {2} {3} {4} {5} {6} {7}".format(ihit, hit.bx, hit.type, hit.station, hit.ring, hit.sim_phi, hit.sim_theta, hit.fr))
+      print(".. hit  {0} {1} {2} {3} {4} {5} {6} {7} {8}".format(ihit, hit.bx, hit.type, hit.station, hit.ring, hit.sector, hit.sim_phi, hit.sim_theta, hit.fr))
     # Tracks
     for itrk, trk in enumerate(evt.tracks):
-      print(".. trk  {0} {1} {2} {3} {4} {5} {6}".format(itrk, trk.pt, trk.phi, trk.eta, trk.theta, trk.q, trk.mode))
+      print(".. trk  {0} {1} {2} {3} {4} {5} {6} {7}".format(itrk, trk.pt, trk.phi, trk.eta, trk.theta, trk.q, trk.sector, trk.mode))
     # Gen particles
     for ipart, part in enumerate(evt.genparticles):
       print(".. part {0} {1} {2} {3} {4} {5}".format(ipart, part.pt, part.phi, part.eta, part.theta, part.q))
@@ -304,7 +411,9 @@ for ievt, evt in enumerate(tree):
   # ____________________________________________________________________________
   # Fill efficiency matrix
   if mystate == 0:
-    assert len(evt.genparticles) == 1
+    #assert len(evt.genparticles) == 1
+    assert len(evt.genparticles)
+    #assert len(evt.genparticles) and abs(evt.genparticles[0].pdgid) == 13
 
     mypart = evt.genparticles[0]
     #mytrk = evt.tracks[0]
@@ -332,7 +441,11 @@ for ievt, evt in enumerate(tree):
 
     def doit():
       h = histograms[hname]
-      if select(mytrk):
+      passed = False
+      for itrk, trk in enumerate(evt.tracks):
+        if select(trk):
+          passed = True
+      if passed:
         h.fill(gen_pt)
 
     if (0. <= abs(gen_eta) <= 2.5):
@@ -345,6 +458,10 @@ for ievt, evt in enumerate(tree):
         hname = "tp_emtf_absEtaMin0_absEtaMax2.5_qmin12_ptmin%i_genpt" % select_pt
         doit()
 
+        #select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in [11,13,14,15]) and (trk.pt > float(select_pt)) and (genny.run(trk, evt.hits))
+        #hname = "tp_emtf_absEtaMin0_absEtaMax2.5_qmin12_ptmin%i_bend1_genpt" % select_pt
+        #doit()
+
     if (1.65 <= abs(gen_eta) <= 2.15):
       select = lambda trk: True
       hname = "tp_emtf_absEtaMin1.65_absEtaMax2.15_genpt"
@@ -353,6 +470,10 @@ for ievt, evt in enumerate(tree):
       for select_pt in xrange(14, 22+1):
         select = lambda trk: trk and (1.65 <= abs(trk.eta) <= 2.15) and (trk.mode in [11,13,14,15]) and (trk.pt > float(select_pt))
         hname = "tp_emtf_absEtaMin1.65_absEtaMax2.15_qmin12_ptmin%i_genpt" % select_pt
+        doit()
+
+        select = lambda trk: trk and (1.65 <= abs(trk.eta) <= 2.15) and (trk.mode in [11,13,14,15]) and (trk.pt > float(select_pt)) and (genny.run(trk, evt.hits))
+        hname = "tp_emtf_absEtaMin1.65_absEtaMax2.15_qmin12_ptmin%i_bend1_genpt" % select_pt
         doit()
 
 
@@ -381,6 +502,10 @@ for ievt, evt in enumerate(tree):
     hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"
     doit()
 
+    select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in [11,13,14,15]) and (genny.run(trk, evt.hits))
+    hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_bend1_pt"
+    doit()
+
     def doit():
       h = histograms[hname]
       eta_bins = [False] * (10+2)
@@ -395,6 +520,10 @@ for ievt, evt in enumerate(tree):
     for select_pt in xrange(14, 22+1):
       select = lambda trk: trk and (trk.pt > float(select_pt)) and (trk.mode in [11,13,14,15])
       hname = "emtf_ptmin%i_qmin12_eta" % select_pt
+      doit()
+
+      select = lambda trk: trk and (trk.pt > float(select_pt)) and (trk.mode in [11,13,14,15]) and (genny.run(trk, evt.hits))
+      hname = "emtf_ptmin%i_qmin12_bend1_eta" % select_pt
       doit()
 
   continue  # end loop over event
