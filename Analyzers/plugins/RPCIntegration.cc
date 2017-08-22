@@ -84,6 +84,12 @@ private:
 
 
 // _____________________________________________________________________________
+//static std::random_device rd;
+//static std::mt19937 genrd(rd());
+static std::mt19937 genrd0(20230);
+static std::mt19937 genrd1(20231);
+
+
 RPCIntegration::RPCIntegration(const edm::ParameterSet& iConfig) :
     emuHitTag_    (iConfig.getParameter<edm::InputTag>("emuHitTag")),
     emuTrackTag_  (iConfig.getParameter<edm::InputTag>("emuTrackTag")),
@@ -107,10 +113,6 @@ void RPCIntegration::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
 
 // _____________________________________________________________________________
 void RPCIntegration::getHandles(const edm::Event& iEvent) {
-  std::random_device rd;
-  std::mt19937 genrd(rd());
-  std::uniform_real_distribution<double> rng(0.,1.);
-
   // EMTF hits and tracks
   edm::Handle<decltype(emuHits_)>   emuHits_handle;
   edm::Handle<decltype(emuTracks_)> emuTracks_handle;
@@ -168,22 +170,24 @@ void RPCIntegration::getHandles(const edm::Event& iEvent) {
 
   // Reduced CSC efficiency
   {
+    std::uniform_real_distribution<double> rng(0.,1.);
+
     l1t::EMTFHitCollection tmp_emuHits;
     for (const auto& hit : emuHits_) {
       bool keep = true;
       if (hit.Subsystem() == TriggerPrimitive::kCSC) {
         if (hit.Station() == 1) {
           //double eff = 0.8;
-          //if (!(rng(genrd) < eff))  keep = false;
+          //if (!(rng(genrd0) < eff))  keep = false;
         } else if (hit.Station() == 2) {
           //double eff = 0.8;
-          //if (!(rng(genrd) < eff))  keep = false;
+          //if (!(rng(genrd0) < eff))  keep = false;
         } else if (hit.Station() == 3) {
           //double eff = 0.8;
-          //if (!(rng(genrd) < eff))  keep = false;
+          //if (!(rng(genrd0) < eff))  keep = false;
         } else if (hit.Station() == 4) {
           //double eff = 0.8;
-          //if (!(rng(genrd) < eff))  keep = false;
+          //if (!(rng(genrd0) < eff))  keep = false;
         }
       }
       if (keep) {
@@ -198,9 +202,6 @@ void RPCIntegration::getHandles(const edm::Event& iEvent) {
 void RPCIntegration::process() {
   TString hname;
   TH1F* h;
-
-  std::random_device rd;
-  std::mt19937 genrd(rd());
 
   auto get_mode_bin = [](const auto& trk) {
     int mode      = trk.Mode();
@@ -273,13 +274,13 @@ void RPCIntegration::process() {
 
     bool trigger = !emuTracks_.empty();
 
-    if (genParts_.size() != 1) {
-      std::cout << "[WARNING] perche non uno? num of genParts: " << genParts_.size() << std::endl;
-    }
+    //if (genParts_.size() != 1) {
+    //  std::cout << "[WARNING] perche non uno? num of genParts: " << genParts_.size() << std::endl;
+    //}
 
-    if (trigger && emuTracks_.size() != 1) {
-      std::cout << "[WARNING] perche non uno? num of emuTracks: " << emuTracks_.size() << std::endl;
-    }
+    //if (trigger && emuTracks_.size() != 1) {
+    //  std::cout << "[WARNING] perche non uno? num of emuTracks: " << emuTracks_.size() << std::endl;
+    //}
 
     int mode_bin    = trigger ? get_mode_bin(emuTracks_.front()) : -1;
     int l1pt_bin    = trigger ? get_l1pt_bin(emuTracks_.front()) : -1;
@@ -405,8 +406,8 @@ void RPCIntegration::process() {
         if (myhits1.size() > 0 && myhits2.size() > 0) {
           std::uniform_int_distribution<> index1(0, myhits1.size()-1);
           std::uniform_int_distribution<> index2(0, myhits2.size()-1);
-          const l1t::EMTFHit& myhit1 = myhits1.at(index1(genrd));
-          const l1t::EMTFHit& myhit2 = myhits2.at(index2(genrd));
+          const l1t::EMTFHit& myhit1 = myhits1.at(index1(genrd1));
+          const l1t::EMTFHit& myhit2 = myhits2.at(index2(genrd1));
 
           int ipt = -1;
           if ((1.0/2 - 0.01) < 1.0/pt && 1.0/pt <= (1.0/2)) {
