@@ -27,7 +27,9 @@ class Particle(TreeModel):
 
 mystate = 0
 
-gROOT.SetBatch(1)
+verbose = False
+
+batch_mode = True
 
 # Open file
 if mystate == 0:
@@ -37,14 +39,16 @@ if mystate == 0:
   #tree = TreeChain('ntupler/tree', [(tree_name_i % (i+1)) for i in range(50)])
 
 elif mystate == 1:
-  #tree_name_i = '/home/jlow/L1MuonTrigger/CRAB3/P2_9_2_3_patch1/crab_projects_old/crab_ntuple_SingleNeutrino_PU140_170720_232549/results/ntuple_SingleNeutrino_PU140_%i.root'
-  #tree = TreeChain('ntupler/tree', [(tree_name_i % (i+1)) for i in range(90)])
   tree_name_i = '/home/jlow/L1MuonTrigger/CRAB3/P2_9_2_3_patch1/crab_projects/crab_ntuple_SingleNeutrino_PU200/results/ntuple_SingleNeutrino_PU200_%i.root'
   tree = TreeChain('ntupler/tree', [(tree_name_i % (i+1)) for i in range(50)])
 else:
   raise Exception("Unexpected state: %i" % mystate)
+
 maxEvents = -1
 #maxEvents = 2000
+
+# ROOT globals
+gROOT.SetBatch(batch_mode)
 
 # Define collection
 tree.define_collection(name='hits', prefix='vh_', size='vh_size')
@@ -232,6 +236,8 @@ class Gemification:
     self.trk = None
     self.hit_me11 = None
     self.hit_ge11 = None
+    self.hit_me11_bak = None
+    self.hit_ge11_bak = None
     self.the_bend = None
     self.the_cut = None
     self.cuts_from_sven = {
@@ -249,10 +255,14 @@ class Gemification:
     self.trk = None
     self.hit_me11 = None
     self.hit_ge11 = None
+    self.hit_me11_bak = None
+    self.hit_ge11_bak = None
     self.the_bend = None
     self.the_cut = None
 
   def associate_hits(self, trk, hits):
+    self.reset()
+
     myhits = filter(lambda hit: (hit.sector == trk.sector) and (hit.bx in [-1, 0, +1]), hits)
     myhits_me11 = filter(lambda hit: hit.station == 1 and (hit.ring == 1 or hit.ring == 4) and hit.type == kCSC, myhits)
     myhits_ge11 = filter(lambda hit: hit.station == 1 and (hit.ring == 1 or hit.ring == 4) and hit.type == kGEM, myhits)
@@ -260,13 +270,16 @@ class Gemification:
 
     # Find ME1/1 hit
     min_abs_dphi_hit = None
+    min_abs_dphi_hit_bak = None
     min_abs_dphi = 9999
     for myhit in myhits_me11:
       abs_dphi = abs(delta_phi(myhit.sim_phi, trk.phi))
       if min_abs_dphi > abs_dphi:
         min_abs_dphi = abs_dphi
+        min_abs_dphi_hit_bak = min_abs_dphi_hit
         min_abs_dphi_hit = myhit
     self.hit_me11 = min_abs_dphi_hit
+    self.hit_me11_bak = min_abs_dphi_hit_bak
 
     # Find GE1/1 hit
     min_abs_dphi_hit = None
@@ -279,6 +292,16 @@ class Gemification:
           min_abs_dphi_hit = myhit
     self.hit_ge11 = min_abs_dphi_hit
 
+    min_abs_dphi_hit = None
+    min_abs_dphi = 9999
+    if self.hit_me11_bak:
+      for myhit in myhits_ge11:
+        abs_dphi = abs(delta_phi(myhit.sim_phi, self.hit_me11_bak.sim_phi))
+        if min_abs_dphi > abs_dphi:
+          min_abs_dphi = abs_dphi
+          min_abs_dphi_hit = myhit
+    self.hit_ge11_bak = min_abs_dphi_hit
+
   def apply_cuts(self):
     if not (1.65 <= abs(self.trk.eta) <= 2.15):
       return True
@@ -289,11 +312,7 @@ class Gemification:
     if not self.hit_ge11:
       return False
 
-    if (self.hit_me11.chamber % 2) == 0:
-      cat = 'even'
-    else:
-      cat = 'odd'
-
+    cat = 'even' if ((self.hit_me11.chamber % 2) == 0) else 'odd'
     the_cut = self.cuts_from_sven['Pt0' ][cat]
     if self.trk.pt > 5 :  the_cut = self.cuts_from_sven['Pt5' ][cat]
     if self.trk.pt > 7 :  the_cut = self.cuts_from_sven['Pt7' ][cat]
@@ -304,15 +323,31 @@ class Gemification:
     if self.trk.pt > 40:  the_cut = self.cuts_from_sven['Pt40'][cat]
     the_cut = rad_to_deg(the_cut)  # in degrees
     self.the_cut = the_cut
-
     the_bend = abs(delta_phi(self.hit_ge11.sim_phi, self.hit_me11.sim_phi))  # in degrees
     self.the_bend = the_bend
-    return the_bend <= the_cut
+    passed = (the_bend <= the_cut)
+
+    if not passed and self.hit_me11_bak and self.hit_ge11_bak:
+      # Backup pair
+      cat = 'even' if ((self.hit_me11_bak.chamber % 2) == 0) else 'odd'
+      the_cut = self.cuts_from_sven['Pt0' ][cat]
+      if self.trk.pt > 5 :  the_cut = self.cuts_from_sven['Pt5' ][cat]
+      if self.trk.pt > 7 :  the_cut = self.cuts_from_sven['Pt7' ][cat]
+      if self.trk.pt > 10:  the_cut = self.cuts_from_sven['Pt10'][cat]
+      if self.trk.pt > 15:  the_cut = self.cuts_from_sven['Pt15'][cat]
+      if self.trk.pt > 20:  the_cut = self.cuts_from_sven['Pt20'][cat]
+      if self.trk.pt > 30:  the_cut = self.cuts_from_sven['Pt30'][cat]
+      if self.trk.pt > 40:  the_cut = self.cuts_from_sven['Pt40'][cat]
+      the_cut = rad_to_deg(the_cut)  # in degrees
+      self.the_cut = the_cut
+      the_bend = abs(delta_phi(self.hit_ge11_bak.sim_phi, self.hit_me11_bak.sim_phi))  # in degrees
+      self.the_bend = the_bend
+      passed = (the_bend <= the_cut)
+    return passed
 
   def run(self, trk, hits):
     self.associate_hits(trk, hits)
     passed = self.apply_cuts()
-    self.reset()
     return passed
 
 
@@ -384,14 +419,13 @@ if mystate == 1:
 
 # ______________________________________________________________________________
 # Loop over events
+
 for ievt, evt in enumerate(tree):
   if maxEvents != -1 and ievt == maxEvents:
     break
 
   # ____________________________________________________________________________
   # Verbose
-
-  verbose = False
 
   if verbose:
     if (ievt % 1 == 0):  print("Processing event: {0}".format(ievt))
@@ -410,6 +444,7 @@ for ievt, evt in enumerate(tree):
 
   # ____________________________________________________________________________
   # Fill efficiency matrix
+
   if mystate == 0:
     #assert len(evt.genparticles) == 1
     assert len(evt.genparticles)
@@ -479,6 +514,7 @@ for ievt, evt in enumerate(tree):
 
   # ____________________________________________________________________________
   # Fill efficiency matrix
+
   elif mystate == 1:
 
     #for ipart, part in enumerate(evt.genparticles):
