@@ -103,6 +103,7 @@ private:
   std::unique_ptr<std::vector<int16_t> >  vh_cscid;
   std::unique_ptr<std::vector<int16_t> >  vh_bx;
   std::unique_ptr<std::vector<int16_t> >  vh_type;  // subsystem: DT=0,CSC=1,RPC=2,GEM=3
+  std::unique_ptr<std::vector<bool> >     vh_neighbor;
   //
   std::unique_ptr<std::vector<int16_t> >  vh_strip;
   std::unique_ptr<std::vector<int16_t> >  vh_wire;
@@ -409,6 +410,7 @@ void NtupleMaker::process() {
     vh_cscid      ->push_back(hit.CSC_ID());
     vh_bx         ->push_back(hit.BX());
     vh_type       ->push_back(hit.Subsystem());
+    vh_neighbor   ->push_back(hit.Neighbor());
     //
     vh_strip      ->push_back(hit.Strip());
     vh_wire       ->push_back(hit.Wire());
@@ -492,6 +494,7 @@ void NtupleMaker::process() {
   vh_cscid      ->clear();
   vh_bx         ->clear();
   vh_type       ->clear();
+  vh_neighbor   ->clear();
   //
   vh_strip      ->clear();
   vh_wire       ->clear();
@@ -564,6 +567,7 @@ void NtupleMaker::makeTree() {
   vh_cscid      .reset(new std::vector<int16_t>());
   vh_bx         .reset(new std::vector<int16_t>());
   vh_type       .reset(new std::vector<int16_t>());
+  vh_neighbor   .reset(new std::vector<bool   >());
   //
   vh_strip      .reset(new std::vector<int16_t>());
   vh_wire       .reset(new std::vector<int16_t>());
@@ -620,6 +624,7 @@ void NtupleMaker::makeTree() {
   tree->Branch("vh_cscid"     , &(*vh_cscid     ));
   tree->Branch("vh_bx"        , &(*vh_bx        ));
   tree->Branch("vh_type"      , &(*vh_type      ));
+  tree->Branch("vh_neighbor"  , &(*vh_neighbor  ));
   //
   tree->Branch("vh_strip"     , &(*vh_strip     ));
   tree->Branch("vh_wire"      , &(*vh_wire      ));
