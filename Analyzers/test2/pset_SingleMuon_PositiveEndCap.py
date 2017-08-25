@@ -129,7 +129,7 @@ process = customiseEarlyDelete(process)
 # ______________________________________________________________________________
 # Modify output
 process.RAWSIMoutput.outputCommands += ['keep *_mix_MergedTrackTruth_*', 'keep *_mix_Tracker_*']
-process.RAWSIMoutput.outputCommands += ['keep *_genParticles_*_*', 'keep *_simCscTriggerPrimitiveDigis_*_*', 'keep *_simMuonRPCDigis_*_*', 'keep *_simMuonGEMDigis_*_*', 'keep *_simMuonGEMPadDigis_*_*', 'keep *_simMuonGEMPadDigiClusters_*_*', 'keep *_simMuonME0Digis_*_*', 'keep *_simMuonME0ReDigis_*_*', 'keep *_simEmtfDigis*_*_*', 'keep *_simGmtStage2Digis_*_*', 'keep *_TTClustersFromPhase2TrackerDigis_*_*', 'keep *_TTStubsFromPhase2TrackerDigis_*_*']
+process.RAWSIMoutput.outputCommands += ['keep *_genParticles_*_*', 'keep *_simDtTriggerPrimitiveDigis_*_*', 'keep *_simCscTriggerPrimitiveDigis_*_*', 'keep *_simMuonDTDigis_*_*', 'keep *_simMuonCSCDigis_*_*', 'keep *_simMuonRPCDigis_*_*', 'keep *_simMuonGEMDigis_*_*', 'keep *_simMuonGEMPadDigis_*_*', 'keep *_simMuonME0Digis_*_*', 'keep *_simMuonME0ReDigis_*_*', 'keep *_simMuonME0PadDigis_*_*', 'keep *_simEmtfDigis*_*_*', 'keep *_simGmtStage2Digis_*_*', 'keep *_TTClustersFromPhase2TrackerDigis_*_*', 'keep *_TTStubsFromPhase2TrackerDigis_*_*']
 
 # My paths and schedule definitions
 print("[INFO] Using GlobalTag: %s" % process.GlobalTag.globaltag.value())
@@ -148,6 +148,14 @@ if False:
     process.simEmtfDigis.GEMEnable                   = True
     process.simEmtfDigis.Era                         = cms.string('Phase2C2')
     #process.simEmtfDigis.spPAParams16.PtLUTVersion   = cms.int32(5)
+if True:
+    # Make ME0 pads
+    process.load('RecoLocalMuon.GEMRecHit.me0RecHits_cfi')
+    process.load('RecoLocalMuon.GEMSegment.me0Segments_cfi')
+    process.fakeSimMuonME0PadDigis = cms.EDProducer("FakeME0PadDigiProducer", InputCollection = cms.InputTag("me0Segments"))
+    process.me0DigiRecoSequence = cms.Sequence(process.me0RecHits * process.me0Segments * process.fakeSimMuonME0PadDigis)
+    process.muonDigi += process.me0DigiRecoSequence
+    process.RAWSIMoutput.outputCommands += ['keep *_me0RecHits_*_*', 'keep *_me0Segments_*_*', 'keep *_fakeSimMuonME0PadDigis_*_*']
 if True:
     from L1Trigger.L1TMuonEndCap.customise_Phase2C2 import customise as customise_Phase2C2
     process = customise_Phase2C2(process)
