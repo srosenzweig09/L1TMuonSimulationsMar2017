@@ -54,9 +54,10 @@ if True:
   process.RAWSIMoutput.outputCommands += ['keep *_genParticles_*_*', 'keep *_mix_MergedTrackTruth_*', 'keep *_simCscTriggerPrimitiveDigis_*_*', 'keep *_simMuonRPCDigis_*_*', 'keep *_simMuonGEMDigis_*_*', 'keep *_simMuonGEMPadDigis_*_*', 'keep *_simMuonGEMPadDigiClusters_*_*', 'keep *_simEmtfDigis*_*_*']
 
 if True:
-  process.simEmtfDigisCSC = process.simEmtfDigis.clone(RPCEnable = False, GEMEnable = False, IRPCEnable = False, TTEnable = False)
-  process.simEmtfDigisRPC = process.simEmtfDigis.clone(RPCEnable = True , GEMEnable = False, IRPCEnable = False, TTEnable = False)
-  process.simEmtfDigisGEM = process.simEmtfDigis.clone(RPCEnable = True , GEMEnable = True , IRPCEnable = False, TTEnable = False)
+  process.simEmtfDigisCSC  = process.simEmtfDigis.clone(RPCEnable = False, GEMEnable = False, IRPCEnable = False, ME0Enable = False, TTEnable = False)
+  process.simEmtfDigisRPC  = process.simEmtfDigis.clone(RPCEnable = True , GEMEnable = False, IRPCEnable = False, ME0Enable = False, TTEnable = False)
+  process.simEmtfDigisGEM  = process.simEmtfDigis.clone(RPCEnable = True , GEMEnable = True , IRPCEnable = False, ME0Enable = False, TTEnable = False)
+  process.simEmtfDigisIRPC = process.simEmtfDigis.clone(RPCEnable = True , GEMEnable = True , IRPCEnable = True , ME0Enable = False, TTEnable = False)
 
 if True:
   # From https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideTrackingTruth
@@ -74,7 +75,7 @@ if True:
 # My paths and schedule definitions
 #process.step1 = cms.Path((process.simCscTriggerPrimitiveDigis) + process.simEmtfDigis)
 #process.step1 = cms.Path(process.simEmtfDigis)
-process.step1 = cms.Path(process.simEmtfDigisCSC*process.simEmtfDigisRPC*process.simEmtfDigisGEM*process.simEmtfDigis)
+process.step1 = cms.Path(process.simEmtfDigisCSC*process.simEmtfDigisRPC*process.simEmtfDigisGEM*process.simEmtfDigisIRPC*process.simEmtfDigis)
 process.RAWSIMoutput.SelectEvents.SelectEvents = cms.vstring('step1')
 process.RAWSIMoutput_step = cms.EndPath(process.RAWSIMoutput)
 process.digitisation_step = cms.Path(cms.SequencePlaceholder("mix"))  # only needed for SingleMuon 170614 sample
