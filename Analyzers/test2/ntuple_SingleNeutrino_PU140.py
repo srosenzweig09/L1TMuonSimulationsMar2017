@@ -58,7 +58,7 @@ if True:
   process.simEmtfDigisRPC = process.simEmtfDigis.clone(RPCEnable = True , GEMEnable = False, IRPCEnable = False, TTEnable = False)
   process.simEmtfDigisGEM = process.simEmtfDigis.clone(RPCEnable = True , GEMEnable = True , IRPCEnable = False, TTEnable = False)
 
-if True:
+if False:
   # From https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideTrackingTruth
   #process.load("SimGeneral.MixingModule.digitizers_cfi")
   process.mix.playback = cms.untracked.bool(True)
@@ -77,9 +77,7 @@ if True:
 process.step1 = cms.Path(process.simEmtfDigisCSC*process.simEmtfDigisRPC*process.simEmtfDigisGEM*process.simEmtfDigis)
 process.RAWSIMoutput.SelectEvents.SelectEvents = cms.vstring('step1')
 process.RAWSIMoutput_step = cms.EndPath(process.RAWSIMoutput)
-process.digitisation_step = cms.Path(cms.SequencePlaceholder("mix"))  # only needed for SingleMuon 170614 sample
-process.L1TrackTrigger_step = cms.Path(process.L1TrackTrigger)        # only needed for SingleMuon 170614 sample
-process.schedule = cms.Schedule(process.digitisation_step, process.L1TrackTrigger_step, process.step1, process.RAWSIMoutput_step)
+process.schedule = cms.Schedule(process.step1, process.RAWSIMoutput_step)
 
 
 # Configure framework report and summary

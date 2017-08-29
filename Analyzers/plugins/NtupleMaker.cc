@@ -188,7 +188,6 @@ void NtupleMaker::getHandles(const edm::Event& iEvent) {
   }
   if (!emuHits_handle.isValid()) {
     edm::LogError("NtupleMaker") << "Cannot get the product: " << emuHitTag_;
-    return;
   }
 
   if (!emuTrackToken_.isUninitialized()) {
@@ -196,7 +195,6 @@ void NtupleMaker::getHandles(const edm::Event& iEvent) {
   }
   if (!emuTracks_handle.isValid()) {
     edm::LogError("NtupleMaker") << "Cannot get the product: " << emuTrackTag_;
-    return;
   }
 
   // Gen particles
@@ -208,7 +206,6 @@ void NtupleMaker::getHandles(const edm::Event& iEvent) {
     }
     if (!genParts_handle.isValid()) {
       edm::LogError("NtupleMaker") << "Cannot get the product: " << genPartTag_;
-      return;
     }
   }
 
@@ -219,9 +216,8 @@ void NtupleMaker::getHandles(const edm::Event& iEvent) {
     if (!trkPartToken_.isUninitialized()) {
       iEvent.getByToken(trkPartToken_, trkParts_handle);
     }
-    if (!genParts_handle.isValid()) {
+    if (!trkParts_handle.isValid()) {
       edm::LogError("NtupleMaker") << "Cannot get the product: " << trkPartTag_;
-      return;
     }
   }
 
@@ -254,7 +250,7 @@ void NtupleMaker::getHandles(const edm::Event& iEvent) {
     //if (!(1.2 <= part.eta() && part.eta() <= 2.4))  continue;  // only positive endcap
 
     // Signal event
-    bool signal = (part.eventId().event() == 0);
+    //bool signal = (part.eventId().event() == 0);
     // In time bunch-crossing
     bool intime = (part.eventId().bunchCrossing() == 0);
     // Primary+charged: pT > 0.2 GeV, |eta| < 2.5, |rho0| < 0.5 cm, |z0| < 30 cm

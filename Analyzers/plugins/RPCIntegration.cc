@@ -122,7 +122,6 @@ void RPCIntegration::getHandles(const edm::Event& iEvent) {
   }
   if (!emuHits_handle.isValid()) {
     edm::LogError("RPCIntegration") << "Cannot get the product: " << emuHitTag_;
-    return;
   }
 
   if (!emuTrackToken_.isUninitialized()) {
@@ -130,7 +129,6 @@ void RPCIntegration::getHandles(const edm::Event& iEvent) {
   }
   if (!emuTracks_handle.isValid()) {
     edm::LogError("RPCIntegration") << "Cannot get the product: " << emuTrackTag_;
-    return;
   }
 
   // Gen particles
@@ -142,7 +140,6 @@ void RPCIntegration::getHandles(const edm::Event& iEvent) {
     }
     if (!genParts_handle.isValid()) {
       edm::LogError("RPCIntegration") << "Cannot get the product: " << genPartTag_;
-      return;
     }
   }
 

@@ -128,7 +128,6 @@ void TrackCounting::getHandles(const edm::Event& iEvent) {
   }
   if (!emuHits_handle.isValid()) {
     edm::LogError("TrackCounting") << "Cannot get the product: " << emuHitTag_;
-    return;
   }
 
   if (!emuTrackToken_.isUninitialized()) {
@@ -136,7 +135,6 @@ void TrackCounting::getHandles(const edm::Event& iEvent) {
   }
   if (!emuTracks_handle.isValid()) {
     edm::LogError("TrackCounting") << "Cannot get the product: " << emuTrackTag_;
-    return;
   }
 
   // GMT muons
@@ -148,7 +146,6 @@ void TrackCounting::getHandles(const edm::Event& iEvent) {
   }
   if (!gmtMuons_handle.isValid()) {
     edm::LogError("TrackCounting") << "Cannot get the product: " << gmtMuonTag_;
-    return;
   }
 
   // Pileup summary info
