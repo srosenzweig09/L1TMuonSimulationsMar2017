@@ -1,0 +1,14 @@
+# 2017
+cmsDriver.py l1NtupleRECO -s RAW2DIGI --era=Run2_2017 \
+  --customise=L1Trigger/L1TNtuples/customiseL1Ntuple.L1NtupleAODRAWEMU \
+  --customise=L1Trigger/Configuration/customiseReEmul.L1TReEmulFromRAW \
+  --conditions=auto:run2_data -n 1000 --data --no_exec --no_output \
+  --filein=/store/data/Run2017B/SingleMuon/RAW-RECO/ZMu-PromptReco-v2/000/298/678/00000/6E1B76C0-A466-E711-A521-02163E0128F4.root
+
+
+# 2016
+cmsDriver.py l1NtupleRECO -s RAW2DIGI --era=Run2_2016 \
+  --customise=L1Trigger/L1TNtuples/customiseL1Ntuple.L1NtupleAODRAWEMU \
+  --customise=L1Trigger/Configuration/customiseReEmul.L1TReEmulFromRAW \
+  --conditions=auto:run2_data -n 1000 --data --no_exec --no_output \
+  --filein=/store/data/Run2016G/SingleMuon/RAW-RECO/ZMu-18Apr2017-v1/00000/9ED0BEE9-2E3F-E711-B04D-A0369F6369D2.root
