@@ -113,24 +113,79 @@ void MinBiasMuonAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
     // In time bunch-crossing
     bool intime = (part.eventId().bunchCrossing() == 0);
     // Primary+charged: pT > 0.2 GeV, |eta| < 2.5, |rho0| < 0.5 cm, |z0| < 30 cm
-    bool primary = (part.charge() != 0 && part.pt() > 0.2 && std::abs(part.eta()) < 2.5 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 0.5 && std::abs(part.vz()) < 30.0);
+    //bool primary = (part.charge() != 0 && part.pt() > 0.2 && std::abs(part.eta()) < 2.5 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 0.5 && std::abs(part.vz()) < 30.0);
+    // Primary+secondary
+    bool secondary = (part.charge() != 0 && part.pt() > 0.2 && std::abs(part.eta()) < 2.5 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 15.0 && std::abs(part.vz()) < 50.0);
     bool is_muon = (std::abs(part.pdgId()) == 13);
-    //if (!signal)  continue;
-    if (!intime)  continue;
-    if (!primary) continue;
-    if (!is_muon) continue;
 
     double pt = part.pt();
-    double invPt = 1.0 / pt;
     double absEta = std::abs(part.eta());
 
-    if (1.24 <= absEta && absEta <= 1.64) {
+    if (is_muon && part.pt() >= 2. && std::abs(part.vz()) < 50.0) {
+      double dxy = std::sqrt(part.vx() * part.vx() + part.vy() * part.vy());
+      double dz = std::abs(part.vz());
+      histograms_["muon_ptmin2_absEtaMin1.24_absEtaMax2.5_dxy"]->Fill(dxy);
+      histograms_["muon_ptmin2_absEtaMin1.24_absEtaMax2.5_dz"]->Fill(dz);
+      histogram2Ds_["muon_pt_vs_dxy"]->Fill(dxy, pt);
+      histogram2Ds_["muon_pt_vs_dz"]->Fill(dz, pt);
+    }
+
+    //if (!signal)  continue;
+    if (!intime)  continue;
+    //if (!primary) continue;
+    if (!secondary) continue;
+    if (!is_muon) continue;
+
+    double invPt = 1.0 / pt;
+    double invPt2 = 1.0 / pt / pt;
+    double invPt3 = 1.0 / pt / pt / pt;
+    double invPt4 = 1.0 / pt / pt / pt / pt;
+    double invPt5 = 1.0 / pt / pt / pt / pt / pt;
+    double logPt = std::log2(pt);
+
+    if (1.24 < absEta && absEta <= 2.5) {
+      histograms_["muon_absEtaMin1.24_absEtaMax2.5_pt"]->Fill(pt);
+      histograms_["muon_absEtaMin1.24_absEtaMax2.5_invPt"]->Fill(invPt);
+      histograms_["muon_absEtaMin1.24_absEtaMax2.5_invPt2"]->Fill(invPt2);
+      histograms_["muon_absEtaMin1.24_absEtaMax2.5_invPt3"]->Fill(invPt3);
+      histograms_["muon_absEtaMin1.24_absEtaMax2.5_invPt4"]->Fill(invPt4);
+      histograms_["muon_absEtaMin1.24_absEtaMax2.5_invPt5"]->Fill(invPt5);
+      histograms_["muon_absEtaMin1.24_absEtaMax2.5_logPt"]->Fill(logPt);
+    }
+
+    if (1.24 < absEta && absEta <= 1.64) {
+      histograms_["muon_absEtaMin1.24_absEtaMax1.64_pt"]->Fill(pt);
+      histograms_["muon_absEtaMin1.24_absEtaMax1.64_invPt"]->Fill(invPt);
+      histograms_["muon_absEtaMin1.24_absEtaMax1.64_invPt2"]->Fill(invPt2);
+      histograms_["muon_absEtaMin1.24_absEtaMax1.64_invPt3"]->Fill(invPt3);
+      histograms_["muon_absEtaMin1.24_absEtaMax1.64_invPt4"]->Fill(invPt4);
+      histograms_["muon_absEtaMin1.24_absEtaMax1.64_invPt5"]->Fill(invPt5);
+      histograms_["muon_absEtaMin1.24_absEtaMax1.64_logPt"]->Fill(logPt);
+    } else if (1.64 < absEta && absEta <= 2.14) {
       histograms_["muon_absEtaMin1.64_absEtaMax2.14_pt"]->Fill(pt);
       histograms_["muon_absEtaMin1.64_absEtaMax2.14_invPt"]->Fill(invPt);
+      histograms_["muon_absEtaMin1.64_absEtaMax2.14_invPt2"]->Fill(invPt2);
+      histograms_["muon_absEtaMin1.64_absEtaMax2.14_invPt3"]->Fill(invPt3);
+      histograms_["muon_absEtaMin1.64_absEtaMax2.14_invPt4"]->Fill(invPt4);
+      histograms_["muon_absEtaMin1.64_absEtaMax2.14_invPt5"]->Fill(invPt5);
+      histograms_["muon_absEtaMin1.64_absEtaMax2.14_logPt"]->Fill(logPt);
+    } else if (2.14 < absEta && absEta <= 2.5) {
+      histograms_["muon_absEtaMin2.14_absEtaMax2.5_pt"]->Fill(pt);
+      histograms_["muon_absEtaMin2.14_absEtaMax2.5_invPt"]->Fill(invPt);
+      histograms_["muon_absEtaMin2.14_absEtaMax2.5_invPt2"]->Fill(invPt2);
+      histograms_["muon_absEtaMin2.14_absEtaMax2.5_invPt3"]->Fill(invPt3);
+      histograms_["muon_absEtaMin2.14_absEtaMax2.5_invPt4"]->Fill(invPt4);
+      histograms_["muon_absEtaMin2.14_absEtaMax2.5_invPt5"]->Fill(invPt5);
+      histograms_["muon_absEtaMin2.14_absEtaMax2.5_logPt"]->Fill(logPt);
     }
 
     histogram2Ds_["muon_pt_vs_eta"]->Fill(absEta, pt);
     histogram2Ds_["muon_invPt_vs_eta"]->Fill(absEta, invPt);
+    histogram2Ds_["muon_invPt2_vs_eta"]->Fill(absEta, invPt2);
+    histogram2Ds_["muon_invPt3_vs_eta"]->Fill(absEta, invPt3);
+    histogram2Ds_["muon_invPt4_vs_eta"]->Fill(absEta, invPt4);
+    histogram2Ds_["muon_invPt5_vs_eta"]->Fill(absEta, invPt5);
+    histogram2Ds_["muon_logPt_vs_eta"]->Fill(absEta, logPt);
   }
 
 }
@@ -148,20 +203,104 @@ void MinBiasMuonAnalyzer::bookHistograms() {
 
   // TFileService
   edm::Service<TFileService> fs;
+  TH1::SetDefaultSumw2();
 
   // TH1F
+  hname = "muon_ptmin2_absEtaMin1.24_absEtaMax2.5_dxy";
+  histograms_[hname] = fs->make<TH1F>(hname, "; |d_{xy}| [cm]", 200, 0, 100);
+  hname = "muon_ptmin2_absEtaMin1.24_absEtaMax2.5_dz";
+  histograms_[hname] = fs->make<TH1F>(hname, "; |d_{z}| [cm]", 200, 0, 100);
+
+  hname = "muon_absEtaMin1.24_absEtaMax2.5_pt";
+  histograms_[hname] = fs->make<TH1F>(hname, "; p_{T} [GeV]", 200, 0, 200);
+  hname = "muon_absEtaMin1.24_absEtaMax1.64_pt";
+  histograms_[hname] = fs->make<TH1F>(hname, "; p_{T} [GeV]", 200, 0, 200);
   hname = "muon_absEtaMin1.64_absEtaMax2.14_pt";
   histograms_[hname] = fs->make<TH1F>(hname, "; p_{T} [GeV]", 200, 0, 200);
+  hname = "muon_absEtaMin2.14_absEtaMax2.5_pt";
+  histograms_[hname] = fs->make<TH1F>(hname, "; p_{T} [GeV]", 200, 0, 200);
 
+  hname = "muon_absEtaMin1.24_absEtaMax2.5_invPt";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T} [1/GeV]", 200, 0, 0.5);
+  hname = "muon_absEtaMin1.24_absEtaMax1.64_invPt";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T} [1/GeV]", 200, 0, 0.5);
   hname = "muon_absEtaMin1.64_absEtaMax2.14_invPt";
   histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T} [1/GeV]", 200, 0, 0.5);
+  hname = "muon_absEtaMin2.14_absEtaMax2.5_invPt";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T} [1/GeV]", 200, 0, 0.5);
+
+  hname = "muon_absEtaMin1.24_absEtaMax2.5_invPt2";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T}^{2} [1/GeV^{2}]", 200, 0, 0.25);
+  hname = "muon_absEtaMin1.24_absEtaMax1.64_invPt2";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T}^{2} [1/GeV^{2}]", 200, 0, 0.25);
+  hname = "muon_absEtaMin1.64_absEtaMax2.14_invPt2";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T}^{2} [1/GeV^{2}]", 200, 0, 0.25);
+  hname = "muon_absEtaMin2.14_absEtaMax2.5_invPt2";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T}^{2} [1/GeV^{2}]", 200, 0, 0.25);
+
+  hname = "muon_absEtaMin1.24_absEtaMax2.5_invPt3";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T}^{3} [1/GeV^{3}]", 200, 0, 0.125);
+  hname = "muon_absEtaMin1.24_absEtaMax1.64_invPt3";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T}^{3} [1/GeV^{3}]", 200, 0, 0.125);
+  hname = "muon_absEtaMin1.64_absEtaMax2.14_invPt3";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T}^{3} [1/GeV^{3}]", 200, 0, 0.125);
+  hname = "muon_absEtaMin2.14_absEtaMax2.5_invPt3";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T}^{3} [1/GeV^{3}]", 200, 0, 0.125);
+
+  hname = "muon_absEtaMin1.24_absEtaMax2.5_invPt4";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T}^{4} [1/GeV^{4}]", 200, 0, 0.0625);
+  hname = "muon_absEtaMin1.24_absEtaMax1.64_invPt4";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T}^{4} [1/GeV^{4}]", 200, 0, 0.0625);
+  hname = "muon_absEtaMin1.64_absEtaMax2.14_invPt4";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T}^{4} [1/GeV^{4}]", 200, 0, 0.0625);
+  hname = "muon_absEtaMin2.14_absEtaMax2.5_invPt4";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T}^{4} [1/GeV^{4}]", 200, 0, 0.0625);
+
+  hname = "muon_absEtaMin1.24_absEtaMax2.5_invPt5";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T}^{5} [1/GeV^{5}]", 200, 0, 0.03125);
+  hname = "muon_absEtaMin1.24_absEtaMax1.64_invPt5";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T}^{5} [1/GeV^{5}]", 200, 0, 0.03125);
+  hname = "muon_absEtaMin1.64_absEtaMax2.14_invPt5";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T}^{5} [1/GeV^{5}]", 200, 0, 0.03125);
+  hname = "muon_absEtaMin2.14_absEtaMax2.5_invPt5";
+  histograms_[hname] = fs->make<TH1F>(hname, "; 1/p_{T}^{5} [1/GeV^{5}]", 200, 0, 0.03125);
+
+  hname = "muon_absEtaMin1.24_absEtaMax2.5_logPt";
+  histograms_[hname] = fs->make<TH1F>(hname, "; log_{2}(p_{T}) [log_{2} GeV]", 200, 1, 8);
+  hname = "muon_absEtaMin1.24_absEtaMax1.64_logPt";
+  histograms_[hname] = fs->make<TH1F>(hname, "; log_{2}(p_{T}) [log_{2} GeV]", 200, 1, 8);
+  hname = "muon_absEtaMin1.64_absEtaMax2.14_logPt";
+  histograms_[hname] = fs->make<TH1F>(hname, "; log_{2}(p_{T}) [log_{2} GeV]", 200, 1, 8);
+  hname = "muon_absEtaMin2.14_absEtaMax2.5_logPt";
+  histograms_[hname] = fs->make<TH1F>(hname, "; log_{2}(p_{T}) [log_{2} GeV]", 200, 1, 8);
+
 
   // TH2F
+  hname = "muon_pt_vs_dxy";
+  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |d_{xy}| [cm]; p_{T} [GeV]", 40, 0., 100, 200, 0, 200);
+  hname = "muon_pt_vs_dz";
+  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |d_{z}| [cm]; p_{T} [GeV]", 40, 0., 100, 200, 0, 200);
+
   hname = "muon_pt_vs_eta";
   histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |eta|; p_{T} [GeV]", 30, 0., 3.0, 200, 0, 200);
 
   hname = "muon_invPt_vs_eta";
   histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |eta|; 1/p_{T} [1/GeV]", 30, 0., 3.0, 200, 0, 0.5);
+
+  hname = "muon_invPt2_vs_eta";
+  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |eta|; 1/p_{T}^{2} [1/GeV^{2}]", 30, 0., 3.0, 200, 0, 0.25);
+
+  hname = "muon_invPt3_vs_eta";
+  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |eta|; 1/p_{T}^{3} [1/GeV^{3}]", 30, 0., 3.0, 200, 0, 0.125);
+
+  hname = "muon_invPt4_vs_eta";
+  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |eta|; 1/p_{T}^{4} [1/GeV^{4}]", 30, 0., 3.0, 200, 0, 0.0625);
+
+  hname = "muon_invPt5_vs_eta";
+  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |eta|; 1/p_{T}^{5} [1/GeV^{5}]", 30, 0., 3.0, 200, 0, 0.03125);
+
+  hname = "muon_logPt_vs_eta";
+  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |eta|; log_{2}(p_{T}) [log_{2} GeV]", 30, 0., 3.0, 200, 1, 8);
 }
 
 void MinBiasMuonAnalyzer::writeHistograms() {

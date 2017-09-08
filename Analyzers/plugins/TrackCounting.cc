@@ -250,35 +250,35 @@ void TrackCounting::process() {
     hname = "highest_muon_absEtaMin0_absEtaMax2.5_qmin12_pt";
     h = histograms_.at(hname);
     mytracks.clear();
-    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0. <= std::abs(trk.eta()) && std::abs(trk.eta()) <= 2.5) && (trk.hwQual() >= 12); });
+    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0. < std::abs(trk.eta()) && std::abs(trk.eta()) <= 2.5) && (trk.hwQual() >= 12); });
     if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
     if (!mytracks.empty())  h->Fill((highest_pt));
 
     hname = "highest_muon_absEtaMin0_absEtaMax2.1_qmin12_pt";
     h = histograms_.at(hname);
     mytracks.clear();
-    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0. <= std::abs(trk.eta()) && std::abs(trk.eta()) <= 2.1) && (trk.hwQual() >= 12); });
+    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0. < std::abs(trk.eta()) && std::abs(trk.eta()) <= 2.1) && (trk.hwQual() >= 12); });
     if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
     if (!mytracks.empty())  h->Fill((highest_pt));
 
     hname = "highest_muon_absEtaMin0_absEtaMax0.83_qmin12_pt";
     h = histograms_.at(hname);
     mytracks.clear();
-    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0. <= std::abs(trk.eta()) && std::abs(trk.eta()) <= 0.83) && (trk.hwQual() >= 12); });
+    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0. < std::abs(trk.eta()) && std::abs(trk.eta()) <= 0.83) && (trk.hwQual() >= 12); });
     if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
     if (!mytracks.empty())  h->Fill((highest_pt));
 
     hname = "highest_muon_absEtaMin0.83_absEtaMax1.24_qmin12_pt";
     h = histograms_.at(hname);
     mytracks.clear();
-    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0.83 <= std::abs(trk.eta()) && std::abs(trk.eta()) <= 1.24) && (trk.hwQual() >= 12); });
+    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0.83 < std::abs(trk.eta()) && std::abs(trk.eta()) <= 1.24) && (trk.hwQual() >= 12); });
     if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
     if (!mytracks.empty())  h->Fill((highest_pt));
 
     hname = "highest_muon_absEtaMin1.24_absEtaMax2.5_qmin12_pt";
     h = histograms_.at(hname);
     mytracks.clear();
-    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (1.24 <= std::abs(trk.eta()) && std::abs(trk.eta()) <= 2.5) && (trk.hwQual() >= 12); });
+    std::copy_if(gmtMuons_.begin(), gmtMuons_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (1.24 < std::abs(trk.eta()) && std::abs(trk.eta()) <= 2.5) && (trk.hwQual() >= 12); });
     if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
     if (!mytracks.empty())  h->Fill((highest_pt));
 
@@ -326,28 +326,28 @@ void TrackCounting::process() {
     hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt";
     h = histograms_.at(hname);
     mytracks.clear();
-    std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0. <= std::abs(trk.Eta()) && std::abs(trk.Eta()) <= 2.5) && (trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
+    std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0. < std::abs(trk.Eta()) && std::abs(trk.Eta()) <= 2.5) && (trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
     if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
     if (!mytracks.empty())  h->Fill((highest_pt));
 
     hname = "highest_emtf_absEtaMin1.24_absEtaMax1.64_qmin12_pt";
     h = histograms_.at(hname);
     mytracks.clear();
-    std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (1.24 <= std::abs(trk.Eta()) && std::abs(trk.Eta()) <= 1.64) && (trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
+    std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (1.24 < std::abs(trk.Eta()) && std::abs(trk.Eta()) <= 1.64) && (trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
     if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
     if (!mytracks.empty())  h->Fill((highest_pt));
 
     hname = "highest_emtf_absEtaMin1.64_absEtaMax2.14_qmin12_pt";
     h = histograms_.at(hname);
     mytracks.clear();
-    std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (1.64 <= std::abs(trk.Eta()) && std::abs(trk.Eta()) <= 2.14) && (trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
+    std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (1.64 < std::abs(trk.Eta()) && std::abs(trk.Eta()) <= 2.14) && (trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
     if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
     if (!mytracks.empty())  h->Fill((highest_pt));
 
     hname = "highest_emtf_absEtaMin2.14_absEtaMax2.5_qmin12_pt";
     h = histograms_.at(hname);
     mytracks.clear();
-    std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (2.14 <= std::abs(trk.Eta()) && std::abs(trk.Eta()) <= 2.5) && (trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
+    std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (2.14 < std::abs(trk.Eta()) && std::abs(trk.Eta()) <= 2.5) && (trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
     if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
     if (!mytracks.empty())  h->Fill((highest_pt));
 

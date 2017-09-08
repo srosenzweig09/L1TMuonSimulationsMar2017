@@ -9,7 +9,7 @@ process.load("FWCore.MessageService.MessageLogger_cfi")
 
 # Number of events
 process.maxEvents = cms.untracked.PSet(
-    input = cms.untracked.int32(200000)
+    input = cms.untracked.int32(50000)
 )
 
 # Input source
@@ -21,7 +21,7 @@ process.options = cms.untracked.PSet()
 
 # TFileService
 process.TFileService = cms.Service("TFileService",
-    fileName = cms.string("histos.root"),
+    fileName = cms.string("minbiasmuonanalyzer.root"),
     closeFileFast = cms.untracked.bool(True),
 )
 
