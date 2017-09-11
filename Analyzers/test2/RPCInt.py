@@ -11,7 +11,8 @@ process.source = cms.Source("PoolSource",
     secondaryFileNames = cms.untracked.vstring(),
     inputCommands = cms.untracked.vstring('keep *', 'drop *_simEmtfDigis_*_*', 'drop *_simGmtStage2Digis_*_*', 'drop *_simGtStage2Digis_*_*'),
 )
-process.maxEvents.input = cms.untracked.int32(-1)
+#process.maxEvents.input = cms.untracked.int32(-1)
+process.maxEvents.input = cms.untracked.int32(200000)
 
 fileNames = [
     "/store/user/jiafulow/L1MuonTrigger/P2_9_2_0/SingleMuon_PositiveEndCap/ParticleGuns/CRAB3/170613_001230/0000/SingleMuon_PositiveEndCap_71.root",
