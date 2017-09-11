@@ -114,7 +114,7 @@ if True:
     process.load("L1TMuonSimulations.Analyzers.rpcintegration_cfi")
     process.trackcounting.outFileName = "rateplots_mc.root"
     process.trackcounting.verbosity = 1
-    process.p = cms.Path(process.trackcounting)
+    process.p = cms.Path(process.simEmtfDigis * process.trackcounting)
     use_fs_trackcounting(process)
 
 process.schedule = cms.Schedule(process.raw2digi_step, process.L1TReEmulPath, process.p)
