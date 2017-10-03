@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from ROOT import TFile, TH1, TH1F, TH2F, TProfile, TGraphAsymmErrors, TEfficiency, TColor, TLine, TLegend, TLatex, gROOT, gStyle, gPad
+from ROOT import TFile, TH1, TH1F, TH2F, TF1, TProfile, TGraphAsymmErrors, TEfficiency, TCanvas, TColor, TLine, TLegend, TLatex, gROOT, gStyle, gPad
 
 import os
 import argparse
