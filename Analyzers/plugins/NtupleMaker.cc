@@ -103,7 +103,7 @@ private:
   std::unique_ptr<std::vector<int16_t> >  vh_cscid;
   std::unique_ptr<std::vector<int16_t> >  vh_bx;
   std::unique_ptr<std::vector<int16_t> >  vh_type;  // subsystem: DT=0,CSC=1,RPC=2,GEM=3
-  std::unique_ptr<std::vector<bool> >     vh_neighbor;
+  std::unique_ptr<std::vector<int16_t> >  vh_neighbor;
   //
   std::unique_ptr<std::vector<int16_t> >  vh_strip;
   std::unique_ptr<std::vector<int16_t> >  vh_wire;
@@ -126,6 +126,7 @@ private:
 
   // Tracks
   std::unique_ptr<std::vector<float  > >  vt_pt;
+  std::unique_ptr<std::vector<float  > >  vt_xml_pt;
   std::unique_ptr<std::vector<float  > >  vt_phi;
   std::unique_ptr<std::vector<float  > >  vt_eta;
   std::unique_ptr<std::vector<float  > >  vt_theta;
@@ -430,6 +431,7 @@ void NtupleMaker::process() {
   // Tracks
   for (const auto& trk : emuTracks_) {
     vt_pt         ->push_back(trk.Pt());
+    vt_xml_pt     ->push_back(trk.Pt_XML());
     vt_phi        ->push_back(trk.Phi_glob());
     vt_eta        ->push_back(trk.Eta());
     vt_theta      ->push_back(trk.Theta());
@@ -513,6 +515,7 @@ void NtupleMaker::process() {
 
   // Tracks
   vt_pt         ->clear();
+  vt_xml_pt     ->clear();
   vt_phi        ->clear();
   vt_eta        ->clear();
   vt_theta      ->clear();
@@ -563,7 +566,7 @@ void NtupleMaker::makeTree() {
   vh_cscid      .reset(new std::vector<int16_t>());
   vh_bx         .reset(new std::vector<int16_t>());
   vh_type       .reset(new std::vector<int16_t>());
-  vh_neighbor   .reset(new std::vector<bool   >());
+  vh_neighbor   .reset(new std::vector<int16_t>());
   //
   vh_strip      .reset(new std::vector<int16_t>());
   vh_wire       .reset(new std::vector<int16_t>());
@@ -586,6 +589,7 @@ void NtupleMaker::makeTree() {
 
   // Tracks
   vt_pt         .reset(new std::vector<float  >());
+  vt_xml_pt     .reset(new std::vector<float  >());
   vt_phi        .reset(new std::vector<float  >());
   vt_eta        .reset(new std::vector<float  >());
   vt_theta      .reset(new std::vector<float  >());
@@ -643,6 +647,7 @@ void NtupleMaker::makeTree() {
 
   // Tracks
   tree->Branch("vt_pt"        , &(*vt_pt        ));
+  tree->Branch("vt_xml_pt"    , &(*vt_xml_pt    ));
   tree->Branch("vt_phi"       , &(*vt_phi       ));
   tree->Branch("vt_eta"       , &(*vt_eta       ));
   tree->Branch("vt_theta"     , &(*vt_theta     ));
