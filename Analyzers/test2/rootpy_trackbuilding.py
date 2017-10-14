@@ -152,7 +152,7 @@ histogram2Ds[hname] = Hist2D(50, 0, 0.5, 160, -0.2, 0.2, name=hname, title="; ge
 hname = "h2_dinvpt_vs_invpt_mode15"
 histogram2Ds[hname] = Hist2D(50, 0, 0.5, 300, -0.3, 0.3, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(1/p_{T})", type='F')
 hname = "h2_dpt_vs_invpt_mode15"
-histogram2Ds[hname] = Hist2D(50, 0, 0.5, 400, -2, 2, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
+histogram2Ds[hname] = Hist2D(50, 0, 0.5, 300, -1, 2, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
 
 
 
@@ -310,13 +310,14 @@ for ievt, evt in enumerate(tree):
   # pT resolution
   # (only make sense for the actual full sim sample)
 
-  for itrk, trk in enumerate(evt.tracks):
-    if trk.mode == 15:
-      #residual = 1.0/trk.pt - 1.0/mypart.pt
-      residual = 1.0/trk.xml_pt - 1.0/mypart.pt
-      histogram2Ds["h2_dinvpt_vs_invpt_mode15"].fill(1.0/mypart.pt, residual)
-      histogram2Ds["h2_dpt_vs_invpt_mode15"].fill(1.0/mypart.pt, residual * mypart.pt)
-      break
+  if mypart.pt > 3.:
+    for itrk, trk in enumerate(evt.tracks):
+      if trk.mode == 15:
+        #residual = 1.0/trk.pt - 1.0/mypart.pt
+        residual = 1.0/trk.xml_pt - 1.0/mypart.pt
+        histogram2Ds["h2_dinvpt_vs_invpt_mode15"].fill(1.0/mypart.pt, residual)
+        histogram2Ds["h2_dpt_vs_invpt_mode15"].fill(1.0/mypart.pt, residual * mypart.pt)
+        break
 
 
   continue  # end loop over event
@@ -517,6 +518,7 @@ if make_plots:
       h_pfx.Reset()
       h_pfx.SetBins(50, 0, 50)
       h_pfx.GetXaxis().SetTitle("gen p_{T} [GeV]")
+      h_pfx.GetYaxis().SetTitle("#Delta(p_{T})/p_{T} mean")
       h_pfx.SetMaximum(1.2)
       h_pfx.SetMinimum(-0.2)
       h_pfx.Draw()
@@ -531,6 +533,7 @@ if make_plots:
       h_pfx.Reset()
       h_pfx.SetBins(50, 0, 50)
       h_pfx.GetXaxis().SetTitle("gen p_{T} [GeV]")
+      h_pfx.GetYaxis().SetTitle("#Delta(p_{T})/p_{T} resolution")
       h_pfx.SetMaximum(1.2)
       h_pfx.SetMinimum(-0.2)
       h_pfx.Draw()
