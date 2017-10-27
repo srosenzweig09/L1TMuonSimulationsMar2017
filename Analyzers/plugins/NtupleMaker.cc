@@ -135,6 +135,7 @@ private:
   std::unique_ptr<std::vector<int16_t> >  vt_mode;
   std::unique_ptr<std::vector<int16_t> >  vt_endcap;
   std::unique_ptr<std::vector<int16_t> >  vt_sector;
+  std::unique_ptr<std::vector<int16_t> >  vt_bx;
   //
   std::unique_ptr<int32_t              >  vt_size;
 
@@ -440,6 +441,7 @@ void NtupleMaker::process() {
     vt_mode       ->push_back(trk.Mode());
     vt_endcap     ->push_back(trk.Endcap());
     vt_sector     ->push_back(trk.Sector());
+    vt_bx         ->push_back(trk.BX());
   }
   (*vt_size) = emuTracks_.size();
 
@@ -524,6 +526,7 @@ void NtupleMaker::process() {
   vt_mode       ->clear();
   vt_endcap     ->clear();
   vt_sector     ->clear();
+  vt_bx         ->clear();
   //
   (*vt_size)    = 0;
 
@@ -598,6 +601,7 @@ void NtupleMaker::makeTree() {
   vt_mode       .reset(new std::vector<int16_t>());
   vt_endcap     .reset(new std::vector<int16_t>());
   vt_sector     .reset(new std::vector<int16_t>());
+  vt_bx         .reset(new std::vector<int16_t>());
   //
   vt_size       .reset(new int32_t(0)            );
 
@@ -656,6 +660,7 @@ void NtupleMaker::makeTree() {
   tree->Branch("vt_mode"      , &(*vt_mode      ));
   tree->Branch("vt_endcap"    , &(*vt_endcap    ));
   tree->Branch("vt_sector"    , &(*vt_sector    ));
+  tree->Branch("vt_bx"        , &(*vt_bx        ));
   //
   tree->Branch("vt_size"      , &(*vt_size      ));
 
