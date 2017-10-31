@@ -188,6 +188,11 @@ void MinBiasMuonAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetu
     histogram2Ds_["muon_logPt_vs_eta"]->Fill(absEta, logPt);
   }
 
+  // number of events
+  {
+    histograms_["nevents"]->Fill(1.0);
+  }
+
 }
 
 void MinBiasMuonAnalyzer::beginJob() {
@@ -282,25 +287,30 @@ void MinBiasMuonAnalyzer::bookHistograms() {
   histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |d_{z}| [cm]; p_{T} [GeV]", 40, 0., 100, 200, 0, 200);
 
   hname = "muon_pt_vs_eta";
-  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |eta|; p_{T} [GeV]", 30, 0., 3.0, 200, 0, 200);
+  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |#eta|; p_{T} [GeV]", 30, 0., 3.0, 200, 0, 200);
 
   hname = "muon_invPt_vs_eta";
-  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |eta|; 1/p_{T} [1/GeV]", 30, 0., 3.0, 200, 0, 0.5);
+  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |#eta|; 1/p_{T} [1/GeV]", 30, 0., 3.0, 200, 0, 0.5);
 
   hname = "muon_invPt2_vs_eta";
-  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |eta|; 1/p_{T}^{2} [1/GeV^{2}]", 30, 0., 3.0, 200, 0, 0.25);
+  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |#eta|; 1/p_{T}^{2} [1/GeV^{2}]", 30, 0., 3.0, 200, 0, 0.25);
 
   hname = "muon_invPt3_vs_eta";
-  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |eta|; 1/p_{T}^{3} [1/GeV^{3}]", 30, 0., 3.0, 200, 0, 0.125);
+  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |#eta|; 1/p_{T}^{3} [1/GeV^{3}]", 30, 0., 3.0, 200, 0, 0.125);
 
   hname = "muon_invPt4_vs_eta";
-  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |eta|; 1/p_{T}^{4} [1/GeV^{4}]", 30, 0., 3.0, 200, 0, 0.0625);
+  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |#eta|; 1/p_{T}^{4} [1/GeV^{4}]", 30, 0., 3.0, 200, 0, 0.0625);
 
   hname = "muon_invPt5_vs_eta";
-  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |eta|; 1/p_{T}^{5} [1/GeV^{5}]", 30, 0., 3.0, 200, 0, 0.03125);
+  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |#eta|; 1/p_{T}^{5} [1/GeV^{5}]", 30, 0., 3.0, 200, 0, 0.03125);
 
   hname = "muon_logPt_vs_eta";
-  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |eta|; log_{2}(p_{T}) [log_{2} GeV]", 30, 0., 3.0, 200, 1, 8);
+  histogram2Ds_[hname] = fs->make<TH2F>(hname, "; |#eta|; log_{2}(p_{T}) [log_{2} GeV]", 30, 0., 3.0, 200, 1, 8);
+
+
+  // bookkeeping
+  hname = "nevents";
+  histograms_[hname] = fs->make<TH1F>(hname, "; count", 5, 0, 5);
 }
 
 void MinBiasMuonAnalyzer::writeHistograms() {
