@@ -185,7 +185,7 @@ hnames = [
   "h2_dtheta_vs_invpt_st1", "h2_dtheta_vs_invpt_st2", "h2_dtheta_vs_invpt_st3", "h2_dtheta_vs_invpt_st4",
 ]
 
-for fr in ['f', 'r']:
+for fr in ['f', 'r', 'g']:  # quick hack: 'g' for GEM/iRPC
   for hname in hnames:
     h = histogram2Ds[hname]
     hname1 = h.GetName() + fr
@@ -246,15 +246,16 @@ for ievt, evt in enumerate(tree):
 
   # Fill histograms
   for ihit, hit in enumerate(evt.hits):
-    if hit.type == kCSC and not bool(hit.neighbor):
 
+    # Convert to radians
+    hit_sim_phi = deg_to_rad(hit.sim_phi)
+    hit_sim_theta = deg_to_rad(hit.sim_theta)
+
+    if hit.type == kCSC and not bool(hit.neighbor):
       if hit.fr == 1:
         fr_lambda = lambda x: x + 'f'
       else:
         fr_lambda = lambda x: x + 'r'
-
-      hit_sim_phi = deg_to_rad(hit.sim_phi)
-      hit_sim_theta = deg_to_rad(hit.sim_theta)
 
       if hit.station == 1 and (hit.ring == 1 or hit.ring == 4):
         histogram2Ds["h2_fr_vs_pt_st1"].fill(mypart.pt, hit.fr)
@@ -291,6 +292,27 @@ for ievt, evt in enumerate(tree):
         histogram2Ds[fr_lambda("h2_dphi_vs_invpt_st4")].fill(1.0/mypart.pt, delta_phi(hit_sim_phi, mypart.phi))
         histogram2Ds["h2_dtheta_vs_pt_st4"].fill(mypart.pt, delta_theta(hit_sim_theta, mypart.theta))
         histogram2Ds["h2_dtheta_vs_invpt_st4"].fill(1.0/mypart.pt, delta_theta(hit_sim_theta, mypart.theta))
+        histogram2Ds[fr_lambda("h2_dtheta_vs_invpt_st4")].fill(1.0/mypart.pt, delta_theta(hit_sim_theta, mypart.theta))
+
+
+    if (hit.type == kRPC or hit.type == kGEM) and not bool(hit.neighbor):
+      fr_lambda = lambda x: x + 'g'
+
+      if hit.station == 1 and (hit.ring == 1 or hit.ring == 4):
+        assert(hit.type == kGEM)
+        histogram2Ds[fr_lambda("h2_dphi_vs_invpt_st1")].fill(1.0/mypart.pt, delta_phi(hit_sim_phi, mypart.phi))
+        histogram2Ds[fr_lambda("h2_dtheta_vs_invpt_st1")].fill(1.0/mypart.pt, delta_theta(hit_sim_theta, mypart.theta))
+      elif hit.station == 2 and hit.ring == 1:
+        assert(hit.type == kGEM)
+        histogram2Ds[fr_lambda("h2_dphi_vs_invpt_st2")].fill(1.0/mypart.pt, delta_phi(hit_sim_phi, mypart.phi))
+        histogram2Ds[fr_lambda("h2_dtheta_vs_invpt_st2")].fill(1.0/mypart.pt, delta_theta(hit_sim_theta, mypart.theta))
+      elif hit.station == 3 and hit.ring == 1:
+        assert(hit.type == kRPC)
+        histogram2Ds[fr_lambda("h2_dphi_vs_invpt_st3")].fill(1.0/mypart.pt, delta_phi(hit_sim_phi, mypart.phi))
+        histogram2Ds[fr_lambda("h2_dtheta_vs_invpt_st3")].fill(1.0/mypart.pt, delta_theta(hit_sim_theta, mypart.theta))
+      elif hit.station == 4 and hit.ring == 1:
+        assert(hit.type == kRPC)
+        histogram2Ds[fr_lambda("h2_dphi_vs_invpt_st4")].fill(1.0/mypart.pt, delta_phi(hit_sim_phi, mypart.phi))
         histogram2Ds[fr_lambda("h2_dtheta_vs_invpt_st4")].fill(1.0/mypart.pt, delta_theta(hit_sim_theta, mypart.theta))
 
 
@@ -390,13 +412,15 @@ if make_plots:
     hnames = [
       "h2_dphi_vs_invpt_st1f", "h2_dphi_vs_invpt_st2f", "h2_dphi_vs_invpt_st3r", "h2_dphi_vs_invpt_st4r",
       "h2_dtheta_vs_invpt_st1f", "h2_dtheta_vs_invpt_st2f", "h2_dtheta_vs_invpt_st3r", "h2_dtheta_vs_invpt_st4r",
+      #"h2_dphi_vs_invpt_st1g", "h2_dphi_vs_invpt_st2g", "h2_dphi_vs_invpt_st3g", "h2_dphi_vs_invpt_st4g",
+      #"h2_dtheta_vs_invpt_st1g", "h2_dtheta_vs_invpt_st2g", "h2_dtheta_vs_invpt_st3g", "h2_dtheta_vs_invpt_st4g",
     ]
 
     for hname in hnames:
       h = histogram2Ds[hname]
       h.Draw("COLZ")
       gPad.Print(hname+".png")
-      h.RebinX(2)
+      #h.RebinX(2)
 
       h_pfx = h.ProfileX(hname+"_pfx", 1, -1, "s")
       if "dphi" in hname:
@@ -438,10 +462,10 @@ if make_plots:
         h_pfx.SetMinimum(-0.2)
       h_pfx.Draw()
       gr1.Draw("p")
-      gr1.Fit("pol1", "", "", 0.025, 0.2499)
-      #fa1 = TF1("fa1", "[0]*x")
-      #gr1.Fit("fa1", "", "", 0.025, 0.2499)
-      #bookkeeping1.append(fa1.GetParameter(0))
+      #gr1.Fit("pol1", "", "", 0.025, 0.2499)
+      fa1 = TF1("fa1", "[0]*x")
+      gr1.Fit("fa1", "", "", 0.025, 0.2499)
+      bookkeeping1.append(fa1.GetParameter(0))
       gPad.Print(h_pfx.GetName()+".png")
 
       hname2 = hname.replace("_vs_invpt", "_vs_invpt_snq2")
@@ -451,10 +475,10 @@ if make_plots:
       h_pfx.SetMinimum(0)
       h_pfx.Draw()
       gr2.Draw("p")
-      gr2.Fit("pol1", "", "", 0.025, 0.2499)
-      #fa1 = TF1("fa1", "[0]")
-      #gr2.Fit("fa1", "", "", 0.025, 0.2499)
-      #bookkeeping2.append(fa1.GetParameter(0))
+      #gr2.Fit("pol1", "", "", 0.025, 0.2499)
+      fa1 = TF1("fa1", "[0]")
+      gr2.Fit("fa1", "", "", 0.025, 0.2499)
+      bookkeeping2.append(fa1.GetParameter(0))
       gPad.Print(h_pfx.GetName()+".png")
 
 
