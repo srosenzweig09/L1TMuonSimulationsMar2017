@@ -2,12 +2,12 @@
 # using: 
 # Revision: 1.19 
 # Source: /local/reps/CMSSW/CMSSW/Configuration/Applications/python/ConfigBuilder.py,v 
-# with command line options: L1TMuonSimulations/Configuration/python/TSG-PhaseIISpring17GS-00008-fragment.py --step GEN,SIM,DIGI:pdigi_valid,L1,L1TrackTrigger,DIGI2RAW,RAW2DIGI --mc --eventcontent RAWSIM --datatier GEN-SIM-DIGI-RAW --processName RAWSIM --conditions auto:phase2_realistic --beamspot HLLHC14TeV --geometry Extended2023D17 --era Phase2C2_timing --pileup AVE_140_BX_25ns --pileup_input dummy.root --python_filename pset_SingleNeutrino.py --fileout file:SingleNeutrino.root --no_exec --nThreads 4 -n 100
+# with command line options: L1TMuonSimulations/Configuration/python/TSG-PhaseIISpring17GS-00008-fragment.py --step GEN,SIM,DIGI:pdigi_valid,L1,L1TrackTrigger,DIGI2RAW,RAW2DIGI --mc --eventcontent RAWSIM --datatier GEN-SIM-DIGI-RAW --processName RAWSIM --geometry DB:Extended --conditions 90X_upgrade2017_realistic_v20 --era Run2_2017 --pileup AVE_140_BX_25ns --pileup_input dummy.root --python_filename pset_SingleNeutrino_r281707_run2.py --fileout file:SingleNeutrino_r281707_run2.root --no_exec --nThreads 4 -n 100
 import FWCore.ParameterSet.Config as cms
 
 from Configuration.StandardSequences.Eras import eras
 
-process = cms.Process('RAWSIM',eras.Phase2C2_timing)
+process = cms.Process('RAWSIM',eras.Run2_2017)
 
 # import of standard configurations
 process.load('Configuration.StandardSequences.Services_cff')
@@ -15,11 +15,11 @@ process.load('SimGeneral.HepPDTESSource.pythiapdt_cfi')
 process.load('FWCore.MessageService.MessageLogger_cfi')
 process.load('Configuration.EventContent.EventContent_cff')
 process.load('SimGeneral.MixingModule.mix_POISSON_average_cfi')
-process.load('Configuration.Geometry.GeometryExtended2023D17Reco_cff')
-process.load('Configuration.Geometry.GeometryExtended2023D17_cff')
+process.load('Configuration.StandardSequences.GeometryRecoDB_cff')
+process.load('Configuration.StandardSequences.GeometrySimDB_cff')
 process.load('Configuration.StandardSequences.MagneticField_cff')
 process.load('Configuration.StandardSequences.Generator_cff')
-process.load('IOMC.EventVertexGenerators.VtxSmearedHLLHC14TeV_cfi')
+process.load('IOMC.EventVertexGenerators.VtxSmearedRealistic50ns13TeVCollision_cfi')
 process.load('GeneratorInterface.Core.genFilterSummary_cff')
 process.load('Configuration.StandardSequences.SimIdeal_cff')
 process.load('Configuration.StandardSequences.Digi_cff')
@@ -61,7 +61,7 @@ process.RAWSIMoutput = cms.OutputModule("PoolOutputModule",
         filterName = cms.untracked.string('')
     ),
     eventAutoFlushCompressedSize = cms.untracked.int32(20971520),
-    fileName = cms.untracked.string('file:SingleNeutrino_r281707.root'),
+    fileName = cms.untracked.string('file:SingleNeutrino_r305310_run2.root'),
     outputCommands = process.RAWSIMEventContent.outputCommands,
     splitLevel = cms.untracked.int32(0)
 )
@@ -70,7 +70,7 @@ process.RAWSIMoutput = cms.OutputModule("PoolOutputModule",
 
 # Other statements
 #process.mix.input.nbPileupEvents.averageNumber = cms.double(140.000000)
-from L1TMuonSimulations.Configuration.mix_input_probFunction_r281707_cfi import nbPileupEvents
+from L1TMuonSimulations.Configuration.mix_input_probFunction_r305310_cfi import nbPileupEvents
 process.mix.input.nbPileupEvents = nbPileupEvents
 process.mix.input.type = cms.string('probFunction')
 process.mix.bunchspace = cms.int32(25)
@@ -79,10 +79,12 @@ process.mix.maxBunch = cms.int32(3)
 process.mix.manage_OOT = cms.untracked.bool(True)  ## manage out-of-time pileup
 process.mix.OOT_type = cms.untracked.string('Poisson')  ## generate OOT with a Poisson matching the number chosen for in-time
 process.mix.input.fileNames = cms.untracked.vstring(['dummy.root'])
+
+process.XMLFromDBSource.label = cms.string("Extended")
 process.genstepfilter.triggerConditions=cms.vstring("generation_step")
 process.mix.digitizers = cms.PSet(process.theDigitizersValid)
 from Configuration.AlCa.GlobalTag import GlobalTag
-process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic', '')
+process.GlobalTag = GlobalTag(process.GlobalTag, '92X_upgrade2017_realistic_v2', '')
 
 process.generator = cms.EDProducer("FlatRandomEGunProducer",
     AddAntiParticle = cms.bool(False),
@@ -138,7 +140,7 @@ process = customiseEarlyDelete(process)
 # Modify pileup
 if True:
   from L1TMuonSimulations.Configuration.tools import *
-  txt = 'L1TMuonSimulations/Configuration/data/input_MinBias.txt'
+  txt = 'L1TMuonSimulations/Configuration/data/input_MinBias_RunIISummer17GS.txt'
   txt = os.path.join(os.environ['CMSSW_BASE'], 'src', txt)
   fileNames_txt = loadFromFile(txt)
   process.mix.input.fileNames = fileNames_txt
@@ -167,6 +169,12 @@ if False:
 if True:
     from L1Trigger.L1TMuonEndCap.customise_Phase2C2 import customise as customise_Phase2C2
     process = customise_Phase2C2(process)
+if True:
+    process.schedule.remove(process.L1TrackTrigger_step)
+    process.simEmtfDigis.GEMEnable                   = False
+    process.simEmtfDigis.IRPCEnable                  = False
+    process.simEmtfDigis.ME0Enable                   = False
+    process.simEmtfDigis.TTEnable                    = False
 process.step1 = cms.Path((process.simCscTriggerPrimitiveDigis) + process.simEmtfDigis)
 
 

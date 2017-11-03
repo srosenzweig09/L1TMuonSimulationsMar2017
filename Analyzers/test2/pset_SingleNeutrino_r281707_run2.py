@@ -146,7 +146,7 @@ if True:
 
 # Modify output
 process.RAWSIMoutput.outputCommands += ['keep *_mix_MergedTrackTruth_*', 'keep *_mix_Tracker_*']
-process.RAWSIMoutput.outputCommands += ['keep *_genParticles_*_*', 'keep *_simCscTriggerPrimitiveDigis_*_*', 'keep *_simMuonRPCDigis_*_*', 'keep *_simMuonGEMDigis_*_*', 'keep *_simMuonGEMPadDigis_*_*', 'keep *_simMuonGEMPadDigiClusters_*_*', 'keep *_simMuonME0Digis_*_*', 'keep *_simMuonME0ReDigis_*_*', 'keep *_simEmtfDigis*_*_*', 'keep *_simGmtStage2Digis_*_*', 'keep *_TTClustersFromPhase2TrackerDigis_*_*', 'keep *_TTStubsFromPhase2TrackerDigis_*_*']
+process.RAWSIMoutput.outputCommands += ['keep *_genParticles_*_*', 'keep *_simDtTriggerPrimitiveDigis_*_*', 'keep *_simCscTriggerPrimitiveDigis_*_*', 'keep *_simMuonDTDigis_*_*', 'keep *_simMuonCSCDigis_*_*', 'keep *_simMuonRPCDigis_*_*', 'keep *_simMuonGEMDigis_*_*', 'keep *_simMuonGEMPadDigis_*_*', 'keep *_simMuonME0Digis_*_*', 'keep *_simMuonME0ReDigis_*_*', 'keep *_simMuonME0PadDigis_*_*', 'keep *_simEmtfDigis*_*_*', 'keep *_simGmtStage2Digis_*_*', 'keep *_TTClustersFromPhase2TrackerDigis_*_*', 'keep *_TTStubsFromPhase2TrackerDigis_*_*']
 
 # My paths and schedule definitions
 print("[INFO] Using GlobalTag: %s" % process.GlobalTag.globaltag.value())
@@ -172,6 +172,7 @@ if True:
     process.schedule.remove(process.L1TrackTrigger_step)
     process.simEmtfDigis.GEMEnable                   = False
     process.simEmtfDigis.IRPCEnable                  = False
+    process.simEmtfDigis.ME0Enable                   = False
     process.simEmtfDigis.TTEnable                    = False
 process.step1 = cms.Path((process.simCscTriggerPrimitiveDigis) + process.simEmtfDigis)
 
