@@ -45,5 +45,5 @@ minbiasmuonanalyzer = cms.EDAnalyzer('MinBiasMuonAnalyzer',
 )
 
 def use_fs_minbiasmuonanalyzer(process):
-    process.TFileService.fileName = process.ntupler.outFileName.value()
+    process.TFileService.fileName = process.minbiasmuonanalyzer.outFileName.value()
 

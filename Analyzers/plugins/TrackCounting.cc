@@ -8,11 +8,8 @@
 #include <cstdint>
 
 #include "TString.h"
-#include "TFile.h"
 #include "TH1F.h"
 #include "TH2F.h"
-#include "TEfficiency.h"
-#include "TTree.h"
 
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/one/EDAnalyzer.h"
@@ -22,7 +19,6 @@
 #include "FWCore/Framework/interface/Event.h"
 #include "FWCore/Framework/interface/MakerMacros.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
-#include "FWCore/MessageLogger/interface/MessageLogger.h"
 
 #include "DataFormats/HepMCCandidate/interface/GenParticle.h"
 #include "DataFormats/HepMCCandidate/interface/GenParticleFwd.h"
@@ -386,7 +382,6 @@ void TrackCounting::process() {
 
 }
 
-
 // _____________________________________________________________________________
 void TrackCounting::beginJob() {
   bookHistograms();
@@ -399,75 +394,56 @@ void TrackCounting::endJob() {
 // _____________________________________________________________________________
 void TrackCounting::bookHistograms() {
   TString hname;
-  TH1F* h;
+
+  TH1::SetDefaultSumw2();
 
   // number of events
   hname = "nevents";
-  h = new TH1F(hname, "; count", 5, 0, 5);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; count", 5, 0, 5);
 
   // number of vertices
   hname = "nvertices";
-  h = new TH1F(hname, "; # of vertices", 300, 0, 300);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; # of vertices", 300, 0, 300);
   hname = "nvertices_a";
-  h = new TH1F(hname, "; # of vertices", 300, 0, 300);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; # of vertices", 300, 0, 300);
 
   // uGMT
   hname = "highest_muon_absEtaMin0_absEtaMax2.5_qmin12_pt";
-  h = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
   hname = "highest_muon_absEtaMin0_absEtaMax2.1_qmin12_pt";
-  h = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
   hname = "highest_muon_absEtaMin0_absEtaMax0.83_qmin12_pt";
-  h = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
   hname = "highest_muon_absEtaMin0.83_absEtaMax1.24_qmin12_pt";
-  h = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
   hname = "highest_muon_absEtaMin1.24_absEtaMax2.5_qmin12_pt";
-  h = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
   hname = "muon_ptmin10_qmin12_eta";
-  h = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
   hname = "muon_ptmin14_qmin12_eta";
-  h = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
   hname = "muon_ptmin20_qmin12_eta";
-  h = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
   hname = "muon_ptmin22_qmin12_eta";
-  h = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
 
   // emtf
   hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt";
-  h = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
   hname = "highest_emtf_absEtaMin1.24_absEtaMax1.64_qmin12_pt";
-  h = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
   hname = "highest_emtf_absEtaMin1.64_absEtaMax2.14_qmin12_pt";
-  h = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
   hname = "highest_emtf_absEtaMin2.14_absEtaMax2.5_qmin12_pt";
-  h = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
   hname = "emtf_ptmin10_qmin12_eta";
-  h = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
   hname = "emtf_ptmin14_qmin12_eta";
-  h = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
   hname = "emtf_ptmin20_qmin12_eta";
-  h = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
   hname = "emtf_ptmin22_qmin12_eta";
-  h = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
-  histograms_[hname] = h;
+  histograms_[hname] = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
 }
 
 void TrackCounting::writeHistograms() {
@@ -501,11 +477,11 @@ void TrackCounting::writeHistograms() {
 
 // _____________________________________________________________________________
 void TrackCounting::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
-    //The following says we do not know what parameters are allowed so do no validation
-    // Please change this to state exactly what you do use, even if it is no parameters
-    edm::ParameterSetDescription desc;
-    desc.setUnknown();
-    descriptions.addDefault(desc);
+  //The following says we do not know what parameters are allowed so do no validation
+  // Please change this to state exactly what you do use, even if it is no parameters
+  edm::ParameterSetDescription desc;
+  desc.setUnknown();
+  descriptions.addDefault(desc);
 }
 
 // _____________________________________________________________________________
