@@ -119,9 +119,14 @@ if True:
     process.trackcounting.verbosity = 1
     process.minbiasmuonanalyzer.outFileName = "rateplots_mc.root"
     process.minbiasmuonanalyzer.verbosity = 1
-    process.p = cms.Path(process.simEmtfDigis * process.trackcounting * process.minbiasmuonanalyzer)
+    process.ntupler.gemDigiSimLinksTag = ""
+    process.ntupler.outFileName = "rateplots_mc.root"
+    process.ntupler.verbosity = 0
+
+    process.p = cms.Path(process.simEmtfDigis * process.trackcounting * process.minbiasmuonanalyzer * process.ntupler)
     use_fs_trackcounting(process)
     use_fs_minbiasmuonanalyzer(process)
+    use_fs_ntupler(process)
 
 #process.schedule = cms.Schedule(process.raw2digi_step, process.L1TReEmulPath, process.p)
 process.schedule = cms.Schedule(process.p)

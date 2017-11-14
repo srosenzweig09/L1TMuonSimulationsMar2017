@@ -29,8 +29,20 @@ ntupler = cms.EDAnalyzer('NtupleMaker',
     emuTrackTag = cms.InputTag('simEmtfDigis'),
     genPartTag = cms.InputTag('genParticles'),
     trkPartTag = cms.InputTag('mix', 'MergedTrackTruth'),
+
+    cscSimHitsTag = cms.InputTag('g4SimHits','MuonCSCHits'),
+    cscSimHitsXFTag = cms.InputTag('mix', 'g4SimHitsMuonCSCHits'),
+    cscStripSimLinksTag = cms.InputTag('simMuonCSCDigis', 'MuonCSCStripDigiSimLinks'),
+    cscWireSimLinksTag = cms.InputTag('simMuonCSCDigis', 'MuonCSCWireDigiSimLinks'),
+    rpcSimHitsTag = cms.InputTag('g4SimHits','MuonRPCHits'),
+    rpcSimHitsXFTag = cms.InputTag('mix', 'g4SimHitsMuonRPCHits'),
+    rpcDigiSimLinksTag = cms.InputTag('simMuonRPCDigis', 'RPCDigiSimLink'),
+    gemSimHitsTag = cms.InputTag('g4SimHits','MuonGEMHits'),
+    gemSimHitsXFTag = cms.InputTag('mix', 'g4SimHitsMuonGEMHits'),
+    gemDigiSimLinksTag = cms.InputTag('simMuonGEMDigis', 'GEM'),
+
     outFileName = cms.string('ntuple.root'),
-    docString = cms.string(''),
+    docString = cms.string(''),  # Unused
     verbosity = cms.untracked.int32(0),
 )
 

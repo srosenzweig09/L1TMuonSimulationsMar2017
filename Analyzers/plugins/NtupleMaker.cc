@@ -31,8 +31,9 @@
 
 #include "DataFormats/L1TMuon/interface/EMTFHit.h"
 #include "DataFormats/L1TMuon/interface/EMTFTrack.h"
-
 #include "L1Trigger/L1TMuonEndCap/interface/TrackTools.h"
+
+#include "L1TMuonSimulations/Analyzers/interface/EMTFMCTruth.h"
 
 
 // From L1Trigger/L1TMuonEndCap/interface/MuonTriggerPrimitive.h
@@ -65,18 +66,19 @@ private:
   void process();
 
   // Aux functions
-  void getHandles(const edm::Event& iEvent);
+  void getHandles(const edm::Event& iEvent, const edm::EventSetup& iSetup);
 
   void makeTree();
   void writeTree();
 
   // Configurables
+  EMTFMCTruth  truth_;  // MC truth for EMTFHit
+
   const edm::InputTag   emuHitTag_;
   const edm::InputTag   emuTrackTag_;
   const edm::InputTag   genPartTag_;
   const edm::InputTag   trkPartTag_;
   const std::string     outFileName_;
-  const std::string     docString_;
   int verbose_;
 
   // Member data
@@ -111,6 +113,7 @@ private:
   std::unique_ptr<std::vector<int16_t> >  vh_pattern;
   std::unique_ptr<std::vector<int16_t> >  vh_quality;
   std::unique_ptr<std::vector<int16_t> >  vh_bend;
+  std::unique_ptr<std::vector<int16_t> >  vh_time;
   std::unique_ptr<std::vector<int16_t> >  vh_fr;
   //
   std::unique_ptr<std::vector<int32_t> >  vh_emtf_phi;
@@ -121,6 +124,8 @@ private:
   std::unique_ptr<std::vector<float  > >  vh_sim_eta;
   std::unique_ptr<std::vector<float  > >  vh_sim_r;
   std::unique_ptr<std::vector<float  > >  vh_sim_z;
+  std::unique_ptr<std::vector<int32_t> >  vh_sim_tp1;
+  std::unique_ptr<std::vector<int32_t> >  vh_sim_tp2;
   //
   std::unique_ptr<int32_t              >  vh_size;
 
@@ -155,12 +160,12 @@ private:
 
 // _____________________________________________________________________________
 NtupleMaker::NtupleMaker(const edm::ParameterSet& iConfig) :
+    truth_        (iConfig, consumesCollector()),
     emuHitTag_    (iConfig.getParameter<edm::InputTag>("emuHitTag")),
     emuTrackTag_  (iConfig.getParameter<edm::InputTag>("emuTrackTag")),
     genPartTag_   (iConfig.getParameter<edm::InputTag>("genPartTag")),
     trkPartTag_   (iConfig.getParameter<edm::InputTag>("trkPartTag")),
     outFileName_  (iConfig.getParameter<std::string>  ("outFileName")),
-    docString_    (iConfig.getParameter<std::string>  ("docString")),
     verbose_      (iConfig.getUntrackedParameter<int> ("verbosity"))
 {
   usesResource("TFileService");
@@ -174,12 +179,15 @@ NtupleMaker::NtupleMaker(const edm::ParameterSet& iConfig) :
 NtupleMaker::~NtupleMaker() {}
 
 void NtupleMaker::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
-  getHandles(iEvent);
+  getHandles(iEvent, iSetup);
   process();
 }
 
 // _____________________________________________________________________________
-void NtupleMaker::getHandles(const edm::Event& iEvent) {
+void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
+
+  // MC truth for EMTFHit
+  truth_.initEvent(iEvent, iSetup);
 
   // EMTF hits and tracks
   edm::Handle<decltype(emuHits_)>   emuHits_handle;
@@ -223,6 +231,8 @@ void NtupleMaker::getHandles(const edm::Event& iEvent) {
     }
   }
 
+
+  // ___________________________________________________________________________
   // Object filters
   emuHits_.clear();
   for (const auto& hit : (*emuHits_handle)) {
@@ -248,149 +258,105 @@ void NtupleMaker::getHandles(const edm::Event& iEvent) {
 
   trkParts_.clear();
   for (const auto& part : (*trkParts_handle)) {
-    if (!(part.pt() >= 2.))     continue;  // only pT > 2
+    //if (!(part.pt() >= 2.))     continue;  // only pT > 2
     //if (!(1.2 <= part.eta() && part.eta() <= 2.4))  continue;  // only positive endcap
+    if (!(std::abs(part.pdgId()) == 13))  continue;  // only muons
 
-    // Signal event
-    //bool signal = (part.eventId().event() == 0);
-    // In time bunch-crossing
-    bool intime = (part.eventId().bunchCrossing() == 0);
-    // Primary+charged: pT > 0.2 GeV, |eta| < 2.5, |rho0| < 0.5 cm, |z0| < 30 cm
-    bool primary = (part.charge() != 0 && part.pt() > 0.2 && std::abs(part.eta()) < 2.5 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 0.5 && std::abs(part.vz()) < 30.0);
-    bool is_muon = (std::abs(part.pdgId()) == 13);
-    //if (!signal)  continue;
-    if (!intime)  continue;
-    if (!primary) continue;
-    if (!is_muon) continue;
+    // Tracking particle selection
+    {
+      // Signal event
+      //bool signal = (part.eventId().event() == 0);
+
+      // In time bunch-crossing
+      //bool intime = (part.eventId().bunchCrossing() == 0);
+
+      // In time + out of time bunch-crossing (-2 <= BX <= +2)
+      bool outoftime = (-2 <= part.eventId().bunchCrossing() && part.eventId().bunchCrossing() <= +2);
+
+      // Primary+charged: pT > 0.2 GeV, |eta| < 2.5, |rho0| < 0.5 cm, |z0| < 30 cm
+      //bool primary = (part.charge() != 0 && part.pt() > 0.2 && std::abs(part.eta()) < 2.5 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 0.5 && std::abs(part.vz()) < 30.0);
+
+      // Primary+secondary pT > 0.5 GeV, |eta| < 2.5, |rho0| < 120 cm, |z0| < 300 cm (tracker volume)
+      bool secondary = (part.charge() != 0 && part.pt() > 0.5 && std::abs(part.eta()) < 2.5 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 120.0 && std::abs(part.vz()) < 300.0);
+
+      //if (!signal)  continue;
+      //if (!intime)  continue;
+      if (!outoftime) continue;
+      //if (!primary) continue;
+      if (!secondary) continue;
+    }
 
     trkParts_.push_back(part);
   }
 }
 
-// _____________________________________________________________________________
-// Functions
-
-// from RecoMuon/DetLayers/src/MuonCSCDetLayerGeometryBuilder.cc
-//      RecoMuon/DetLayers/src/MuonRPCDetLayerGeometryBuilder.cc
-//      RecoMuon/DetLayers/src/MuonGEMDetLayerGeometryBuilder.cc
-auto isFront_detail = [](int subsystem, int station, int ring, int chamber, int subsector) {
-  bool result = false;
-
-  if (subsystem == TriggerPrimitive::kCSC) {
-    bool isOverlapping = !(station == 1 && ring == 3);
-    // not overlapping means back
-    if(isOverlapping)
-    {
-      bool isEven = (chamber % 2 == 0);
-      // odd chambers are bolted to the iron, which faces
-      // forward in 1&2, backward in 3&4, so...
-      result = (station < 3) ? isEven : !isEven;
-    }
-  } else if (subsystem == TriggerPrimitive::kRPC) {
-    // 10 degree rings have even subsectors in front
-    // 20 degree rings have odd subsectors in front
-    bool is_10degree = !((station == 3 || station == 4) && (ring == 1));
-    bool isEven = (subsector % 2 == 0);
-    result = (is_10degree) ? isEven : !isEven;
-  } else if (subsystem == TriggerPrimitive::kGEM) {
-    //
-    result = (chamber % 2 == 0);
-  }
-  return result;
-};
-
-auto isFront = [](const auto& hit) {
-  return isFront_detail(hit.Subsystem(), hit.Station(), hit.Ring(), hit.Chamber(), (hit.Subsystem() == TriggerPrimitive::kRPC ? hit.Subsector_RPC() : hit.Subsector()));
-};
-
-// z positions
-auto get_zpos_detail = [](int subsystem, int station, int ring, bool fr) {
-  double zpos = 0.;
-
-  static const double z_positions[30] = {
-    586.38 ,
-    615.68 ,
-    684.262,
-    711.662,
-    694.06 ,
-    694.06 ,
-    815.062,
-    839.862,
-    924.138,
-    948.938,
-    1013.64,
-    1038.44,
-    694.935,
-    725.95 ,
-    715.4  ,
-    719.8  ,
-    788.8  ,
-    793.2  ,
-    970.8  ,
-    975.2  ,
-    1061.3 ,
-    1065.69,
-    565.369,
-    567.971,
-    793.599,
-    796.001,
-    964.5  ,
-    968.9  ,
-    1054.99,
-    1059.4 ,
-  };
-
-  if (subsystem == TriggerPrimitive::kCSC) {
-    if (station == 1 && (ring == 1 || ring == 4)) {
-      zpos = fr ? z_positions[0] : z_positions[1];
-    } else if (station == 1 && ring == 2) {
-      zpos = fr ? z_positions[2] : z_positions[3];
-    } else if (station == 1 && ring == 3) {
-      zpos = fr ? z_positions[4] : z_positions[5];
-    } else if (station == 2) {
-      zpos = fr ? z_positions[6] : z_positions[7];
-    } else if (station == 3) {
-      zpos = fr ? z_positions[8] : z_positions[9];
-    } else if (station == 4) {
-      zpos = fr ? z_positions[10] : z_positions[11];
-    }
-  } else if (subsystem == TriggerPrimitive::kRPC) {
-    if (station == 1 && ring == 2) {
-      zpos = fr ? z_positions[12] : z_positions[13];
-    } else if (station == 1 && ring == 3) {
-      zpos = fr ? z_positions[14] : z_positions[15];
-    } else if (station == 2 && (ring == 2 || ring == 3)) {
-      zpos = fr ? z_positions[16] : z_positions[17];
-    } else if (station == 3 && (ring == 2 || ring == 3)) {
-      zpos = fr ? z_positions[18] : z_positions[19];
-    } else if (station == 4 && (ring == 2 || ring == 3)) {
-      zpos = fr ? z_positions[20] : z_positions[21];
-    } else if (station == 3 && ring == 1) {
-      zpos = fr ? z_positions[26] : z_positions[27];
-    } else if (station == 4 && ring == 1) {
-      zpos = fr ? z_positions[28] : z_positions[29];
-    }
-  } else if (subsystem == TriggerPrimitive::kGEM) {
-    if (station == 1 && ring == 1) {
-      zpos = fr ? z_positions[22] : z_positions[23];
-    } else if (station == 2 && ring == 1) {
-      zpos = fr ? z_positions[24] : z_positions[25];
-    }
-  }
-  return zpos;
-};
-
-auto get_zpos = [](const auto& hit) {
-  bool fr = isFront(hit);
-  double zpos = get_zpos_detail(hit.Subsystem(), hit.Station(), hit.Ring(), fr);
-  if (hit.Endcap() == -1)  zpos = -zpos;
-  if (hit.Subsystem() == TTTriggerPrimitive::kTT) { zpos = hit.Z_sim(); }
-  return zpos;
-};
-
 
 // _____________________________________________________________________________
 void NtupleMaker::process() {
+
+  // In-place functions
+
+  // from RecoMuon/DetLayers/src/MuonCSCDetLayerGeometryBuilder.cc
+  //      RecoMuon/DetLayers/src/MuonRPCDetLayerGeometryBuilder.cc
+  //      RecoMuon/DetLayers/src/MuonGEMDetLayerGeometryBuilder.cc
+  auto isFront_detail = [](int subsystem, int station, int ring, int chamber, int subsector) {
+    bool result = false;
+
+    if (subsystem == TriggerPrimitive::kCSC) {
+      bool isOverlapping = !(station == 1 && ring == 3);
+      // not overlapping means back
+      if(isOverlapping)
+      {
+        bool isEven = (chamber % 2 == 0);
+        // odd chambers are bolted to the iron, which faces
+        // forward in 1&2, backward in 3&4, so...
+        result = (station < 3) ? isEven : !isEven;
+      }
+    } else if (subsystem == TriggerPrimitive::kRPC) {
+      // 10 degree rings have even subsectors in front
+      // 20 degree rings have odd subsectors in front
+      bool is_10degree = !((station == 3 || station == 4) && (ring == 1));
+      bool isEven = (subsector % 2 == 0);
+      result = (is_10degree) ? isEven : !isEven;
+    } else if (subsystem == TriggerPrimitive::kGEM) {
+      //
+      result = (chamber % 2 == 0);
+    }
+    return result;
+  };
+
+  auto isFront = [&](const auto& hit) {
+    return isFront_detail(hit.Subsystem(), hit.Station(), hit.Ring(), hit.Chamber(), (hit.Subsystem() == TriggerPrimitive::kRPC ? hit.Subsector_RPC() : hit.Subsector()));
+  };
+
+  auto get_sim_tp1 = [&](const auto& hit) {
+    if (hit.Subsystem() == TriggerPrimitive::kCSC) {
+      return truth_.findCSCStripSimLink(hit, trkParts_);
+    } else if (hit.Subsystem() == TriggerPrimitive::kRPC) {
+      return truth_.findRPCDigiSimLink(hit, trkParts_);
+    } else if (hit.Subsystem() == TriggerPrimitive::kGEM) {
+      return truth_.findGEMDigiSimLink(hit, trkParts_);
+    }
+    return -1;
+  };
+
+  auto get_sim_tp2 = [&](const auto& hit) {
+    if (hit.Subsystem() == TriggerPrimitive::kCSC) {
+      return truth_.findCSCWireSimLink(hit, trkParts_);
+    } else if (hit.Subsystem() == TriggerPrimitive::kRPC) {
+      return truth_.findRPCDigiSimLink(hit, trkParts_);
+    } else if (hit.Subsystem() == TriggerPrimitive::kGEM) {
+      return truth_.findGEMDigiSimLink(hit, trkParts_);
+    }
+    return -1;
+  };
+
+  auto get_time = [](double time) {
+    return static_cast<int>(std::round(time * 100));  // to integer unit of 0.01 ns (arbitrary)
+  };
+
+
+  // ___________________________________________________________________________
   bool please_use_trkParts = true;
 
   if (verbose_ > 0) {
@@ -416,6 +382,7 @@ void NtupleMaker::process() {
     vh_pattern    ->push_back(hit.Pattern());
     vh_quality    ->push_back(hit.Quality());
     vh_bend       ->push_back(hit.Bend());
+    vh_time       ->push_back(get_time(hit.Time()));
     vh_fr         ->push_back(isFront(hit));
     //
     vh_emtf_phi   ->push_back(hit.Phi_fp());
@@ -426,6 +393,8 @@ void NtupleMaker::process() {
     vh_sim_eta    ->push_back(hit.Eta_sim());
     vh_sim_r      ->push_back(hit.Rho_sim());
     vh_sim_z      ->push_back(hit.Z_sim());
+    vh_sim_tp1    ->push_back(get_sim_tp1(hit));
+    vh_sim_tp2    ->push_back(get_sim_tp2(hit));
   }
   (*vh_size) = emuHits_.size();
 
@@ -502,6 +471,7 @@ void NtupleMaker::process() {
   vh_pattern    ->clear();
   vh_quality    ->clear();
   vh_bend       ->clear();
+  vh_time       ->clear();
   vh_fr         ->clear();
   //
   vh_emtf_phi   ->clear();
@@ -512,6 +482,8 @@ void NtupleMaker::process() {
   vh_sim_eta    ->clear();
   vh_sim_r      ->clear();
   vh_sim_z      ->clear();
+  vh_sim_tp1    ->clear();
+  vh_sim_tp2    ->clear();
   //
   (*vh_size)    = 0;
 
@@ -577,6 +549,7 @@ void NtupleMaker::makeTree() {
   vh_pattern    .reset(new std::vector<int16_t>());
   vh_quality    .reset(new std::vector<int16_t>());
   vh_bend       .reset(new std::vector<int16_t>());
+  vh_time       .reset(new std::vector<int16_t>());
   vh_fr         .reset(new std::vector<int16_t>());
   //
   vh_emtf_phi   .reset(new std::vector<int32_t>());
@@ -587,6 +560,8 @@ void NtupleMaker::makeTree() {
   vh_sim_eta    .reset(new std::vector<float  >());
   vh_sim_r      .reset(new std::vector<float  >());
   vh_sim_z      .reset(new std::vector<float  >());
+  vh_sim_tp1    .reset(new std::vector<int32_t>());
+  vh_sim_tp2    .reset(new std::vector<int32_t>());
   //
   vh_size       .reset(new int32_t(0)            );
 
@@ -636,6 +611,7 @@ void NtupleMaker::makeTree() {
   tree->Branch("vh_pattern"   , &(*vh_pattern   ));
   tree->Branch("vh_quality"   , &(*vh_quality   ));
   tree->Branch("vh_bend"      , &(*vh_bend      ));
+  tree->Branch("vh_time"      , &(*vh_time      ));
   tree->Branch("vh_fr"        , &(*vh_fr        ));
   //
   tree->Branch("vh_emtf_phi"  , &(*vh_emtf_phi  ));
@@ -646,6 +622,8 @@ void NtupleMaker::makeTree() {
   tree->Branch("vh_sim_eta"   , &(*vh_sim_eta   ));
   tree->Branch("vh_sim_r"     , &(*vh_sim_r     ));
   tree->Branch("vh_sim_z"     , &(*vh_sim_z     ));
+  tree->Branch("vh_sim_tp1"   , &(*vh_sim_tp1   ));
+  tree->Branch("vh_sim_tp2"   , &(*vh_sim_tp2   ));
   //
   tree->Branch("vh_size"      , &(*vh_size      ));
 
@@ -675,9 +653,6 @@ void NtupleMaker::makeTree() {
   tree->Branch("vp_q"         , &(*vp_q         ));
   tree->Branch("vp_pdgid"     , &(*vp_pdgid     ));
   tree->Branch("vp_size"      , &(*vp_size      ));
-
-  // Add doc string
-  fs->make<TObjString>(docString_.c_str());
 }
 
 void NtupleMaker::writeTree() {

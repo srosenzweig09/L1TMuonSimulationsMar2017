@@ -181,6 +181,8 @@ int EMTFMCTruth::findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
   int stripB = hit.Strip_hi();
   int bx     = hit.BX();
 
+#if 0
+  // This is giving me an error: Assertion `std::distance(p.first, p.second) == 1' failed.
   RPCDigiSimLinks::const_iterator rpcDigiLayerLinks = rpcDigiSimLinksPtr_->find(rpcDetId);
   if (rpcDigiLayerLinks != rpcDigiSimLinksPtr_->end()) {
     for (RPCLayerLinks::const_iterator linkItr = rpcDigiLayerLinks->begin(); linkItr != rpcDigiLayerLinks->end(); ++linkItr) {
@@ -197,6 +199,27 @@ int EMTFMCTruth::findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
       }
     }
   }
+#else
+  // My temporary fix
+  for (RPCDigiSimLinks::const_iterator linkItr1 = rpcDigiSimLinksPtr_->begin(); linkItr1 != rpcDigiSimLinksPtr_->end(); ++linkItr1) {
+    for (RPCLayerLinks::const_iterator linkItr = linkItr1->begin(); linkItr != linkItr1->end(); ++linkItr) {
+      unsigned int detUnitId = linkItr->getDetUnitId();
+      unsigned int simStrip = linkItr->getStrip();
+      unsigned int simBX = linkItr->getBx();
+      unsigned int simTrackId = linkItr->getTrackId();
+      EncodedEventId eventId = linkItr->getEventId();
+
+      if (detUnitId == rpcDetId.rawId()) {
+        for (int strip1 = stripA; strip1 < stripB+1; ++strip1) {
+          if (((int) simStrip == strip1) && ((int) simBX == bx)) {
+            SimHitIdpr matchId(simTrackId, eventId);
+            ++matches[matchId];
+          }
+        }
+      }
+    }
+  }
+#endif
 
   return findTrackingParticle(matches, trkPartColl);
 }
