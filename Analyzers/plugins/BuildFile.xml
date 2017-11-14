@@ -1,13 +1,18 @@
-<Flags CXXFLAGS="-O3 -Wno-error=unused-but-set-variable -Wno-error=unused-variable -Wno-error=unused-function"/>
+<export>
+</export>
+<library name="L1TMuonSimulationsAnalyzers_plugins" file="*.cc">
+  <use name="FWCore/Framework"/>
+  <use name="FWCore/ParameterSet"/>
+  <use name="FWCore/MessageLogger"/>
+  <use name="FWCore/Utilities"/>
+  <use name="CommonTools/UtilAlgos"/>
+  <use name="DataFormats/Common"/>
+  <use name="DataFormats/JetReco"/>
+  <use name="DataFormats/METReco"/>
+  <use name="DataFormats/L1Trigger"/>
+  <use name="SimDataFormats/TrackingAnalysis"/>
+  <use name="L1TMuonSimulations/Analyzers"/>
+  <flags EDM_PLUGIN="1"/>
+</library>
 
-<use name="FWCore/Framework"/>
-<use name="FWCore/MessageLogger"/>
-<use name="FWCore/PluginManager"/>
-<use name="FWCore/ParameterSet"/>
-<use name="CommonTools/UtilAlgos"/>
-<use name="DataFormats/Common"/>
-<use name="DataFormats/JetReco"/>
-<use name="DataFormats/METReco"/>
-<use name="DataFormats/L1Trigger"/>
-<use name="SimDataFormats/TrackingAnalysis"/>
-<flags EDM_PLUGIN="1"/>
+<Flags CXXFLAGS="-O3 -Wno-error=unused-but-set-variable -Wno-error=unused-variable -Wno-error=unused-function"/>
