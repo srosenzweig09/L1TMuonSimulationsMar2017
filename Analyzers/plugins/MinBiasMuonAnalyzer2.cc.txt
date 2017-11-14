@@ -1,0 +1,568 @@
+#include <memory>
+#include <map>
+#include <string>
+#include <vector>
+#include <iostream>
+
+#include "TString.h"
+#include "TH1F.h"
+#include "TH2F.h"
+
+#include "FWCore/Framework/interface/Frameworkfwd.h"
+#include "FWCore/Framework/interface/one/EDAnalyzer.h"
+#include "FWCore/ServiceRegistry/interface/Service.h"
+#include "CommonTools/UtilAlgos/interface/TFileService.h"
+
+#include "FWCore/Framework/interface/Event.h"
+#include "FWCore/Framework/interface/MakerMacros.h"
+#include "FWCore/ParameterSet/interface/ParameterSet.h"
+
+#include "SimDataFormats/Track/interface/SimTrack.h"
+#include "SimDataFormats/Track/interface/SimTrackContainer.h"
+#include "SimDataFormats/TrackingAnalysis/interface/TrackingParticle.h"
+#include "SimDataFormats/TrackingAnalysis/interface/TrackingParticleFwd.h"
+
+#include "SimDataFormats/TrackingHit/interface/PSimHitContainer.h"
+#include "SimDataFormats/CrossingFrame/interface/CrossingFrame.h"
+#include "SimDataFormats/CrossingFrame/interface/MixCollection.h"
+#include "DataFormats/Common/interface/DetSetVector.h"
+#include "SimDataFormats/TrackerDigiSimLink/interface/StripDigiSimLink.h"
+#include "SimDataFormats/RPCDigiSimLink/interface/RPCDigiSimLink.h"
+#include "SimDataFormats/GEMDigiSimLink/interface/GEMDigiSimLink.h"
+
+#include "DataFormats/L1TMuon/interface/EMTFHit.h"
+#include "DataFormats/L1TMuon/interface/EMTFTrack.h"
+
+// From L1Trigger/L1TMuonEndCap/interface/MuonTriggerPrimitive.h
+class TriggerPrimitive {
+public:
+  enum subsystem_type{kDT,kCSC,kRPC,kGEM,kNSubsystems};
+};
+
+
+// _____________________________________________________________________________
+class MinBiasMuonAnalyzer2 : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
+public:
+  explicit MinBiasMuonAnalyzer2(const edm::ParameterSet&);
+  ~MinBiasMuonAnalyzer2();
+
+  static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
+
+  // From SimMuon/MCTruth/interface/MuonTruth.h
+  typedef edm::DetSetVector<StripDigiSimLink> StripDigiSimLinks;
+  typedef edm::DetSetVector<StripDigiSimLink> WireDigiSimLinks;
+  typedef edm::DetSet<StripDigiSimLink>       LayerLinks;
+  typedef edm::DetSetVector<RPCDigiSimLink>   RPCDigiSimLinks;
+  typedef edm::DetSet<RPCDigiSimLink>         RPCLayerLinks;
+  typedef edm::DetSetVector<GEMDigiSimLink>   GEMDigiSimLinks;
+  typedef edm::DetSet<GEMDigiSimLink>         GEMLayerLinks;
+  typedef std::pair<uint32_t, EncodedEventId> SimHitIdpr;
+
+private:
+  virtual void beginJob() override;
+  virtual void analyze(const edm::Event&, const edm::EventSetup&) override;
+  virtual void endJob() override;
+
+  // Main functions
+  void process();
+
+  // Aux functions
+  void getHandles(const edm::Event& iEvent);
+  void getHandles2(const edm::Event& iEvent);
+
+  void bookHistograms();
+  void writeHistograms();
+
+  // Configurables
+  const edm::InputTag   simTrackTag_;
+  const edm::InputTag   trkPartTag_;
+  const edm::InputTag   emtfHitsTag_;
+  const edm::InputTag   emtfTracksTag_;
+
+  const edm::InputTag   cscSimHitsTag_, cscSimHitsXFTag_, cscStripSimLinksTag_, cscWireSimLinksTag_;
+  const edm::InputTag   rpcSimHitsTag_, rpcSimHitsXFTag_, rpcDigiSimLinksTag_;
+  const edm::InputTag   gemSimHitsTag_, gemSimHitsXFTag_, gemDigiSimLinksTag_;
+
+  const std::string     outFileName_;
+  int verbose_;
+
+  // Member data
+  edm::EDGetTokenT<edm::SimTrackContainer>      simTrackToken_;
+  edm::EDGetTokenT<TrackingParticleCollection>  trkPartToken_;
+
+  edm::EDGetTokenT<l1t::EMTFHitCollection>      emtfHitsToken_;
+  edm::EDGetTokenT<l1t::EMTFTrackCollection>    emtfTracksToken_;
+
+  edm::EDGetTokenT<edm::PSimHitContainer>       cscSimHitsToken_;
+  edm::EDGetTokenT<CrossingFrame<PSimHit> >     cscSimHitsXFToken_;
+  edm::EDGetTokenT<StripDigiSimLinks>           cscStripSimLinksToken_;
+  edm::EDGetTokenT<WireDigiSimLinks>            cscWireSimLinksToken_;
+
+  edm::EDGetTokenT<edm::PSimHitContainer>       rpcSimHitsToken_;
+  edm::EDGetTokenT<CrossingFrame<PSimHit> >     rpcSimHitsXFToken_;
+  edm::EDGetTokenT<RPCDigiSimLinks>             rpcDigiSimLinksToken_;
+
+  edm::EDGetTokenT<edm::PSimHitContainer>       gemSimHitsToken_;
+  edm::EDGetTokenT<CrossingFrame<PSimHit> >     gemSimHitsXFToken_;
+  edm::EDGetTokenT<GEMDigiSimLinks>             gemDigiSimLinksToken_;
+
+  edm::SimTrackContainer      simTracks_;
+  TrackingParticleCollection  trkParts_;
+
+  l1t::EMTFHitCollection      emtfHits_;
+  l1t::EMTFTrackCollection    emtfTracks_;
+
+  const edm::PSimHitContainer *     cscSimHitsPtr_;
+  const CrossingFrame<PSimHit> *    cscSimHitsXFPtr_;
+  const StripDigiSimLinks*          cscStripSimLinksPtr_;
+  const WireDigiSimLinks*           cscWireSimLinksPtr_;
+
+  const edm::PSimHitContainer *     rpcSimHitsPtr_;
+  const CrossingFrame<PSimHit> *    rpcSimHitsXFPtr_;
+  const RPCDigiSimLinks*            rpcDigiSimLinksPtr_;
+
+  const edm::PSimHitContainer *     gemSimHitsPtr_;
+  const CrossingFrame<PSimHit> *    gemSimHitsXFPtr_;
+  const GEMDigiSimLinks*            gemDigiSimLinksPtr_;
+
+  std::map<TString, TH1F*> histograms_;
+  std::map<TString, TH2F*> histogram2Ds_;
+};
+
+// _____________________________________________________________________________
+//static std::random_device rd;
+//static std::mt19937 genrd(rd());
+static std::mt19937 genrd0(20230);
+static std::mt19937 genrd1(20231);
+
+
+MinBiasMuonAnalyzer2::MinBiasMuonAnalyzer2(const edm::ParameterSet& iConfig) :
+    simTrackTag_  (iConfig.getParameter<edm::InputTag>("simTrackTag")),
+    trkPartTag_   (iConfig.getParameter<edm::InputTag>("trkPartTag")),
+    emtfHitsTag_(iConfig.getParameter<edm::InputTag>("emtfHitsTag")),
+    emtfTracksTag_(iConfig.getParameter<edm::InputTag>("emtfTracksTag")),
+
+    cscSimHitsTag_(iConfig.getParameter<edm::InputTag>("cscSimHitsTag")),
+    cscSimHitsXFTag_(iConfig.getParameter<edm::InputTag>("cscSimHitsXFTag")),
+    cscStripSimLinksTag_(iConfig.getParameter<edm::InputTag>("cscStripSimLinksTag")),
+    cscWireSimLinksTag_(iConfig.getParameter<edm::InputTag>("cscWireSimLinksTag")),
+    rpcSimHitsTag_(iConfig.getParameter<edm::InputTag>("rpcSimHitsTag")),
+    rpcSimHitsXFTag_(iConfig.getParameter<edm::InputTag>("rpcSimHitsXFTag")),
+    rpcDigiSimLinksTag_(iConfig.getParameter<edm::InputTag>("rpcDigiSimLinksTag")),
+    gemSimHitsTag_(iConfig.getParameter<edm::InputTag>("gemSimHitsTag")),
+    gemSimHitsXFTag_(iConfig.getParameter<edm::InputTag>("gemSimHitsXFTag")),
+    gemDigiSimLinksTag_(iConfig.getParameter<edm::InputTag>("gemDigiSimLinksTag")),
+
+    outFileName_  (iConfig.getParameter<std::string>  ("outFileName")),
+    verbose_      (iConfig.getUntrackedParameter<int> ("verbosity"))
+{
+  usesResource("TFileService");
+
+  simTrackToken_         = consumes<edm::SimTrackContainer>    (simTrackTag_);
+  trkPartToken_          = consumes<TrackingParticleCollection>(trkPartTag_);
+  emtfHitsToken_         = consumes<l1t::EMTFHitCollection>    (emtfHitsTag_);
+  emtfTracksToken_       = consumes<l1t::EMTFTrackCollection>  (emtfTracksTag_);
+
+  cscSimHitsToken_       = consumes<edm::PSimHitContainer>     (cscSimHitsTag_);
+  cscSimHitsXFToken_     = consumes<CrossingFrame<PSimHit> >   (cscSimHitsXFTag_);
+  cscStripSimLinksToken_ = consumes<StripDigiSimLinks>         (cscStripSimLinksTag_);
+  cscWireSimLinksToken_  = consumes<WireDigiSimLinks>          (cscWireSimLinksTag_);
+  rpcSimHitsToken_       = consumes<edm::PSimHitContainer>     (rpcSimHitsTag_);
+  rpcSimHitsXFToken_     = consumes<CrossingFrame<PSimHit> >   (rpcSimHitsXFTag_);
+  rpcDigiSimLinksToken_  = consumes<RPCDigiSimLinks>           (rpcDigiSimLinksTag_);
+  gemSimHitsToken_       = consumes<edm::PSimHitContainer>     (gemSimHitsTag_);
+  gemSimHitsXFToken_     = consumes<CrossingFrame<PSimHit> >   (gemSimHitsXFTag_);
+  gemDigiSimLinksToken_  = consumes<GEMDigiSimLinks>           (gemDigiSimLinksTag_);
+}
+
+MinBiasMuonAnalyzer2::~MinBiasMuonAnalyzer2() {}
+
+void MinBiasMuonAnalyzer2::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
+{
+  getHandles(iEvent);
+  getHandles2(iEvent);
+  process();
+}
+
+// _____________________________________________________________________________
+void MinBiasMuonAnalyzer2::getHandles(const edm::Event& iEvent) {
+
+  // Sim Tracks
+  edm::Handle<decltype(simTracks_)> simTracks_handle;
+
+  if (!iEvent.isRealData()) {
+    if (!simTrackToken_.isUninitialized()) {
+      iEvent.getByToken(simTrackToken_, simTracks_handle);
+    }
+    if (!simTracks_handle.isValid()) {
+      edm::LogError("MinBiasMuonAnalyzer2") << "Cannot get the product: " << simTrackTag_;
+    }
+  }
+
+  // Tracking particles
+  edm::Handle<decltype(trkParts_)> trkParts_handle;
+
+  if (!iEvent.isRealData()) {
+    if (!trkPartToken_.isUninitialized()) {
+      iEvent.getByToken(trkPartToken_, trkParts_handle);
+    }
+    if (!trkParts_handle.isValid()) {
+      edm::LogError("MinBiasMuonAnalyzer2") << "Cannot get the product: " << trkPartTag_;
+    }
+  }
+
+   // EMTF hits
+  edm::Handle<l1t::EMTFHitCollection>    emtfHits_handle;
+  edm::Handle<l1t::EMTFTrackCollection>  emtfTracks_handle;
+
+  if (!emtfHitsToken_.isUninitialized()) {
+    iEvent.getByToken(emtfHitsToken_, emtfHits_handle);
+  }
+  if (!emtfHits_handle.isValid()) {
+    edm::LogError("MinBiasMuonAnalyzer2") << "Cannot get the product: " << emtfHitsTag_;
+  }
+  if (!emtfTracksToken_.isUninitialized()) {
+    iEvent.getByToken(emtfTracksToken_, emtfTracks_handle);
+  }
+  if (!emtfTracks_handle.isValid()) {
+    edm::LogError("MinBiasMuonAnalyzer2") << "Cannot get the product: " << emtfTracksTag_;
+  }
+
+
+  // ___________________________________________________________________________
+  // Object filters
+
+  //simTracks_.clear();
+  //for (const auto& trk : (*simTracks_handle)) {
+  //  simTracks_.push_back(trk);
+  //}
+
+  trkParts_.clear();
+  for (const auto& part : (*trkParts_handle)) {
+    //if (!(part.pt() >= 2.))     continue;  // only pT > 2
+    //if (!(1.2 <= part.eta() && part.eta() <= 2.4))  continue;  // only positive endcap
+    //if (!(std::abs(part.pdgId()) == 13))  continue;  // only muons
+
+    //{
+    //  // Selection
+    //
+    //  // Signal event
+    //  //bool signal = (part.eventId().event() == 0);
+    //
+    //  // In time bunch-crossing
+    //  bool intime = (part.eventId().bunchCrossing() == 0);
+    //
+    //  // Primary+charged: pT > 0.2 GeV, |eta| < 2.5, |rho0| < 0.5 cm, |z0| < 30 cm
+    //  //bool primary = (part.charge() != 0 && part.pt() > 0.2 && std::abs(part.eta()) < 2.5 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 0.5 && std::abs(part.vz()) < 30.0);
+    //
+    //  // Primary+secondary
+    //  bool secondary = (part.charge() != 0 && part.pt() > 0.2 && std::abs(part.eta()) < 2.5 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 15.0 && std::abs(part.vz()) < 50.0);
+    //
+    //  //if (!signal)  continue;
+    //  if (!intime)  continue;
+    //  //if (!primary) continue;
+    //  if (!secondary) continue;
+    //}
+
+    trkParts_.push_back(part);
+  }
+
+  emtfHits_.clear();
+  for (const auto& hit : (*emtfHits_handle)) {
+    emtfHits_.push_back(hit);
+  }
+
+  //emtfTracks_.clear();
+  //for (const auto& trk : (*emtfTracks_handle)) {
+  //  emtfTracks_.push_back(trk);
+  //}
+
+}
+
+void MinBiasMuonAnalyzer2::getHandles2(const edm::Event& iEvent) {
+
+  //// SimHits
+  //edm::Handle<edm::PSimHitContainer> cscSimHits_handle;
+  //
+  //if (!iEvent.isRealData()) {
+  //  if (!cscSimHitsToken_.isUninitialized()) {
+  //    iEvent.getByToken(cscSimHitsToken_, cscSimHits_handle);
+  //  }
+  //  if (!cscSimHits_handle.isValid()) {
+  //    edm::LogError("MinBiasMuonAnalyzer2") << "Cannot get the product: " << cscSimHitsTag_;
+  //  }
+  //}
+  //
+  //cscSimHitsPtr_ = cscSimHits_handle.product();
+
+
+  //// SimHits (using crossing frame)
+  //edm::Handle<CrossingFrame<PSimHit> > cscSimHitsXF_handle;
+  //
+  //if (!iEvent.isRealData()) {
+  //  if (!cscSimHitsXFToken_.isUninitialized()) {
+  //    iEvent.getByToken(cscSimHitsXFToken_, cscSimHitsXF_handle);
+  //  }
+  //  if (!cscSimHitsXF_handle.isValid()) {
+  //    edm::LogError("MinBiasMuonAnalyzer2") << "Cannot get the product: " << cscSimHitsXFTag_;
+  //  }
+  //}
+  //
+  //cscSimHitsXFPtr_ = cscSimHitsXF_handle.product();
+
+
+  // SimLinks
+  edm::Handle<StripDigiSimLinks> cscStripSimLinks_handle;
+  edm::Handle<WireDigiSimLinks>  cscWireSimLinks_handle;
+  edm::Handle<RPCDigiSimLinks>   rpcDigiSimLinks_handle;
+  edm::Handle<GEMDigiSimLinks>   gemDigiSimLinks_handle;
+
+  if (!iEvent.isRealData()) {
+    if (!cscStripSimLinksToken_.isUninitialized()) {
+      iEvent.getByToken(cscStripSimLinksToken_, cscStripSimLinks_handle);
+    }
+    if (!cscStripSimLinks_handle.isValid()) {
+      edm::LogError("MinBiasMuonAnalyzer2") << "Cannot get the product: " << cscStripSimLinksTag_;
+    }
+    if (!cscWireSimLinksToken_.isUninitialized()) {
+      iEvent.getByToken(cscWireSimLinksToken_, cscWireSimLinks_handle);
+    }
+    if (!cscWireSimLinks_handle.isValid()) {
+      edm::LogError("MinBiasMuonAnalyzer2") << "Cannot get the product: " << cscWireSimLinksTag_;
+    }
+    if (!rpcDigiSimLinksToken_.isUninitialized()) {
+      iEvent.getByToken(rpcDigiSimLinksToken_, rpcDigiSimLinks_handle);
+    }
+    if (!rpcDigiSimLinks_handle.isValid()) {
+      edm::LogError("MinBiasMuonAnalyzer2") << "Cannot get the product: " << rpcDigiSimLinksTag_;
+    }
+    //if (!gemDigiSimLinksToken_.isUninitialized()) {  //FIXME
+    //  iEvent.getByToken(gemDigiSimLinksToken_, gemDigiSimLinks_handle);
+    //}
+    //if (!gemDigiSimLinks_handle.isValid()) {
+    //  edm::LogError("MinBiasMuonAnalyzer2") << "Cannot get the product: " << gemDigiSimLinksTag_;
+    //}
+  }
+
+  cscStripSimLinksPtr_ = cscStripSimLinks_handle.product();
+  cscWireSimLinksPtr_  = cscWireSimLinks_handle.product();
+  rpcDigiSimLinksPtr_  = rpcDigiSimLinks_handle.product();
+  gemDigiSimLinksPtr_  = gemDigiSimLinks_handle.product();
+}
+
+
+// _____________________________________________________________________________
+void MinBiasMuonAnalyzer2::process() {
+
+  std::cout << "prova" << std::endl;
+
+  //std::unique_ptr<MixCollection<PSimHit> > cscSimHits(new MixCollection<PSimHit>(cscSimHitsXFPtr_));
+  //for (MixCollection<PSimHit>::MixItr hitItr = cscSimHits->begin(); hitItr != cscSimHits->end(); ++hitItr) {
+  //  //theSimHitMap[hitItr->detUnitId()].push_back(*hitItr);
+  //  std::cout << hitItr->detUnitId() << std::endl;
+  //}
+
+
+  //for (auto iter = cscStripSimLinksPtr_->begin(); iter != cscStripSimLinksPtr_->end(); ++iter) {
+  //  std::cout << iter->detId() << std::endl;
+  //}
+
+  //for (auto iter = rpcDigiSimLinksPtr_->begin(); iter != rpcDigiSimLinksPtr_->end(); ++iter) {
+  //  std::cout << iter->detId() << std::endl;
+  //}
+
+
+  for (unsigned i = 0; i < emtfHits_.size(); ++i) {
+    const l1t::EMTFHit& hit = emtfHits_.at(i);
+
+    if (hit.Subsystem() == TriggerPrimitive::kCSC) {
+
+      std::map<SimHitIdpr, int> cscStripMatches;
+      std::map<SimHitIdpr, int> cscWireMatches;
+
+      // Find all matches
+
+      for (unsigned j = 0; j < 6; ++j) {  // 6 CSC layers
+        CSCDetId cscDetId0 = hit.CSC_DetId();
+        CSCDetId cscDetId1(cscDetId0.endcap(), cscDetId0.station(), cscDetId0.ring(), cscDetId0.chamber(), j+1);
+        int strip0 = hit.Strip();
+        int strip1 = (strip0 - 1)/2 + 1;
+        int wire0 = hit.Wire();
+        int wire1 = (wire0 + 100) + 1;
+
+        //std::cout << "Hit detId0: " << cscDetId0.rawId() << " detId1: " << cscDetId1.rawId() << " strip0: " << strip0 << " strip1: " << strip1 << " wire0: " << wire0 << " wire1: " << wire1 << std::endl;
+
+        StripDigiSimLinks::const_iterator cscStripLayerLinks = cscStripSimLinksPtr_->find(cscDetId1);
+        WireDigiSimLinks::const_iterator cscWireLayerLinks = cscWireSimLinksPtr_->find(cscDetId1);
+
+        if (cscStripLayerLinks != cscStripSimLinksPtr_->end()) {
+          for (LayerLinks::const_iterator linkItr = cscStripLayerLinks->begin(); linkItr != cscStripLayerLinks->end(); ++linkItr) {
+            unsigned int channel = linkItr->channel();
+            unsigned int simTrackId = linkItr->SimTrackId();
+            EncodedEventId eventId = linkItr->eventId();
+            //float fraction = linkItr->fraction();
+            //std::cout << "Link strip: " << channel << " " << simTrackId << " " << eventId.rawId() << " " << fraction << std::endl;
+
+            if (std::abs(int(strip1) - int(channel)) <= 2) {  // tolerance: +/-3
+              SimHitIdpr matchId(simTrackId, eventId);
+              ++cscStripMatches[matchId];
+            }
+          }
+        }
+
+        if (cscWireLayerLinks != cscWireSimLinksPtr_->end()) {
+          for (LayerLinks::const_iterator linkItr = cscWireLayerLinks->begin(); linkItr != cscWireLayerLinks->end(); ++linkItr) {
+            unsigned int channel = linkItr->channel();
+            unsigned int simTrackId = linkItr->SimTrackId();
+            EncodedEventId eventId = linkItr->eventId();
+            //float fraction = linkItr->fraction();
+            //std::cout << "Link wire: " << channel << " " << simTrackId << " " << eventId.rawId() << " " << fraction << std::endl;
+
+            if (std::abs(int(wire1) - int(channel)) <= 1) {  // tolerance: +/-1
+              SimHitIdpr matchId(simTrackId, eventId);
+              ++cscWireMatches[matchId];
+            }
+          }
+        }
+      }
+
+      // Get best match
+
+      int best_tpId = -1;
+      double highest_pt = 0.;
+
+      for (std::map<SimHitIdpr, int>::const_iterator it_match = cscStripMatches.begin(); it_match != cscStripMatches.end(); ++it_match) {
+        unsigned int simTrackId = it_match->first.first;
+        EncodedEventId eventId = it_match->first.second;
+        int tpId = 0;
+        //std::cout << "simTrackId: " << simTrackId << " eventId: " << eventId.rawId() << std::endl;
+
+        for (TrackingParticleCollection::const_iterator it_trkpart = trkParts_.begin(); it_trkpart != trkParts_.end(); ++it_trkpart) {
+          bool found = false;
+
+          for (TrackingParticle::g4t_iterator it_simtrk = it_trkpart->g4Track_begin(); it_simtrk != it_trkpart->g4Track_end(); ++it_simtrk) {
+            if (it_simtrk->trackId() == simTrackId && it_simtrk->eventId() == eventId) {
+              found = true;
+              //std::cout << "trkPart pT: " << it_trkpart->pt() << " pdgId: " << it_trkpart->pdgId() << " simTrackId: " << simTrackId << " eventId: " << eventId.rawId() << std::endl;
+              break;
+            }
+          }
+
+          if (found && (highest_pt < it_trkpart->pt())) {
+            highest_pt = it_trkpart->pt();
+            best_tpId = tpId;
+          }
+
+          ++tpId;
+        }
+      }
+
+      //std::cout << "best tpId: " << best_tpId << std::endl;
+
+      //FIXME: add wire tpId
+
+
+    } else if (hit.Subsystem() == TriggerPrimitive::kRPC) {
+
+      std::map<SimHitIdpr, int> rpcDigiMatches;
+
+      // Find all matches
+
+      RPCDetId rpcDetId = hit.RPC_DetId();
+      int stripA = hit.Strip_low();
+      int stripB = hit.Strip_hi();
+      int bx     = hit.BX();
+
+      //std::cout << "Hit detId: " << rpcDetId.rawId() << " stripA: " << stripA << " stripB: " << stripB << " bx: " << bx << std::endl;
+
+      RPCDigiSimLinks::const_iterator rpcDigiLayerLinks = rpcDigiSimLinksPtr_->find(rpcDetId);
+
+      if (rpcDigiLayerLinks != rpcDigiSimLinksPtr_->end()) {
+        for (RPCLayerLinks::const_iterator linkItr = rpcDigiLayerLinks->begin(); linkItr != rpcDigiLayerLinks->end(); ++linkItr) {
+          //unsigned int sim_detId = linkItr->getDetUnitId();
+          unsigned int sim_strip = linkItr->getStrip();
+          unsigned int sim_bx    = linkItr->getBx();
+          unsigned int simTrackId = linkItr->getTrackId();
+          EncodedEventId eventId = linkItr->getEventId();
+          //std::cout << "Link strip: " << sim_strip << " " << simTrackId << " " << eventId.rawId() << " " << sim_bx << std::endl;
+
+          for (int strip1 = stripA; strip1 < stripB+1; ++strip1) {
+            if (((int) sim_strip == strip1) && ((int) sim_bx == bx)) {
+              SimHitIdpr matchId(simTrackId, eventId);
+              ++rpcDigiMatches[matchId];
+            }
+          }
+        }
+      }
+
+    } else if (hit.Subsystem() == TriggerPrimitive::kGEM) {
+
+      std::map<SimHitIdpr, int> gemDigiMatches;
+
+      // Find all matches
+
+      GEMDetId gemDetId = hit.GEM_DetId();
+      int stripA = hit.Strip_low();
+      int stripB = hit.Strip_hi();
+      int bx     = hit.BX();
+
+      //std::cout << "Hit detId: " << gemDetId.rawId() << " stripA: " << stripA << " stripB: " << stripB << " bx: " << bx << std::endl;
+
+      GEMDigiSimLinks::const_iterator gemDigiLayerLinks = gemDigiSimLinksPtr_->find(gemDetId);
+
+      if (gemDigiLayerLinks != gemDigiSimLinksPtr_->end()) {
+        for (GEMLayerLinks::const_iterator linkItr = gemDigiLayerLinks->begin(); linkItr != gemDigiLayerLinks->end(); ++linkItr) {
+          //unsigned int sim_detId = linkItr->getDetUnitId();
+          unsigned int sim_strip = linkItr->getStrip();
+          unsigned int sim_bx    = linkItr->getBx();
+          unsigned int simTrackId = linkItr->getTrackId();
+          EncodedEventId eventId = linkItr->getEventId();
+          //std::cout << "Link strip: " << sim_strip << " " << simTrackId << " " << eventId.rawId() << " " << sim_bx << std::endl;
+
+          for (int strip1 = stripA; strip1 < stripB+1; ++strip1) {
+            if ((int) sim_strip == strip1) {
+              SimHitIdpr matchId(simTrackId, eventId);
+              ++gemDigiMatches[matchId];
+            }
+          }
+        }
+      }
+
+    }
+
+
+  }  // end loop over EMTF hits
+
+
+}
+
+// _____________________________________________________________________________
+void MinBiasMuonAnalyzer2::beginJob() {
+  bookHistograms();
+}
+
+void MinBiasMuonAnalyzer2::endJob() {
+  writeHistograms();
+}
+
+// _____________________________________________________________________________
+void MinBiasMuonAnalyzer2::bookHistograms() {
+  // do nothing
+}
+
+void MinBiasMuonAnalyzer2::writeHistograms() {
+  // do nothing
+}
+
+// _____________________________________________________________________________
+void MinBiasMuonAnalyzer2::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+  // The following says we do not know what parameters are allowed so do no validation
+  // Please change this to state exactly what you do use, even if it is no parameters
+  edm::ParameterSetDescription desc;
+  desc.setUnknown();
+  descriptions.addDefault(desc);
+}
+
+// _____________________________________________________________________________
+// Define this as a plug-in
+DEFINE_FWK_MODULE(MinBiasMuonAnalyzer2);
