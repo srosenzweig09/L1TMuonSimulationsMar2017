@@ -140,23 +140,26 @@ void MinBiasMuonAnalyzer::getHandles(const edm::Event& iEvent) {
       histogram2Ds_.at("muon_pt_vs_dz")->Fill(dz, part.pt());
     }
 
+    // Trigger particle selection
     {
-      // Selection
-
       // Signal event
       //bool signal = (part.eventId().event() == 0);
 
       // In time bunch-crossing
-      bool intime = (part.eventId().bunchCrossing() == 0);
+      //bool intime = (part.eventId().bunchCrossing() == 0);
+
+      // In time + out of time bunch-crossing (-2 <= BX <= +2)
+      bool outoftime = (-2 <= part.eventId().bunchCrossing() && part.eventId().bunchCrossing() <= +2);
 
       // Primary+charged: pT > 0.2 GeV, |eta| < 2.5, |rho0| < 0.5 cm, |z0| < 30 cm
       //bool primary = (part.charge() != 0 && part.pt() > 0.2 && std::abs(part.eta()) < 2.5 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 0.5 && std::abs(part.vz()) < 30.0);
 
-      // Primary+secondary
-      bool secondary = (part.charge() != 0 && part.pt() > 0.2 && std::abs(part.eta()) < 2.5 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 15.0 && std::abs(part.vz()) < 50.0);
+      // Primary+secondary pT > 0.5 GeV, |eta| < 2.5, |rho0| < 120 cm, |z0| < 300 cm (tracker volume)
+      bool secondary = (part.charge() != 0 && part.pt() > 0.5 && std::abs(part.eta()) < 2.5 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 120.0 && std::abs(part.vz()) < 300.0);
 
       //if (!signal)  continue;
-      if (!intime)  continue;
+      //if (!intime)  continue;
+      if (!outoftime) continue;
       //if (!primary) continue;
       if (!secondary) continue;
     }
