@@ -61,15 +61,17 @@ public:
   // Set up Handles/ESHandles
   void initEvent(const edm::Event& iEvent, const edm::EventSetup& iSetup);
 
+  void makeTrackingParticleLinks(const TrackingParticleCollection& trkPartColl);
+
   // Find the matching tracking particle (tp); returns the index of the tp
-  int findCSCStripSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl);
-  int findCSCWireSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl);
-  int findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl);
-  int findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl);
+  int findCSCStripSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const;
+  int findCSCWireSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const;
+  int findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const;
+  int findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const;
 
 
 private:
-  int findTrackingParticle(const std::map<SimHitIdpr, int>& matches, const TrackingParticleCollection& trkPartColl);
+  int findTrackingParticle(const std::map<SimHitIdpr, int>& matches, const TrackingParticleCollection& trkPartColl) const;
 
   const edm::InputTag   cscSimHitsTag_, cscSimHitsXFTag_, cscStripSimLinksTag_, cscWireSimLinksTag_;
   const edm::InputTag   rpcSimHitsTag_, rpcSimHitsXFTag_, rpcDigiSimLinksTag_;
@@ -96,6 +98,8 @@ private:
   const edm::PSimHitContainer *     gemSimHitsPtr_;
   const CrossingFrame<PSimHit> *    gemSimHitsXFPtr_;
   const GEMDigiSimLinks*            gemDigiSimLinksPtr_;
+
+  std::map<SimHitIdpr, int> trackingParticleLinks_;
 };
 
 #endif

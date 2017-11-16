@@ -329,6 +329,11 @@ void NtupleMaker::process() {
     return isFront_detail(hit.Subsystem(), hit.Station(), hit.Ring(), hit.Chamber(), (hit.Subsystem() == TriggerPrimitive::kRPC ? hit.Subsector_RPC() : hit.Subsector()));
   };
 
+  auto prepare_sim_tp = [&]() {
+    truth_.makeTrackingParticleLinks(trkParts_);
+    return;
+  };
+
   auto get_sim_tp1 = [&](const auto& hit) {
     if (hit.Subsystem() == TriggerPrimitive::kCSC) {
       return truth_.findCSCStripSimLink(hit, trkParts_);
@@ -364,6 +369,8 @@ void NtupleMaker::process() {
   }
 
   // Hits
+  prepare_sim_tp();  // must be called before calling get_sim_tp1() and get_sim_tp2()
+
   for (const auto& hit : emuHits_) {
     vh_endcap     ->push_back(hit.Endcap());
     vh_station    ->push_back(hit.Station());

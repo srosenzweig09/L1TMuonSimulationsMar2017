@@ -114,7 +114,23 @@ void EMTFMCTruth::initEvent(const edm::Event& iEvent, const edm::EventSetup& iSe
 
 }
 
-int EMTFMCTruth::findCSCStripSimLink(const l1t::EMTFHit& hit, const std::vector<TrackingParticle>& trkPartColl) {
+void EMTFMCTruth::makeTrackingParticleLinks(const TrackingParticleCollection& trkPartColl) {
+  trackingParticleLinks_.clear();
+
+  for (TrackingParticleCollection::const_iterator it_trkpart = trkPartColl.begin(); it_trkpart != trkPartColl.end(); ++it_trkpart) {
+    for (TrackingParticle::g4t_iterator it_simtrk = it_trkpart->g4Track_begin(); it_simtrk != it_trkpart->g4Track_end(); ++it_simtrk) {
+      unsigned int simTrackId = it_simtrk->trackId();
+      EncodedEventId eventId = it_simtrk->eventId();
+      SimHitIdpr matchId(simTrackId, eventId);
+      //assert(trackingParticleLinks_.find(matchId) == trackingParticleLinks_.end());  // matchId should not already exist
+      trackingParticleLinks_[matchId] = std::distance(trkPartColl.begin(), it_trkpart);
+    }
+  }
+
+}
+
+
+int EMTFMCTruth::findCSCStripSimLink(const l1t::EMTFHit& hit, const std::vector<TrackingParticle>& trkPartColl) const {
   std::map<SimHitIdpr, int> matches;
 
   // Check all 6 CSC layers. Each layer has a distinct detId
@@ -143,7 +159,7 @@ int EMTFMCTruth::findCSCStripSimLink(const l1t::EMTFHit& hit, const std::vector<
   return findTrackingParticle(matches, trkPartColl);
 }
 
-int EMTFMCTruth::findCSCWireSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) {
+int EMTFMCTruth::findCSCWireSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const {
   std::map<SimHitIdpr, int> matches;
 
   // Check all 6 CSC layers. Each layer has a distinct detId
@@ -172,7 +188,7 @@ int EMTFMCTruth::findCSCWireSimLink(const l1t::EMTFHit& hit, const TrackingParti
   return findTrackingParticle(matches, trkPartColl);
 }
 
-int EMTFMCTruth::findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) {
+int EMTFMCTruth::findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const {
   std::map<SimHitIdpr, int> matches;
 
   // Check all strips in the RPC cluster
@@ -224,7 +240,7 @@ int EMTFMCTruth::findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
   return findTrackingParticle(matches, trkPartColl);
 }
 
-int EMTFMCTruth::findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) {
+int EMTFMCTruth::findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const {
   std::map<SimHitIdpr, int> matches;
 
   // Check all strips in the GEM cluster
@@ -254,33 +270,20 @@ int EMTFMCTruth::findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
   return findTrackingParticle(matches, trkPartColl);
 }
 
-int EMTFMCTruth::findTrackingParticle(const std::map<SimHitIdpr, int>& matches, const TrackingParticleCollection& trkPartColl) {
+int EMTFMCTruth::findTrackingParticle(const std::map<SimHitIdpr, int>& matches, const TrackingParticleCollection& trkPartColl) const {
   int best_tp = -1;  // index of the tp
   double highest_pt = 0.;
 
   for (std::map<SimHitIdpr, int>::const_iterator it_match = matches.begin(); it_match != matches.end(); ++it_match) {
-    unsigned int simTrackId = it_match->first.first;
-    EncodedEventId eventId = it_match->first.second;
-    int tp = 0;
-    //std::cout << "simTrackId: " << simTrackId << " eventId: " << eventId.rawId() << std::endl;
-
-    for (TrackingParticleCollection::const_iterator it_trkpart = trkPartColl.begin(); it_trkpart != trkPartColl.end(); ++it_trkpart) {
-      bool found = false;
-
-      for (TrackingParticle::g4t_iterator it_simtrk = it_trkpart->g4Track_begin(); it_simtrk != it_trkpart->g4Track_end(); ++it_simtrk) {
-        if (it_simtrk->trackId() == simTrackId && it_simtrk->eventId() == eventId) {
-          found = true;
-          //std::cout << "trkPart pT: " << it_trkpart->pt() << " pdgId: " << it_trkpart->pdgId() << " simTrackId: " << simTrackId << " eventId: " << eventId.rawId() << std::endl;
-          break;
-        }
-      }
-
-      if (found && (highest_pt < it_trkpart->pt())) {
+    auto found = trackingParticleLinks_.find(it_match->first);
+    if (found != trackingParticleLinks_.end()) {
+      int tp = found->second;
+      auto it_trkpart = trkPartColl.begin();
+      std::advance(it_trkpart, tp);
+      if (highest_pt < it_trkpart->pt()) {
         highest_pt = it_trkpart->pt();
         best_tp = tp;
       }
-
-      ++tp;
     }
   }
 
