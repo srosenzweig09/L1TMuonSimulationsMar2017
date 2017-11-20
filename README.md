@@ -9,8 +9,18 @@ Package to do Phase 2 studies for L1 Endcap Muon Track Finder (EMTF).
 ## Build
 
 ```shell
-cd $CMSSW_BASE/src
-git clone git@github.com:jiafulow/L1TMuonSimulationsMar2017.git L1TMuonSimulations
+export SCRAM_ARCH=slc6_amd64_gcc530
+scram p -n P2_CMSSW_9_2_3_patch1 CMSSW_9_2_3_patch1
+cd P2_CMSSW_9_2_3_patch1/src
+cmsenv
+
+# L1TriggerSep2016 using branch 'phase2-develop'
+git clone -b phase2-develop git@github.com:jiafulow/L1TriggerSep2016.git L1Trigger
+# DataFormatsSep2016 using branch 'l1t-integration-CMSSW_9_2_0'
+git clone -b l1t-integration-CMSSW_9_2_0 git@github.com:jiafulow/DataFormatsSep2016.git DataFormats
+# This repository
+git clone git@github.com:jiafulow/L1TMuonSimulationsMar2017 L1TMuonSimulations
+# Compile
 scram b -j 8
 ```
 
