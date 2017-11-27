@@ -44,10 +44,6 @@ tree.define_collection(name='genparticles', prefix='vp_', size='vp_size')
 kDT, kCSC, kRPC, kGEM, kTT = 0, 1, 2, 3, 20
 
 # Lambdas
-deg_to_rad = lambda x: x * np.pi/180.
-
-rad_to_deg = lambda x: x * 180./np.pi
-
 get_zone_hit = lambda x: ((x + (1<<4)) >> 5)
 
 extrapolate_to_muon = lambda phi, qoverpt: phi - 1.204 * qoverpt  # phi in radians
@@ -93,6 +89,41 @@ def calc_theta_int(theta, endcap):
   theta_int = int(round(theta))
   return theta_int
 
+def calc_theta_rad_from_eta(eta):
+  theta = np.arctan2(1.0, np.sinh(eta))
+  return theta
+
+def calc_theta_deg_from_eta(eta):
+  return np.rad2deg(calc_theta_rad_from_eta(eta))
+
+def calc_eta_from_theta_rad(theta_rad):
+  return -1. * np.log(np.tan(theta_rad/2.))
+
+def calc_eta_from_theta_deg(theta_deg):
+  theta_rad = np.deg2rad(theta_deg)
+  return calc_eta_from_theta_rad(theta_rad)
+
+def select_by_vertex(vx, vy, vz):
+  return np.sqrt(vx*vx + vy*vy) < 15. and abs(vz) < 50.
+
+def find_zones(eta):
+  zones = []
+  endcap = 1 if eta >= 0. else -1
+  theta_deg = calc_theta_deg_from_eta(eta)
+  theta_int = calc_theta_int(theta_deg, endcap)
+  boundaries = (0,41,49,87,127)
+  overlap = 2
+  if boundaries[0] <= theta_int <= boundaries[1]+overlap:
+    zones.append(0)
+  if boundaries[1]-overlap <= theta_int <= boundaries[2]+overlap:
+    zones.append(1)
+  if boundaries[2]-overlap <= theta_int <= boundaries[3]+overlap:
+    zones.append(2)
+  if boundaries[3]-overlap <= theta_int <= boundaries[4]:
+    zones.append(3)
+  assert(len(zones) <= 2)
+  return zones
+
 
 # Book histograms
 histograms = {}
@@ -103,6 +134,23 @@ for i in xrange(4):
   histograms[hname] = Hist(41, -20.5, 20.5, name=hname, title="; diff in phi_int", type="F")
   hname = "h_dtheta_re%i" % (i+1)
   histograms[hname] = Hist(21, -10.5, 10.5, name=hname, title="; diff in theta_int", type="F")
+
+hname = "muon_ptmin2_dxy"
+histograms[hname] = Hist(200, 0, 100, name=hname, title="; |d_{xy}| [cm]", type="F")
+hname = "muon_ptmin2_dz"
+histograms[hname] = Hist(200, 0, 100, name=hname, title="; |d_{z}| [cm]", type="F")
+hname = "muon_ptmin2_eta"
+histograms[hname] = Hist(50, 0, 2.5, name=hname, title="; #eta", type="F")
+
+for z in xrange(5):
+  # zone 0-3 are the 4 zones. zone 4 is inclusive.
+  hname = "muon_pt_denom_zone%i" % z
+  histograms[hname] = Hist(200, 0, 50, name=hname, title="; p_{T} [GeV]", type="F")
+  hname = "muon_pt_fiducial_zone%i" % z
+  histograms[hname] = Hist(200, 0, 50, name=hname, title="; p_{T} [GeV]", type="F")
+  hname = "muon_pt_trigger_zone%i" % z
+  histograms[hname] = Hist(200, 0, 50, name=hname, title="; p_{T} [GeV]", type="F")
+
 
 # Tools
 pattern_bank = []
@@ -124,7 +172,7 @@ for ievt, evt in enumerate(tree):
 
     # Hits
     for ihit, hit in enumerate(evt.hits):
-      print(".. hit  {0} {1} {2} {3} {4} {5} {6} {7} {8}".format(ihit, hit.bx, hit.type, hit.station, hit.ring, hit.sector, hit.fr, hit.sim_phi, hit.sim_theta))
+      print(".. hit  {0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10}".format(ihit, hit.bx, hit.type, hit.station, hit.ring, hit.sector, hit.fr, hit.sim_phi, hit.sim_theta, hit.sim_tp1, hit.sim_tp2))
     # Tracks
     for itrk, trk in enumerate(evt.tracks):
       print(".. trk  {0} {1} {2} {3} {4} {5} {6} {7}".format(itrk, trk.sector, trk.mode, trk.pt, trk.phi, trk.eta, trk.theta, trk.q))
@@ -147,7 +195,7 @@ for ievt, evt in enumerate(tree):
     trigger = False
     for itrk, trk in enumerate(evt.tracks):
       if trk.pt > 7.:
-        print(".. trk  {0} {1} {2} {3} {4}".format(itrk, trk.mode, trk.pt, trk.eta, deg_to_rad(trk.phi)))
+        print(".. trk  {0} {1} {2} {3} {4}".format(itrk, trk.mode, trk.pt, trk.eta, np.deg2rad(trk.phi)))
         trigger = True
         break
 
@@ -224,10 +272,16 @@ for ievt, evt in enumerate(tree):
   full_study = True
 
   if full_study:
-    print("evt {0} has {1} hits and {2} tracks".format(ievt, len(evt.hits), len(evt.tracks)))
+
+    nhits_csc = 0
+    for ihit, hit in enumerate(evt.hits):
+      if hit.type == kCSC:
+        nhits_csc += 1
+    print("evt {0} has {1} hits ({2} CSC) and {3} tracks".format(ievt, len(evt.hits), nhits_csc, len(evt.tracks)))
 
     # Make list of particles
     map_of_iparts = {}
+
     for ihit, hit in enumerate(evt.hits):
       if hit.type == kCSC:
         if hit.sim_tp1 != -1:
@@ -237,6 +291,7 @@ for ievt, evt in enumerate(tree):
           map_of_iparts[hit.sim_tp1] |= (1<<istation)
 
     map_of_iparts_1 = {}
+
     for k, v in map_of_iparts.iteritems():
       cnt = 0
       if (v & (1<<0)):  # station 1
@@ -258,6 +313,28 @@ for ievt, evt in enumerate(tree):
           highest_pt = part.pt
           highest_pt_ipart = ipart
 
+        # Check dxy and dz
+        if part.pt > 2.:
+          histograms["muon_ptmin2_dxy"].Fill(np.sqrt(part.vx*part.vx + part.vy*part.vy))
+          histograms["muon_ptmin2_dz"].Fill(abs(part.vz))
+          histograms["muon_ptmin2_eta"].Fill(part.eta)
+
+      # Efficiency study
+      if 0.8 <= abs(part.eta) < 2.5:
+        if select_by_vertex(part.vx, part.vy, part.vz):
+          zones = find_zones(part.eta)
+          for z in zones + [4]:
+            histograms["muon_pt_fiducial_zone%i" % z].Fill(part.pt)
+
+    # Efficiency study (denom)
+    for ipart, part in enumerate(evt.genparticles):
+      if 0.8 <= abs(part.eta) < 2.5:
+        if select_by_vertex(part.vx, part.vy, part.vz):
+          zones = find_zones(part.eta)
+          for z in zones + [4]:
+            histograms["muon_pt_denom_zone%i" % z].Fill(part.pt)
+
+
     part = evt.genparticles[highest_pt_ipart]
     highest_pt_part_phi = extrapolate_to_muon(part.phi, np.true_divide(part.q, part.pt))
     highest_pt_part_pt = part.pt
@@ -275,7 +352,7 @@ for ievt, evt in enumerate(tree):
         for ihit, hit in enumerate(evt.hits):
           if hit.type == kCSC and hit.station == station:
             if hit.sim_tp1 == highest_pt_ipart:
-              abs_dphi = abs(delta_phi(deg_to_rad(hit.sim_phi), highest_pt_part_phi))
+              abs_dphi = abs(delta_phi(np.deg2rad(hit.sim_phi), highest_pt_part_phi))
               if min_abs_dphi > abs_dphi:
                 min_abs_dphi = abs_dphi
                 min_abs_dphi_ihit = ihit
@@ -309,8 +386,21 @@ for ievt, evt in enumerate(tree):
 full_study = True
 
 if full_study:
-  pattern_bank_sorted = sorted(pattern_bank, key = lambda x: x[0], reverse=True)
+  # Save histograms
+  with root_open("histos_pm.root", "recreate") as f:
+    for k, v in histograms.iteritems():
+      v.Write()
+    for k, v in histogram2Ds.iteritems():
+      v.Write()
 
+  ## Save histograms
+  #for hname in ["muon_ptmin2_dxy", "muon_ptmin2_dz", "muon_ptmin2_eta"]:
+  #  outname = hname + ".root"
+  #  with root_open(outname, "recreate") as f:
+  #    histograms[hname].Write()
+
+  # Print patterns
+  pattern_bank_sorted = sorted(pattern_bank, key = lambda x: x[0], reverse=True)
   for x in pattern_bank_sorted:
     if x[0] > 1.:
       print x
