@@ -103,8 +103,15 @@ def calc_eta_from_theta_deg(theta_deg):
   theta_rad = np.deg2rad(theta_deg)
   return calc_eta_from_theta_rad(theta_rad)
 
+def select_by_eta(eta):
+  return 1.24 <= abs(eta) < 2.4
+
+def select_by_bx(bx):
+  return bx == 0
+
 def select_by_vertex(vx, vy, vz):
   return np.sqrt(vx*vx + vy*vy) < 15. and abs(vz) < 50.
+
 
 def find_zones(eta):
   zones = []
@@ -140,7 +147,9 @@ histograms[hname] = Hist(200, 0, 100, name=hname, title="; |d_{xy}| [cm]", type=
 hname = "muon_ptmin2_dz"
 histograms[hname] = Hist(200, 0, 100, name=hname, title="; |d_{z}| [cm]", type="F")
 hname = "muon_ptmin2_eta"
-histograms[hname] = Hist(50, 0, 2.5, name=hname, title="; #eta", type="F")
+histograms[hname] = Hist(50, 0, 2.5, name=hname, title="; |#eta|", type="F")
+hname = "muon_ptmin2_bx"
+histograms[hname] = Hist(11, -5.5, 5.5, name=hname, title="; BX", type="F")
 
 for z in xrange(5):
   # zone 0-3 are the 4 zones. zone 4 is inclusive.
@@ -300,7 +309,7 @@ for ievt, evt in enumerate(tree):
         cnt += 1
       if (v & (1<<2)) or (v & (1<<3)):  # station 3 or 4
         cnt += 1
-      if cnt >= 2:
+      if cnt >= 2:  # at least one hit in two different layers
         map_of_iparts_1[k] = v
 
     # Get part
@@ -308,40 +317,40 @@ for ievt, evt in enumerate(tree):
     highest_pt_ipart = -1
     for ipart in map_of_iparts_1:
       part = evt.genparticles[ipart]
-      if 1.24 <= abs(part.eta) < 2.5:
-        if highest_pt < part.pt:
-          highest_pt = part.pt
-          highest_pt_ipart = ipart
+      if part.pt > 2.:  histograms["muon_ptmin2_eta"].Fill(part.eta)
 
-        # Check dxy and dz
-        if part.pt > 2.:
-          histograms["muon_ptmin2_dxy"].Fill(np.sqrt(part.vx*part.vx + part.vy*part.vy))
-          histograms["muon_ptmin2_dz"].Fill(abs(part.vz))
-          histograms["muon_ptmin2_eta"].Fill(part.eta)
+      if select_by_eta(part.eta):
+        if part.pt > 2.:  histograms["muon_ptmin2_bx"].Fill(part.bx)
 
-      # Efficiency study
-      if 0.8 <= abs(part.eta) < 2.5:
-        if select_by_vertex(part.vx, part.vy, part.vz):
-          zones = find_zones(part.eta)
-          for z in zones + [4]:
-            histograms["muon_pt_fiducial_zone%i" % z].Fill(part.pt)
+        if select_by_bx(part.bx):
+          if part.pt > 2.:  histograms["muon_ptmin2_dxy"].Fill(np.sqrt(part.vx*part.vx + part.vy*part.vy))
+          if part.pt > 2.:  histograms["muon_ptmin2_dz"].Fill(abs(part.vz))
 
-    # Efficiency study (denom)
+          if select_by_vertex(part.vx, part.vy, part.vz):
+            if highest_pt < part.pt:
+              highest_pt = part.pt
+              highest_pt_ipart = ipart
+      continue  # end for
+
+
+    # Quick efficiency study
     for ipart, part in enumerate(evt.genparticles):
-      if 0.8 <= abs(part.eta) < 2.5:
-        if select_by_vertex(part.vx, part.vy, part.vz):
+      if 1.2 <= abs(part.eta) < 2.2:  # restricted eta to avoid geometric acceptance effect
+        if select_by_vertex(part.vx, part.vy, part.vz) and select_by_bx(part.bx):
           zones = find_zones(part.eta)
           for z in zones + [4]:
             histograms["muon_pt_denom_zone%i" % z].Fill(part.pt)
-
-
-    part = evt.genparticles[highest_pt_ipart]
-    highest_pt_part_phi = extrapolate_to_muon(part.phi, np.true_divide(part.q, part.pt))
-    highest_pt_part_pt = part.pt
-    #print ".. selected part", highest_pt_ipart, highest_pt_part_phi, highest_pt_part_pt
+            if ipart in map_of_iparts_1:
+              histograms["muon_pt_fiducial_zone%i" % z].Fill(part.pt)
 
     # Get hits
     if highest_pt_ipart != -1:
+      part = evt.genparticles[highest_pt_ipart]
+      highest_pt_part_phi = extrapolate_to_muon(part.phi, np.true_divide(part.q, part.pt))
+      highest_pt_part_pt = part.pt
+      highest_pt_part_q = part.q
+      #print ".. selected part", highest_pt_ipart, highest_pt_part_phi, highest_pt_part_pt, highest_pt_part_q
+
       highest_pt_ihits = [-1, -1, -1, -1]
 
       for istation in xrange(4):
@@ -350,12 +359,13 @@ for ievt, evt in enumerate(tree):
         min_abs_dphi_ihit = -1
 
         for ihit, hit in enumerate(evt.hits):
-          if hit.type == kCSC and hit.station == station:
-            if hit.sim_tp1 == highest_pt_ipart:
-              abs_dphi = abs(delta_phi(np.deg2rad(hit.sim_phi), highest_pt_part_phi))
-              if min_abs_dphi > abs_dphi:
-                min_abs_dphi = abs_dphi
-                min_abs_dphi_ihit = ihit
+          if hit.type == kCSC:
+            if hit.station == station:
+              if hit.sim_tp1 == highest_pt_ipart:
+                abs_dphi = abs(delta_phi(np.deg2rad(hit.sim_phi), highest_pt_part_phi))
+                if min_abs_dphi > abs_dphi:
+                  min_abs_dphi = abs_dphi
+                  min_abs_dphi_ihit = ihit
 
         highest_pt_ihits[istation] = min_abs_dphi_ihit
 
@@ -374,10 +384,10 @@ for ievt, evt in enumerate(tree):
         highest_pt_hit_phis[istation] = hit_zone_phi
         #print ".. selected hit", ihit, hit_sim_phi, hit_emtf_phi, hit_zone_phi
 
-    # Save the results
-    if highest_pt_ipart != -1:
-      t = (highest_pt_part_pt, highest_pt_hit_phis, ievt)
+      # Save the results
+      t = (highest_pt_part_pt, highest_pt_part_q, highest_pt_hit_phis, ievt)
       pattern_bank.append(t)
+      pass  # end if
 
 
 # ______________________________________________________________________________
@@ -394,7 +404,7 @@ if full_study:
       v.Write()
 
   ## Save histograms
-  #for hname in ["muon_ptmin2_dxy", "muon_ptmin2_dz", "muon_ptmin2_eta"]:
+  #for hname in ["muon_ptmin2_dxy", "muon_ptmin2_dz", "muon_ptmin2_eta", "muon_ptmin2_bx"]:
   #  outname = hname + ".root"
   #  with root_open(outname, "recreate") as f:
   #    histograms[hname].Write()
