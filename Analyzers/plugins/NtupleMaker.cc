@@ -141,6 +141,10 @@ private:
   std::unique_ptr<std::vector<int16_t> >  vt_endcap;
   std::unique_ptr<std::vector<int16_t> >  vt_sector;
   std::unique_ptr<std::vector<int16_t> >  vt_bx;
+  std::unique_ptr<std::vector<int32_t> >  vt_hitref1;
+  std::unique_ptr<std::vector<int32_t> >  vt_hitref2;
+  std::unique_ptr<std::vector<int32_t> >  vt_hitref3;
+  std::unique_ptr<std::vector<int32_t> >  vt_hitref4;
   //
   std::unique_ptr<int32_t              >  vt_size;
 
@@ -365,6 +369,47 @@ void NtupleMaker::process() {
     return static_cast<int>(std::round(time * 100));  // to integer unit of 0.01 ns (arbitrary)
   };
 
+  auto get_hit_refs = [](const auto& trk, const auto& hits) {
+    using namespace l1t;
+
+    std::vector<int32_t> hit_refs = {-1, -1, -1, -1};
+    EMTFHitCollection::const_iterator conv_hits_it1  = trk.Hits().begin();
+    EMTFHitCollection::const_iterator conv_hits_end1 = trk.Hits().end();
+
+    for (; conv_hits_it1 != conv_hits_end1; ++conv_hits_it1) {
+      EMTFHitCollection::const_iterator conv_hits_it2  = hits.begin();
+      EMTFHitCollection::const_iterator conv_hits_end2 = hits.end();
+
+      for (; conv_hits_it2 != conv_hits_end2; ++conv_hits_it2) {
+        const EMTFHit& conv_hit_i = *conv_hits_it1;
+        const EMTFHit& conv_hit_j = *conv_hits_it2;
+
+        // See L1Trigger/L1TMuonEndCap/src/PrimitiveMatching.cc
+        // All these must match: [bx_history][station][chamber][segment]
+        if (
+          (conv_hit_i.Subsystem()  == conv_hit_j.Subsystem()) &&
+          (conv_hit_i.PC_station() == conv_hit_j.PC_station()) &&
+          (conv_hit_i.PC_chamber() == conv_hit_j.PC_chamber()) &&
+          (conv_hit_i.Ring()       == conv_hit_j.Ring()) &&  // because of ME1/1
+          (conv_hit_i.Strip()      == conv_hit_j.Strip()) &&
+          (conv_hit_i.Wire()       == conv_hit_j.Wire()) &&
+          (conv_hit_i.Pattern()    == conv_hit_j.Pattern()) &&
+          (conv_hit_i.BX()         == conv_hit_j.BX()) &&
+          (conv_hit_i.Strip_low()  == conv_hit_j.Strip_low()) && // For RPC clusters
+          (conv_hit_i.Strip_hi()   == conv_hit_j.Strip_hi()) &&  // For RPC clusters
+          (conv_hit_i.Roll()       == conv_hit_j.Roll()) &&
+          true
+        ) {
+          int istation = (conv_hit_i.Station() - 1);
+          auto hit_ref = std::distance(hits.begin(), conv_hits_it2);
+          hit_refs.at(istation) = hit_ref;
+        }  // end if
+      }  // end loop over hits
+    }  // end loop over trk.Hits()
+
+    return hit_refs;
+  };
+
 
   // ___________________________________________________________________________
   bool please_use_trkParts = true;
@@ -412,6 +457,9 @@ void NtupleMaker::process() {
 
   // Tracks
   for (const auto& trk : emuTracks_) {
+    const auto& hit_refs = get_hit_refs(trk, emuHits_);
+    assert(hit_refs.size() == 4);
+
     vt_pt         ->push_back(trk.Pt());
     vt_xml_pt     ->push_back(trk.Pt_XML());
     vt_phi        ->push_back(trk.Phi_glob());
@@ -423,6 +471,10 @@ void NtupleMaker::process() {
     vt_endcap     ->push_back(trk.Endcap());
     vt_sector     ->push_back(trk.Sector());
     vt_bx         ->push_back(trk.BX());
+    vt_hitref1    ->push_back(hit_refs.at(0));
+    vt_hitref2    ->push_back(hit_refs.at(1));
+    vt_hitref3    ->push_back(hit_refs.at(2));
+    vt_hitref4    ->push_back(hit_refs.at(3));
   }
   (*vt_size) = emuTracks_.size();
 
@@ -513,6 +565,10 @@ void NtupleMaker::process() {
   vt_endcap     ->clear();
   vt_sector     ->clear();
   vt_bx         ->clear();
+  vt_hitref1    ->clear();
+  vt_hitref2    ->clear();
+  vt_hitref3    ->clear();
+  vt_hitref4    ->clear();
   //
   (*vt_size)    = 0;
 
@@ -592,6 +648,10 @@ void NtupleMaker::makeTree() {
   vt_endcap     .reset(new std::vector<int16_t>());
   vt_sector     .reset(new std::vector<int16_t>());
   vt_bx         .reset(new std::vector<int16_t>());
+  vt_hitref1    .reset(new std::vector<int32_t>());
+  vt_hitref2    .reset(new std::vector<int32_t>());
+  vt_hitref3    .reset(new std::vector<int32_t>());
+  vt_hitref4    .reset(new std::vector<int32_t>());
   //
   vt_size       .reset(new int32_t(0)            );
 
@@ -655,6 +715,10 @@ void NtupleMaker::makeTree() {
   tree->Branch("vt_endcap"    , &(*vt_endcap    ));
   tree->Branch("vt_sector"    , &(*vt_sector    ));
   tree->Branch("vt_bx"        , &(*vt_bx        ));
+  tree->Branch("vt_hitref1"   , &(*vt_hitref1   ));
+  tree->Branch("vt_hitref2"   , &(*vt_hitref2   ));
+  tree->Branch("vt_hitref3"   , &(*vt_hitref3   ));
+  tree->Branch("vt_hitref4"   , &(*vt_hitref4   ));
   //
   tree->Branch("vt_size"      , &(*vt_size      ));
 
