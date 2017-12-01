@@ -347,6 +347,20 @@ void TrackCounting::process() {
     if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
     if (!mytracks.empty())  h->Fill((highest_pt));
 
+    hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin8_pt";
+    h = histograms_.at(hname);
+    mytracks.clear();
+    std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0. < std::abs(trk.Eta()) && std::abs(trk.Eta()) <= 2.5) && (trk.Mode() == 7 || trk.Mode() == 10 || trk.Mode() == 12 || trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
+    if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
+    if (!mytracks.empty())  h->Fill((highest_pt));
+
+    hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin4_pt";
+    h = histograms_.at(hname);
+    mytracks.clear();
+    std::copy_if(emuTracks_.begin(), emuTracks_.end(), std::back_inserter(mytracks), [](const auto& trk) { return (0. < std::abs(trk.Eta()) && std::abs(trk.Eta()) <= 2.5) && (trk.Mode() == 3 || trk.Mode() == 5 || trk.Mode() == 6 || trk.Mode() == 9 || trk.Mode() == 7 || trk.Mode() == 10 || trk.Mode() == 12 || trk.Mode() == 11 || trk.Mode() == 13 || trk.Mode() == 14 || trk.Mode() == 15); });
+    if (!mytracks.empty())  highest_pt = get_pt(std::max_element(mytracks.begin(), mytracks.end(), cmp_pt) );
+    if (!mytracks.empty())  h->Fill((highest_pt));
+
     hname = "emtf_ptmin10_qmin12_eta";
     h = histograms_.at(hname);
     mytracks.clear();
@@ -435,6 +449,10 @@ void TrackCounting::bookHistograms() {
   hname = "highest_emtf_absEtaMin1.64_absEtaMax2.14_qmin12_pt";
   histograms_[hname] = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
   hname = "highest_emtf_absEtaMin2.14_absEtaMax2.5_qmin12_pt";
+  histograms_[hname] = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
+  hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin8_pt";
+  histograms_[hname] = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
+  hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin4_pt";
   histograms_[hname] = new TH1F(hname, "; p_{T} [GeV]; entries", 100, 0., 100.);
   hname = "emtf_ptmin10_qmin12_eta";
   histograms_[hname] = new TH1F(hname, "; |#eta|; entries", 10, 1.55, 2.55);
