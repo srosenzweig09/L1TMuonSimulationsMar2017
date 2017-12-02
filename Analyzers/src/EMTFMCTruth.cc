@@ -138,7 +138,7 @@ int EMTFMCTruth::findCSCStripSimLink(const l1t::EMTFHit& hit, const std::vector<
     CSCDetId cscDetId0 = hit.CSC_DetId();
     CSCDetId cscDetId1(cscDetId0.endcap(), cscDetId0.station(), cscDetId0.ring(), cscDetId0.chamber(), csclayer+1);
     int strip0 = hit.Strip();
-    int strip1 = (strip0 - 1)/2 + 1;
+    int strip1 = (strip0 - 1)/2 + 1;  // different convention used in CSC StripDigiSimLink
 
     StripDigiSimLinks::const_iterator cscStripLayerLinks = cscStripSimLinksPtr_->find(cscDetId1);
     if (cscStripLayerLinks != cscStripSimLinksPtr_->end()) {
@@ -146,9 +146,9 @@ int EMTFMCTruth::findCSCStripSimLink(const l1t::EMTFHit& hit, const std::vector<
         unsigned int channel = linkItr->channel();
         unsigned int simTrackId = linkItr->SimTrackId();
         EncodedEventId eventId = linkItr->eventId();
-        //float fraction = linkItr->fraction();
+        float fraction = linkItr->fraction();
 
-        if (std::abs(int(strip1) - int(channel)) <= 2) {  // allow +/-2
+        if (fraction > 0.1 && std::abs(int(strip1) - int(channel)) <= 2) {  // allow +/-2
           SimHitIdpr matchId(simTrackId, eventId);
           ++matches[matchId];
         }
@@ -167,7 +167,7 @@ int EMTFMCTruth::findCSCWireSimLink(const l1t::EMTFHit& hit, const TrackingParti
     CSCDetId cscDetId0 = hit.CSC_DetId();
     CSCDetId cscDetId1(cscDetId0.endcap(), cscDetId0.station(), cscDetId0.ring(), cscDetId0.chamber(), csclayer+1);
     int wire0 = hit.Wire();
-    int wire1 = (wire0 + 100) + 1;
+    int wire1 = (wire0 + 100) + 1;  // different convention used in CSC StripDigiSimLink
 
     WireDigiSimLinks::const_iterator cscWireLayerLinks = cscWireSimLinksPtr_->find(cscDetId1);
     if (cscWireLayerLinks != cscWireSimLinksPtr_->end()) {
@@ -175,9 +175,9 @@ int EMTFMCTruth::findCSCWireSimLink(const l1t::EMTFHit& hit, const TrackingParti
         unsigned int channel = linkItr->channel();
         unsigned int simTrackId = linkItr->SimTrackId();
         EncodedEventId eventId = linkItr->eventId();
-        //float fraction = linkItr->fraction();
+        float fraction = linkItr->fraction();
 
-        if (std::abs(int(wire1) - int(channel)) <= 1) {  // allow +/-1
+        if (fraction > 0.1 && std::abs(int(wire1) - int(channel)) <= 1) {  // allow +/-1
           SimHitIdpr matchId(simTrackId, eventId);
           ++matches[matchId];
         }
@@ -226,7 +226,8 @@ int EMTFMCTruth::findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
       EncodedEventId eventId = linkItr->getEventId();
 
       if (detUnitId == rpcDetId.rawId()) {
-        for (int strip1 = stripA; strip1 < stripB+1; ++strip1) {
+        for (int strip0 = stripA; strip0 < stripB+1; ++strip0) {
+          int strip1 = strip0;  // same convention
           if (((int) simStrip == strip1) && ((int) simBX == bx)) {
             SimHitIdpr matchId(simTrackId, eventId);
             ++matches[matchId];
@@ -248,18 +249,19 @@ int EMTFMCTruth::findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
   GEMDetId gemDetId = hit.GEM_DetId();
   int stripA = hit.Strip_low();
   int stripB = hit.Strip_hi();
-  //int bx     = hit.BX();
+  int bx     = hit.BX();
 
   GEMDigiSimLinks::const_iterator gemDigiLayerLinks = gemDigiSimLinksPtr_->find(gemDetId);
   if (gemDigiLayerLinks != gemDigiSimLinksPtr_->end()) {
     for (GEMLayerLinks::const_iterator linkItr = gemDigiLayerLinks->begin(); linkItr != gemDigiLayerLinks->end(); ++linkItr) {
       unsigned int simStrip = linkItr->getStrip();
-      //unsigned int simBX = linkItr->getBx();
+      unsigned int simBX = linkItr->getBx();
       unsigned int simTrackId = linkItr->getTrackId();
       EncodedEventId eventId = linkItr->getEventId();
 
-      for (int strip1 = stripA; strip1 < stripB+1; ++strip1) {
-        if ((int) simStrip == strip1) {
+      for (int strip0 = stripA; strip0 < stripB+1; ++strip0) {
+        int strip1 = (strip0 - 1)/2 + 1;  // different convention used in GEMDigiSimLink
+        if (((int) simStrip == strip1) && ((int) simBX == bx)) {
           SimHitIdpr matchId(simTrackId, eventId);
           ++matches[matchId];
         }
@@ -271,9 +273,11 @@ int EMTFMCTruth::findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
 }
 
 int EMTFMCTruth::findTrackingParticle(const std::map<SimHitIdpr, int>& matches, const TrackingParticleCollection& trkPartColl) const {
+
+#if 0
+  // Return highest pT
   int best_tp = -1;  // index of the tp
   double highest_pt = 0.;
-
   for (std::map<SimHitIdpr, int>::const_iterator it_match = matches.begin(); it_match != matches.end(); ++it_match) {
     auto found = trackingParticleLinks_.find(it_match->first);
     if (found != trackingParticleLinks_.end()) {
@@ -286,6 +290,23 @@ int EMTFMCTruth::findTrackingParticle(const std::map<SimHitIdpr, int>& matches, 
       }
     }
   }
+#else
+  // Return majority
+  int best_tp = -1;  // index of the tp
+  int majority = 0;
+  for (std::map<SimHitIdpr, int>::const_iterator it_match = matches.begin(); it_match != matches.end(); ++it_match) {
+    auto found = trackingParticleLinks_.find(it_match->first);
+    if (found != trackingParticleLinks_.end()) {
+      int tp = found->second;
+      auto it_trkpart = trkPartColl.begin();
+      std::advance(it_trkpart, tp);
+      if (majority < it_match->second) {
+        majority = it_match->second;
+        best_tp = tp;
+      }
+    }
+  }
+#endif
 
   return best_tp;
 }

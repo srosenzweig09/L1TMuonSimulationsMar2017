@@ -158,6 +158,7 @@ private:
   std::unique_ptr<std::vector<float  > >  vp_vz;
   std::unique_ptr<std::vector<int16_t> >  vp_q;  // charge
   std::unique_ptr<std::vector<int16_t> >  vp_bx;
+  std::unique_ptr<std::vector<int16_t> >  vp_event;
   std::unique_ptr<std::vector<int32_t> >  vp_pdgid;
   std::unique_ptr<int32_t              >  vp_size;
 };
@@ -241,7 +242,7 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
   // Object filters
   emuHits_.clear();
   for (const auto& hit : (*emuHits_handle)) {
-    if (!(-1 <= hit.BX() && hit.BX() <= 1))  continue;  // only BX=[-1,+1]
+    if (!(-2 <= hit.BX() && hit.BX() <= 2))  continue;  // only BX=[-2,+2]
     //if (hit.Endcap() != 1)  continue;  // only positive endcap
     if (hit.Subsystem() == TTTriggerPrimitive::kTT)  continue;  // ignore TTStubs
     emuHits_.push_back(hit);
@@ -285,14 +286,14 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
       bool secondary = (part.charge() != 0 && part.pt() > 0.5 && std::abs(part.eta()) < 2.5 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 120.0 && std::abs(part.vz()) < 300.0);
 
       // Do not decay
-      bool nodecay = (part.decayVertices().empty());
+      //bool nodecay = (part.decayVertices().empty());
 
       //if (!signal)  continue;
       //if (!intime)  continue;
       if (!outoftime) continue;
       //if (!primary) continue;
       if (!secondary) continue;
-      if (!nodecay)   continue;
+      //if (!nodecay)   continue;
     }
 
     trkParts_.push_back(part);
@@ -348,7 +349,7 @@ void NtupleMaker::process() {
       return truth_.findCSCStripSimLink(hit, trkParts_);
     } else if (hit.Subsystem() == TriggerPrimitive::kRPC) {
       return truth_.findRPCDigiSimLink(hit, trkParts_);
-    } else if (hit.Subsystem() == TriggerPrimitive::kGEM) {
+    } else if (hit.Subsystem() == TriggerPrimitive::kGEM && hit.Ring() != 4) {  // ignore ME0 (ring 4)
       return truth_.findGEMDigiSimLink(hit, trkParts_);
     }
     return -1;
@@ -359,7 +360,7 @@ void NtupleMaker::process() {
       return truth_.findCSCWireSimLink(hit, trkParts_);
     } else if (hit.Subsystem() == TriggerPrimitive::kRPC) {
       return truth_.findRPCDigiSimLink(hit, trkParts_);
-    } else if (hit.Subsystem() == TriggerPrimitive::kGEM) {
+    } else if (hit.Subsystem() == TriggerPrimitive::kGEM && hit.Ring() != 4) {  // ignore ME0 (ring 4)
       return truth_.findGEMDigiSimLink(hit, trkParts_);
     }
     return -1;
@@ -406,6 +407,12 @@ void NtupleMaker::process() {
         }  // end if
       }  // end loop over hits
     }  // end loop over trk.Hits()
+
+    // Sanity check
+    for (int istation = 0; istation < 4; ++istation) {
+      bool has_hit = trk.Mode() & (1 << (3 - istation));
+      assert(has_hit == (hit_refs.at(istation) != -1));
+    }
 
     return hit_refs;
   };
@@ -490,6 +497,7 @@ void NtupleMaker::process() {
       vp_vz         ->push_back(part.vz());
       vp_q          ->push_back(part.charge());
       vp_bx         ->push_back(0);
+      vp_event      ->push_back(0);
       vp_pdgid      ->push_back(part.pdgId());
     }
     (*vp_size) = genParts_.size();
@@ -509,6 +517,7 @@ void NtupleMaker::process() {
       vp_vz         ->push_back(part.vz());
       vp_q          ->push_back(part.charge());
       vp_bx         ->push_back(part.eventId().bunchCrossing());
+      vp_event      ->push_back(part.eventId().event());
       vp_pdgid      ->push_back(part.pdgId());
     }
     (*vp_size) = trkParts_.size();
@@ -582,6 +591,7 @@ void NtupleMaker::process() {
   vp_vz         ->clear();
   vp_q          ->clear();
   vp_bx         ->clear();
+  vp_event      ->clear();
   vp_pdgid      ->clear();
   (*vp_size)    = 0;
 }
@@ -665,6 +675,7 @@ void NtupleMaker::makeTree() {
   vp_vz         .reset(new std::vector<float  >());
   vp_q          .reset(new std::vector<int16_t>());
   vp_bx         .reset(new std::vector<int16_t>());
+  vp_event      .reset(new std::vector<int16_t>());
   vp_pdgid      .reset(new std::vector<int32_t>());
   vp_size       .reset(new int32_t(0)            );
 
@@ -732,6 +743,7 @@ void NtupleMaker::makeTree() {
   tree->Branch("vp_vz"        , &(*vp_vz        ));
   tree->Branch("vp_q"         , &(*vp_q         ));
   tree->Branch("vp_bx"        , &(*vp_bx        ));
+  tree->Branch("vp_event"     , &(*vp_event     ));
   tree->Branch("vp_pdgid"     , &(*vp_pdgid     ));
   tree->Branch("vp_size"      , &(*vp_size      ));
 }
