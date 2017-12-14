@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<h1>Track building</h1>
+
+<p>The following tracks pick up the wrong hit.</p>
+
+<h3>mc evt 1662</h3>
+
+<div>
+<pre>
+==== Endcap 2 Sector 5 Hits (input) ====
+bx e s ss st vf ql cp wg id bd hs
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+1 2 5 2 1 1 14 8 20 3 0 26
+1 2 5 2 1 1 12 4 18 3 0 8
+1 2 5 0 2 1 15 10 64 3 0 7
+1 2 5 0 3 1 15 10 70 3 0 151
+1 2 5 0 4 1 15 10 82 3 0 151
+12345
+1 2 5 2 5 1 12 4 14 1 0 84
+1 2 5 0 5 1 12 5 45 6 1 112
+12345
+12345
+12345
+1 2 5 0 2 2 0 0 20 1 0 681
+1 2 5 0 2 2 0 0 19 2 0 674
+1 2 5 0 2 2 0 0 20 4 0 672
+1 2 5 0 2 2 0 0 21 6 0 670
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+
+==== Endcap 2 Sector 5 Tracks (output) ====
+bx e s a mo et ph cr q pt
+0 2 5 555221001 15 335 95 0 15 53
+1 2 5 51707461 10 322 -9 1 10 2
+</pre>
+
+<p>
+What we want (pT = 10.4 GeV): <br/>
+<span style="font-family:monospace; color:green;">
+  1 2 5 2 1 1 14 8 20 3 0 26 <br/>
+  1 2 5 0 2 1 15 10 64 3 0 7 <br/>
+  1 2 5 0 3 1 15 10 70 3 0 151 <br/>
+  1 2 5 0 4 1 15 10 82 3 0 151 <br/>
+</span></p>
+
+<p>
+What we get (pT = 53 GeV): <br/>
+<span style="font-family:monospace; color:green;">
+  1 2 5 2 1 1 14 8 <span style="color:red;">18</span> 3 0 26 <br/>
+  1 2 5 0 2 1 15 10 64 3 0 7 <br/>
+  1 2 5 0 3 1 15 10 70 3 0 151 <br/>
+  1 2 5 0 4 1 15 10 82 3 0 151 <br/>
+</span></p>
+
+</div>
+
+
+<h3>mc evt 40058</h3>
+
+<div>
+<pre>
+==== Endcap 1 Sector 1 Hits ====
+bx e s ss st vf ql cp wg id bd hs
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+1 1 1 2 1 1 14 8 4 2 0 161
+1 1 1 2 1 1 15 10 4 2 0 146
+1 1 1 0 3 1 15 10 17 3 0 143
+1 1 1 0 4 1 15 10 15 3 0 144
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+
+==== Endcap 1 Sector 1 Tracks ====
+bx e s a mo et ph cr q pt
+0 1 1 146060303 11 212 66 0 15 40
+</pre>
+
+<p>
+What we want (pT = 7.9 GeV): <br/>
+<span style="font-family:monospace; color:green;">
+  1 1 1 2 1 1 14 8 4 2 0 161 <br/>
+  1 1 1 0 3 1 15 10 17 3 0 143 <br/>
+  1 1 1 0 4 1 15 10 15 3 0 144 <br/>
+</span></p>
+
+<p>
+What we get (pT = 40 GeV): <br/>
+<span style="font-family:monospace; color:green;">
+  <span style="color:red;">1 1 1 2 1 1 15 10 4 2 0 146</span> <br/>
+  1 1 1 0 3 1 15 10 17 3 0 143 <br/>
+  1 1 1 0 4 1 15 10 15 3 0 144 <br/>
+</span></p>
+
+</div>
+
+
+<h3>mc evt 54667</h3>
+
+<div>
+<pre>
+==== Endcap 2 Sector 6 Hits ====
+bx e s ss st vf ql cp wg id bd hs
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+1 2 6 0 3 1 14 8 8 7 0 27
+1 2 6 0 4 1 15 10 14 7 0 28
+1 2 6 2 5 1 11 2 1 1 0 175
+12345
+1 2 6 2 1 1 12 4 38 1 0 101
+1 2 6 0 2 1 12 5 87 2 1 28
+12345
+12345
+12345
+12345
+12345
+1 2 6 0 3 2 0 0 14 1 0 836
+1 2 6 0 3 2 0 0 14 2 0 796
+1 2 6 0 3 2 0 0 13 3 0 806
+1 2 6 0 3 2 0 0 13 5 0 796
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+
+==== Endcap 2 Sector 6 Tracks ====
+bx e s a mo et ph cr q pt
+0 2 6 656165681 15 371 49 0 15 52
+</pre>
+
+<p>
+What we want (pT = 2.61 GeV): <br/>
+<span style="font-family:monospace; color:green;">
+  1 2 6 0 3 2 0 0 14 1 0 836 <br/>
+  1 2 6 0 3 2 0 0 14 2 0 796 <br/>
+  1 2 6 0 3 1 14 8 8 7 0 27 <br/>
+  1 2 6 0 4 1 15 10 14 7 0 28 <br/>
+</span></p>
+
+<p>
+What we get (pT = 52 GeV): <br/>
+<span style="font-family:monospace; color:green;">
+  <span style="color:red;">1 2 6 2 1 1 12 4 38 1 0 101</span> <br/>
+  1 2 6 0 3 2 0 0 14 2 0 796 <br/>
+  1 2 6 0 3 1 14 8 8 7 0 27 <br/>
+  1 2 6 0 4 1 15 10 14 7 0 28 <br/>
+</span></p>
+
+</div>
+
+
+<h3>mc evt 57973</h3>
+
+<div>
+<pre>
+==== Endcap 2 Sector 1 Hits ====
+bx e s ss st vf ql cp wg id bd hs
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+1 2 1 2 1 1 15 10 19 3 0 195
+1 2 1 2 1 1 14 9 19 3 1 36
+1 2 1 0 2 1 15 10 63 3 0 50
+1 2 1 0 3 1 15 10 69 3 0 104
+1 2 1 0 4 1 15 10 80 3 0 104
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+
+==== Endcap 2 Sector 1 Tracks ====
+bx e s a mo et ph cr q pt
+0 2 1 557714493 15 335 86 1 15 50.5
+</pre>
+
+<p>
+What we want (pT = 5.23 GeV): <br/>
+<span style="font-family:monospace; color:green;">
+  1 2 1 2 1 1 14 9 19 3 1 36 <br/>
+  1 2 1 0 2 1 15 10 63 3 0 50 <br/>
+  1 2 1 0 3 1 15 10 69 3 0 104 <br/>
+  1 2 1 0 4 1 15 10 80 3 0 104 <br/>
+</span></p>
+
+<p>
+What we get (pT = 50.5 GeV): <br/>
+<span style="font-family:monospace; color:green;">
+  <span style="color:red;">1 2 1 2 1 1 15 10 19 3 0 195</span> <br/>
+  1 2 1 0 2 1 15 10 63 3 0 50 <br/>
+  1 2 1 0 3 1 15 10 69 3 0 104 <br/>
+  1 2 1 0 4 1 15 10 80 3 0 104 <br/>
+</span></p>
+
+</div>
+
+<hr/>
+
+<p>The following tracks pick up the right hits, but somehow pT assignment goes terribly wrong.</p>
+
+
+<h3>mc evt 28348</h3>
+
+<div>
+<pre>
+==== Endcap 2 Sector 5 Hits ====
+bx e s ss st vf ql cp wg id bd hs
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+1 2 5 0 2 1 14 9 34 7 1 31
+1 2 5 0 3 1 15 10 52 7 0 127
+12345
+12345
+12345
+12345
+12345
+12345
+1 2 5 0 3 2 0 0 21 1 0 907
+1 2 5 0 3 2 0 0 23 4 0 907
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+
+==== Endcap 2 Sector 5 Tracks ====
+bx e s a mo et ph cr q pt
+0 2 5 516153489 14 401 61 0 14 35
+</pre>
+
+<p>
+What we want (pT = 10.0 GeV): <br/>
+<span style="font-family:monospace; color:green;">
+  1 2 5 0 3 2 0 0 21 1 0 907 <br/>
+  1 2 5 0 2 1 14 9 34 7 1 31 <br/>
+  1 2 5 0 3 1 15 10 52 7 0 127 <br/>
+</span></p>
+
+<p>
+What we get (pT = <span style="color:red;">35</span> GeV): <br/>
+<span style="font-family:monospace; color:green;">
+  1 2 5 0 3 2 0 0 21 1 0 907 <br/>
+  1 2 5 0 2 1 14 9 34 7 1 31 <br/>
+  1 2 5 0 3 1 15 10 52 7 0 127 <br/>
+</span></p>
+</div>
+
+
+<h3>mc evt 52499</h3>
+
+<div>
+<pre>
+==== Endcap 1 Sector 4 Hits ====
+bx e s ss st vf ql cp wg id bd hs
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+1 1 4 1 1 1 15 10 6 1 0 151
+1 1 4 0 2 1 14 8 16 1 0 18
+1 1 4 0 3 1 15 10 14 1 0 141
+1 1 4 0 4 1 15 10 14 1 0 140
+12345
+1 1 4 2 1 1 11 3 0 2 1 153
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+12345
+
+==== Endcap 1 Sector 4 Tracks ====
+bx e s a mo et ph cr q pt
+0 1 4 598303514 15 210 3 0 15 20
+</pre>
+
+<p>
+What we want (pT = 3.79 GeV): <br/>
+<span style="font-family:monospace; color:green;">
+  1 1 4 1 1 1 15 10 6 1 0 151 <br/>
+  1 1 4 0 2 1 14 8 16 1 0 18 <br/>
+  1 1 4 0 3 1 15 10 14 1 0 141 <br/>
+  1 1 4 0 4 1 15 10 14 1 0 140 <br/>
+</span></p>
+
+<p>
+What we get (pT = <span style="color:red;">20</span> GeV): <br/>
+<span style="font-family:monospace; color:green;">
+  1 1 4 1 1 1 15 10 6 1 0 151 <br/>
+  1 1 4 0 2 1 14 8 16 1 0 18 <br/>
+  1 1 4 0 3 1 15 10 14 1 0 141 <br/>
+  1 1 4 0 4 1 15 10 14 1 0 140 <br/>
+</span></p>
+
+</div>
+
+
+</body>
+</html>
