@@ -148,7 +148,7 @@ int EMTFMCTruth::findCSCStripSimLink(const l1t::EMTFHit& hit, const std::vector<
         EncodedEventId eventId = linkItr->eventId();
         float fraction = linkItr->fraction();
 
-        if (fraction > 0.1 && std::abs(int(strip1) - int(channel)) <= 2) {  // allow +/-2
+        if (fraction > 0.1 && std::abs(int(strip1) - int(channel)) <= 3) {  // allow +/-3
           SimHitIdpr matchId(simTrackId, eventId);
           ++matches[matchId];
         }
@@ -177,7 +177,7 @@ int EMTFMCTruth::findCSCWireSimLink(const l1t::EMTFHit& hit, const TrackingParti
         EncodedEventId eventId = linkItr->eventId();
         float fraction = linkItr->fraction();
 
-        if (fraction > 0.1 && std::abs(int(wire1) - int(channel)) <= 1) {  // allow +/-1
+        if (fraction > 0.1 && std::abs(int(wire1) - int(channel)) <= 3) {  // allow +/-3
           SimHitIdpr matchId(simTrackId, eventId);
           ++matches[matchId];
         }
