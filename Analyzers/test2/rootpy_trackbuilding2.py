@@ -25,7 +25,8 @@ class Particle(TreeModel):
 
 # Open file
 #infile = root_open('ntuple_SingleMuon_PositiveEndCap.6.root')
-infile = root_open('rateplots_mc_r305310_run2_all.0.root')
+#infile = root_open('rateplots_mc_r305310_run2_all.0.root')
+infile = root_open('rateplots_mc_r305310_run2_all.1.root')
 
 tree = infile.ntupler.tree
 maxEvents = -1
@@ -91,6 +92,24 @@ for cat in ["real", "fake"]:
   hname = "trk_hit_type4_%s" % cat
   histograms[hname] = Hist(7, -2, 5, name=hname, title="; hit type (ME4)", type='F')
 
+  hname = "trk_hit_pattern1_%s" % cat
+  histograms[hname] = Hist(12, 0, 12, name=hname, title="; hit pattern (ME1)", type='F')
+  hname = "trk_hit_pattern2_%s" % cat
+  histograms[hname] = Hist(12, 0, 12, name=hname, title="; hit pattern (ME2)", type='F')
+  hname = "trk_hit_pattern3_%s" % cat
+  histograms[hname] = Hist(12, 0, 12, name=hname, title="; hit pattern (ME3)", type='F')
+  hname = "trk_hit_pattern4_%s" % cat
+  histograms[hname] = Hist(12, 0, 12, name=hname, title="; hit pattern (ME4)", type='F')
+
+  hname = "trk_hit_occu1_%s" % cat
+  histograms[hname] = Hist(30, 0, 30, name=hname, title="; hit occupancy in sector (ME1)", type='F')
+  hname = "trk_hit_occu2_%s" % cat
+  histograms[hname] = Hist(30, 0, 30, name=hname, title="; hit occupancy in sector (ME2)", type='F')
+  hname = "trk_hit_occu3_%s" % cat
+  histograms[hname] = Hist(30, 0, 30, name=hname, title="; hit occupancy in sector (ME3)", type='F')
+  hname = "trk_hit_occu4_%s" % cat
+  histograms[hname] = Hist(30, 0, 30, name=hname, title="; hit occupancy in sector (ME4)", type='F')
+
   hname = "trk_dphi1_%s" % cat
   histograms[hname] = Hist(61, -61, 61, name=hname, title="; #Delta#phi_{12}", type='F')
   hname = "trk_dphi2_%s" % cat
@@ -116,6 +135,9 @@ for cat in ["real", "fake"]:
   histograms[hname] = Hist(41, -20.5, 20.5, name=hname, title="; #Delta#theta_{14}", type='F')
   hname = "trk_dtheta6_%s" % cat
   histograms[hname] = Hist(41, -20.5, 20.5, name=hname, title="; #Delta#theta_{24}", type='F')
+
+  hname = "trk_bad_hit_%s" % cat
+  histograms[hname] = Hist(7, 0, 7, name=hname, title="; station with bad hit", type='F')
 
 
 hname = "nevents"
@@ -281,6 +303,13 @@ for ievt, evt in enumerate(tree):
           else:
             cat = "fake"
 
+          def get_hit_occupancy(endcap, sector, station):
+            cnt = 0
+            for ihit, hit in enumerate(evt.hits):
+              if hit.endcap == endcap and hit.sector == sector and hit.station == station and hit.type == kCSC:  # only count CSC
+                cnt += 1
+            return cnt
+
           hit1 = evt.hits[trk.hitref1] if trk.hitref1 != -1 else None
           hit2 = evt.hits[trk.hitref2] if trk.hitref2 != -1 else None
           hit3 = evt.hits[trk.hitref3] if trk.hitref3 != -1 else None
@@ -290,6 +319,16 @@ for ievt, evt in enumerate(tree):
           hit_type2 = hit2.type if hit2 else -1
           hit_type3 = hit3.type if hit3 else -1
           hit_type4 = hit4.type if hit4 else -1
+
+          hit_pattern1 = hit1.pattern if hit1 and hit1.type == kCSC else -1
+          hit_pattern2 = hit2.pattern if hit2 and hit2.type == kCSC else -1
+          hit_pattern3 = hit3.pattern if hit3 and hit3.type == kCSC else -1
+          hit_pattern4 = hit4.pattern if hit4 and hit4.type == kCSC else -1
+
+          hit_occu1 = get_hit_occupancy(trk.endcap, trk.sector, 1)
+          hit_occu2 = get_hit_occupancy(trk.endcap, trk.sector, 2)
+          hit_occu3 = get_hit_occupancy(trk.endcap, trk.sector, 3)
+          hit_occu4 = get_hit_occupancy(trk.endcap, trk.sector, 4)
 
           dphi1 = hit2.emtf_phi - hit1.emtf_phi if hit2 and hit1 else -999
           dphi2 = hit3.emtf_phi - hit2.emtf_phi if hit3 and hit2 else -999
@@ -320,6 +359,24 @@ for ievt, evt in enumerate(tree):
           hname = "trk_hit_type4_%s" % cat
           histograms[hname].fill(hit_type4)
 
+          hname = "trk_hit_pattern1_%s" % cat
+          histograms[hname].fill(hit_pattern1)
+          hname = "trk_hit_pattern2_%s" % cat
+          histograms[hname].fill(hit_pattern2)
+          hname = "trk_hit_pattern3_%s" % cat
+          histograms[hname].fill(hit_pattern3)
+          hname = "trk_hit_pattern4_%s" % cat
+          histograms[hname].fill(hit_pattern4)
+
+          hname = "trk_hit_occu1_%s" % cat
+          histograms[hname].fill(hit_occu1)
+          hname = "trk_hit_occu2_%s" % cat
+          histograms[hname].fill(hit_occu2)
+          hname = "trk_hit_occu3_%s" % cat
+          histograms[hname].fill(hit_occu3)
+          hname = "trk_hit_occu4_%s" % cat
+          histograms[hname].fill(hit_occu4)
+
           hname = "trk_dphi1_%s" % cat
           histograms[hname].fill(dphi1)
           hname = "trk_dphi2_%s" % cat
@@ -346,7 +403,27 @@ for ievt, evt in enumerate(tree):
           hname = "trk_dtheta6_%s" % cat
           histograms[hname].fill(dtheta6)
 
-
+          # Find station with bad hits
+          if cat == "fake":
+            for st in xrange(4):
+              hit_refs_minus = [trk.hitref1, trk.hitref2, trk.hitref3, trk.hitref4]
+              del hit_refs_minus[st]
+              #
+              hit_sim_tp1s = []
+              hit_sim_tp2s = []
+              for hit_ref in hit_refs_minus:
+                if hit_ref != -1:
+                  hit_sim_tp1s.append(evt.hits[hit_ref].sim_tp1)
+                  hit_sim_tp2s.append(evt.hits[hit_ref].sim_tp2)
+                else:
+                  hit_sim_tp1s.append(-2)
+                  hit_sim_tp2s.append(-2)
+              #
+              hit_sim_tp_set = set(tp for tp in (hit_sim_tp1s + hit_sim_tp2s) if tp != -2)
+              assert(-2 not in hit_sim_tp_set)
+              if len(hit_sim_tp_set) == 1:
+                hname = "trk_bad_hit_%s" % cat
+                histograms[hname].fill(st + 1)
 
 
 # ______________________________________________________________________________
