@@ -208,7 +208,7 @@ int EMTFMCTruth::findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
       EncodedEventId eventId = linkItr->getEventId();
 
       for (int strip1 = stripA; strip1 < stripB+1; ++strip1) {
-        if (((int) simStrip == strip1) && ((int) simBX == bx)) {
+        if ((std::abs(int(strip1) - int(simStrip)) <= 1) && ((int) simBX == bx)) {
           SimHitIdpr matchId(simTrackId, eventId);
           ++matches[matchId];
         }
@@ -228,7 +228,7 @@ int EMTFMCTruth::findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
       if (detUnitId == rpcDetId.rawId()) {
         for (int strip0 = stripA; strip0 < stripB+1; ++strip0) {
           int strip1 = strip0;  // same convention
-          if (((int) simStrip == strip1) && ((int) simBX == bx)) {
+          if ((std::abs(int(strip1) - int(simStrip)) <= 1) && ((int) simBX == bx)) {
             SimHitIdpr matchId(simTrackId, eventId);
             ++matches[matchId];
           }
@@ -260,8 +260,8 @@ int EMTFMCTruth::findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
       EncodedEventId eventId = linkItr->getEventId();
 
       for (int strip0 = stripA; strip0 < stripB+1; ++strip0) {
-        int strip1 = (strip0 - 1)/2 + 1;  // different convention used in GEMDigiSimLink
-        if (((int) simStrip == strip1) && ((int) simBX == bx)) {
+        int strip1 = strip0 * 2;  // different convention used in GEMDigiSimLink
+        if ((std::abs(int(strip1) - int(simStrip)) <= 1) && ((int) simBX == bx)) {
           SimHitIdpr matchId(simTrackId, eventId);
           ++matches[matchId];
         }
