@@ -4,6 +4,8 @@ np.random.seed(2023)
 from rootpy.plotting import Hist, Hist2D, Graph, Efficiency, Legend, Canvas
 from rootpy.tree import Tree, TreeModel, FloatCol, IntCol, ShortCol
 from rootpy.io import root_open
+from ROOT import gROOT
+gROOT.SetBatch(True)
 
 
 # ______________________________________________________________________________
@@ -101,7 +103,8 @@ pt_bins = [-0.2, -0.191121, -0.181153, -0.1684, -0.156863, -0.144086, -0.125538,
 assert(len(eta_bins) == 6+1)
 assert(len(pt_bins) == 15+1)
 
-nlayers = (9+10+3)*2  # (CSC+RPC+GEM)x(F/R)
+#nlayers = (9+10+3)*2  # (CSC+RPC+GEM)x(F/R)
+nlayers = 25
 
 
 # More functions
@@ -137,48 +140,29 @@ def wrapper_emtf_layer(f):
         (1,1,1,1),  # ME1/1f
         (1,1,2,0),  # ME1/2r
         (1,1,2,1),  # ME1/2f
-        (1,1,3,0),  # ME1/3r
-        (1,1,3,1),  # ME1/3f
+        (1,1,3,0),  # ME1/3
         (1,2,1,0),  # ME2/1r
         (1,2,1,1),  # ME2/1f
-        (1,2,2,0),  # ME2/2r
-        (1,2,2,1),  # ME2/2f
-        (1,3,1,0),  # ME3/1r
-        (1,3,1,1),  # ME3/1f
-        (1,3,2,0),  # ME3/2r
-        (1,3,2,1),  # ME3/2f
-        (1,4,1,0),  # ME4/1r
-        (1,4,1,1),  # ME4/1f
-        (1,4,2,0),  # ME4/2r
-        (1,4,2,1),  # ME4/2f
+        (1,2,2,0),  # ME2/2
+        (1,3,1,0),  # ME3/1
+        (1,3,2,0),  # ME3/2
+        (1,4,1,0),  # ME4/1
+        (1,4,2,0),  # ME4/2
         # RPC
-        (2,1,2,0),  # RE1/2r
-        (2,1,2,1),  # RE1/2f
-        (2,1,3,0),  # RE1/3r
-        (2,1,3,1),  # RE1/3f
-        (2,2,2,0),  # RE2/2r
-        (2,2,2,1),  # RE2/2f
-        (2,2,3,0),  # RE2/3r
-        (2,2,3,1),  # RE2/3f
-        (2,3,1,0),  # RE3/1r
-        (2,3,1,1),  # RE3/1f
-        (2,3,2,0),  # RE3/2r
-        (2,3,2,1),  # RE3/2f
-        (2,3,3,0),  # RE3/3r
-        (2,3,3,1),  # RE3/3f
-        (2,4,1,0),  # RE4/1r
-        (2,4,1,1),  # RE4/1f
-        (2,4,2,0),  # RE4/2r
-        (2,4,2,1),  # RE4/2f
-        (2,4,3,0),  # RE4/3r
-        (2,4,3,1),  # RE4/3f
+        (2,1,2,0),  # RE1/2
+        (2,1,3,0),  # RE1/3
+        (2,2,2,0),  # RE2/2
+        (2,2,3,0),  # RE2/3
+        (2,3,1,0),  # RE3/1
+        (2,3,2,0),  # RE3/2
+        (2,3,3,0),  # RE3/3
+        (2,4,1,0),  # RE4/1
+        (2,4,2,0),  # RE4/2
+        (2,4,3,0),  # RE4/3
         # GEM and ME0
-        (3,1,1,0),  # GE1/1r
-        (3,1,1,1),  # GE1/1f
-        (3,2,1,0),  # GE2/1r
-        (3,2,1,1),  # GE2/1f
-        (3,1,4,0),  # ME0r
-        (3,1,4,1),  # ME0f
+        (3,1,1,0),  # GE1/1
+        (3,2,1,0),  # GE2/1
+        (3,1,4,0),  # ME0
       ]
       for i, ind in enumerate(indices):
         lut[ind] = i
@@ -194,10 +178,17 @@ def wrapper_emtf_layer(f):
 def emtf_layer(hit):
   # Builds the index of the LUT.
   # The LUT is cached in wrapper_emtf_layer()
-  hit_ring = hit.ring
   if hit.type == kCSC and hit.station == 1 and hit.ring == 4:  # special case: ME1/1a
     hit_ring = 1
-  ind = (hit.type, hit.station, hit_ring, int(hit.fr))
+  else:
+    hit_ring = hit.ring
+  if hit.type == kCSC and hit.station == 1:  # special case: ME1/*
+    hit_fr = int(hit.fr)
+  elif hit.type == kCSC and hit.station == 2 and hit.ring == 1:  # special case: ME2/1
+    hit_fr = int(hit.fr)
+  else:
+    hit_fr = 0
+  ind = (hit.type, hit.station, hit_ring, hit_fr)
   return ind
 
 
@@ -257,7 +248,8 @@ tree.define_collection(name='particles', prefix='vp_', size='vp_size')
 
 # Get number of events
 #maxEvents = -1
-maxEvents = 10000
+maxEvents = 400000
+#maxEvents = 10000
 print "[INFO] Using max events: %i" % maxEvents
 
 # ______________________________________________________________________________
@@ -313,7 +305,18 @@ for ievt, evt in enumerate(tree):
   part.emtf_phi = calc_phi_loc_int(np.rad2deg(part.exphi), part.sector)
   part.emtf_theta = calc_theta_int(calc_theta_deg_from_eta(part.eta), part.endcap)
 
-  if ievt < 100:
+  smear = True
+  if smear:
+    # one sector is 60 deg + 20 deg from neighbor
+    # one emtf_phi unit is 1/60 deg
+    # so one sector covers 80 * 60 = 4800 units
+    quadstrip = 4 * 8 / np.sqrt(12)
+    doublestrip = 2 * 8 / np.sqrt(12)
+    smear = doublestrip * np.random.normal()
+    part.emtf_phi_nosmear = part.emtf_phi
+    part.emtf_phi += smear
+
+  if ievt < 20:
     print("evt {0} has {1} particles and {2} hits".format(ievt, len(evt.particles), len(evt.hits)))
     print(".. part invpt: {0} eta: {1} phi: {2} exphi: {3} se: {4} ph: {5} th: {6}".format(part.invpt, part.eta, part.phi, part.exphi, part.sector, part.emtf_phi, part.emtf_theta))
 
@@ -322,7 +325,7 @@ for ievt, evt in enumerate(tree):
   the_patterns_phi = patterns_phi[ipt][ieta]
   the_patterns_theta = patterns_theta[ipt][ieta]
 
-  if ievt < 100:
+  if ievt < 20:
     print(".. .. ipt: {0} ieta: {1}".format(ipt, ieta))
 
   #pgun_weight = emtf_pgun_weight(part)
@@ -331,31 +334,46 @@ for ievt, evt in enumerate(tree):
   for ihit, hit in enumerate(evt.hits):
     lay = emtf_layer(hit)
     assert(lay != -99)
-    if ievt < 100:
+    if ievt < 20:
       print(".. hit {0} type: {1} st: {2} ri: {3} fr: {4} lay: {5} se: {6} ph: {7} th: {8} tp: {9}".format(ihit, hit.type, hit.station, hit.ring, hit.fr, lay, hit.sector, hit.emtf_phi, hit.emtf_theta, hit.sim_tp1))
 
     if hit.sector == part.sector and hit.sim_tp1 == 0:
       the_patterns_phi[lay].append(hit.emtf_phi - part.emtf_phi)
       the_patterns_theta[lay].append(hit.emtf_theta - part.emtf_theta)
 
-      if ievt < 100:
+      if ievt < 20:
         print(".. .. dphi: {0} dtheta: {1}".format(hit.emtf_phi - part.emtf_phi, hit.emtf_theta - part.emtf_theta))
 
-  #test_emtf_phi = calc_phi_loc_int(np.rad2deg(part.phi), part.sector)
-  #the_patterns_phi[nlayers].append(test_emtf_phi - part.emtf_phi)
-  #the_patterns_theta[nlayers].append(part.emtf_theta - part.emtf_theta)
+  the_patterns_phi[nlayers].append(part.emtf_phi)
+  the_patterns_theta[nlayers].append(part.emtf_theta)
 
 
 # ______________________________________________________________________________
 # End job
 
-check = np.zeros((len(pt_bins), len(eta_bins), nlayers+1), dtype=np.int32)
-for i in xrange(len(pt_bins)):
-  for j in xrange(len(eta_bins)):
-    for k in xrange(nlayers+1):
-      check[(i, j, k)] = len(patterns_phi[i][j][k])
-
-print check
-print check[(8,4,1)]
+#check = np.zeros((len(pt_bins), len(eta_bins), nlayers+1), dtype=np.int32)
+#for i in xrange(len(pt_bins)):
+#  for j in xrange(len(eta_bins)):
+#    for k in xrange(nlayers+1):
+#      check[(i, j, k)] = len(patterns_phi[i][j][k])
 
 
+# Plot histograms
+with root_open("histos_tb.root", "recreate") as f:
+  for i in xrange(len(pt_bins)):
+    for j in xrange(len(eta_bins)):
+      for k in xrange(nlayers+1):
+        hname = "patterns_phi_%i_%i_%i" % (i,j,k)
+        h1a = Hist(201, -402, 402, name=hname, title=hname, type='F')
+        for x in patterns_phi[i][j][k]:  h1a.fill(x)
+        h1a.Write()
+
+        hname = "patterns_theta_%i_%i_%i" % (i,j,k)
+        h1b = Hist(81, -40.5, 40.5, name=hname, title=hname, type='F')
+        for x in patterns_theta[i][j][k]:  h1b.fill(x)
+        h1b.Write()
+
+# Save objects
+import pickle
+with open('histos_tb.pkl', 'wb') as f:
+  pickle.dump([patterns_phi, patterns_theta], f)
