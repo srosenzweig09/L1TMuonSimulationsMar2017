@@ -12,11 +12,6 @@ from rootpy.io import root_open
 # Enums
 kDT, kCSC, kRPC, kGEM, kTT = 0, 1, 2, 3, 20
 
-# Lambdas
-deg_to_rad = lambda x: x * np.pi/180.
-
-rad_to_deg = lambda x: x * 180./np.pi
-
 # Functions
 def delta_phi(lhs, rhs):  # in radians
   rad = lhs - rhs
@@ -37,12 +32,22 @@ def select_by_bx(bx):
 def select_by_vertex(vx, vy, vz):
   return np.sqrt(vx*vx + vy*vy) < 15. and abs(vz) < 50.
 
+# Globals
+eta_bins = [1.2, 1.40943, 1.58427, 1.76857, 1.94529, 2.15444, 2.5]
+pt_bins = [-0.2, -0.191121, -0.181153, -0.1684, -0.156863, -0.144086, -0.125538, -0.0946667, 0.0784762, 0.116727, 0.138507, 0.152444, 0.1666, 0.177728, 0.190803, 0.2]
+assert(len(eta_bins) == 6+1)
+assert(len(pt_bins) == 15+1)
+
+
 # Book histograms
 histograms = {}
 histogram2Ds = {}
 
 hname, htitle = "muon_eta_vs_pt", "; 1/p_{T} [1/GeV]; |#eta|"
 histogram2Ds[hname] = Hist2D(100, -0.2, 0.2, 65, 1.2, 2.5, name=hname, title=htitle, type='F')
+
+hname, htitle = "muon_eta_vs_pt_rebin", "; 1/p_{T} [1/GeV]; |#eta|"
+histogram2Ds[hname] = Hist2D(pt_bins, eta_bins, name=hname, title=htitle, type='F')
 
 
 # ______________________________________________________________________________
@@ -56,8 +61,8 @@ tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
 tree.define_collection(name='particles', prefix='vp_', size='vp_size')
 
 # Get number of events
-#maxEvents = -1
-maxEvents = 100000
+maxEvents = -1
+#maxEvents = 100000
 
 # ______________________________________________________________________________
 # Loop over events
@@ -87,13 +92,16 @@ for ievt, evt in enumerate(tree):
   # ____________________________________________________________________________
   # Analysis
 
-  h = histogram2Ds["muon_eta_vs_pt"]
+  h1a = histogram2Ds["muon_eta_vs_pt"]
+  h1b = histogram2Ds["muon_eta_vs_pt_rebin"]
   for ipart, part in enumerate(evt.particles):
     if part.pt > 5.:
       if select_by_eta(part.eta):
         if select_by_bx(part.bx):
           if select_by_vertex(part.vx, part.vy, part.vz):
-            h.fill(float(part.q)/part.pt, abs(part.eta))
+            h1a.fill(float(part.q)/part.pt, abs(part.eta))
+            h1b.fill(float(part.q)/part.pt, abs(part.eta))
+
 
 
 # ______________________________________________________________________________
