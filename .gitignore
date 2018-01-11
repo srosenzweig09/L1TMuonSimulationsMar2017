@@ -8,6 +8,9 @@ __init__.py
 *.root
 AutoDict_*
 
+# Python
+*.pkl
+
 # Other
 *~
 *.log
