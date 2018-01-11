@@ -1,6 +1,7 @@
 import numpy as np
 np.random.seed(2023)
 
+from itertools import izip
 from rootpy.plotting import Hist, Hist2D, Graph, Efficiency, Legend, Canvas
 from rootpy.tree import Tree, TreeModel, FloatCol, IntCol, ShortCol
 from rootpy.io import root_open
@@ -92,13 +93,12 @@ def find_sector(phi):  # phi in radians
 
 
 # Globals
-eta_bins = [1.2, 1.41795, 1.60581, 1.78535, 1.97377, 2.17831, 2.5]
+eta_bins = [1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4]
 pt_bins = [-0.2, -0.190937, -0.180533, -0.169696, -0.158343, -0.143231, -0.123067, -0.0936418, 0.0895398, 0.123191, 0.142493, 0.157556, 0.169953, 0.180755, 0.190829, 0.2]
 assert(len(eta_bins) == 6+1)
 assert(len(pt_bins) == 15+1)
 
-#nlayers = (9+10+3)*2  # (CSC+RPC+GEM)x(F/R)
-nlayers = 25
+nlayers = 23  # 12 (CSC) + 8 (RPC) + 3 (GEM)
 
 
 # More functions
@@ -130,13 +130,13 @@ def wrapper_emtf_layer(f):
       lut = np.zeros((4,5,5,2), dtype=np.int32) - 99
       indices = [
         # CSC
-        (1,1,1,0),  # ME1/1r
         (1,1,1,1),  # ME1/1f
-        (1,1,2,0),  # ME1/2r
+        (1,1,1,0),  # ME1/1r
         (1,1,2,1),  # ME1/2f
+        (1,1,2,0),  # ME1/2r
         (1,1,3,0),  # ME1/3
-        (1,2,1,0),  # ME2/1r
         (1,2,1,1),  # ME2/1f
+        (1,2,1,0),  # ME2/1r
         (1,2,2,0),  # ME2/2
         (1,3,1,0),  # ME3/1
         (1,3,2,0),  # ME3/2
@@ -144,9 +144,7 @@ def wrapper_emtf_layer(f):
         (1,4,2,0),  # ME4/2
         # RPC
         (2,1,2,0),  # RE1/2
-        (2,1,3,0),  # RE1/3
         (2,2,2,0),  # RE2/2
-        (2,2,3,0),  # RE2/3
         (2,3,1,0),  # RE3/1
         (2,3,2,0),  # RE3/2
         (2,3,3,0),  # RE3/3
@@ -219,8 +217,8 @@ def wrapper_emtf_pgun_weight(f):
 def emtf_pgun_weight(part):
   # Builds the index of the LUT
   # The LUT is cached in wrapper_emtf_pgun_weight()
-  ipt = np.digitize([part.invpt], pt_bins)[0]
-  ieta = np.digitize([abs(part.eta)], eta_bins)[0]
+  ipt = np.digitize([np.true_divide(part.q, part.pt)], pt_bins[1:])[0]  # skip lowest edge
+  ieta = np.digitize([abs(part.eta)], eta_bins[1:])[0]  # skip lowest edge
   index = (ipt, ieta)
   return index
 
@@ -240,8 +238,8 @@ class PatternBank(object):
   def __init__(self, patterns_phi, patterns_theta):
     self.x_array = np.array(patterns_phi, dtype=np.int32)
     self.y_array = np.array(patterns_theta, dtype=np.int32)
-    assert(self.x_array.shape == (len(pt_bins), len(eta_bins), nlayers+1, 3))
-    assert(self.y_array.shape == (len(pt_bins), len(eta_bins), nlayers+1, 3))
+    assert(self.x_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
+    assert(self.y_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
 
   def __getitem__(self, index):
     pattern = Pattern(
@@ -278,10 +276,11 @@ class PatternRecognition(object):
   def _apply_pattern(self, endcap, sector, ipt, ieta, iphi, hits):
     def is_good_hit(hit):
       result = False
-      if hit.endcap == endcap and hit.sector == sector and hit.lay != -99:
+      if (hit.endcap == endcap and hit.sector == sector and hit.lay != -99):
         pattern = self.bank[(ipt, ieta, hit.lay)]
-        if (pattern.xmin <= (hit.emtf_phi - (iphi*16)) < pattern.xmax) and (pattern.ymin <= hit.emtf_theta < pattern.ymax):
-          result = True
+        if not (int(pattern.xmin) == 0 and int(pattern.xmax) == 0):  # if layer is valid
+          if (pattern.xmin <= (hit.emtf_phi - (iphi*16)) < pattern.xmax) and (pattern.ymin <= hit.emtf_theta < pattern.ymax):  # multiply by 'doublestrip' unit (2 * 8)
+            result = True
       return result
 
     road_hits = []
@@ -299,10 +298,6 @@ class PatternRecognition(object):
       iphi = iphi,
       hits = road_hits,
     )
-
-    #FIXME: pick unique hits
-    #FIXME: check how to go from phi to phi star
-
     return road
 
   def run(self, hits, part=None):
@@ -310,15 +305,21 @@ class PatternRecognition(object):
     # Loop over patterns
     for endcap in [-1, +1]:
       for sector in [1, 2, 3, 4, 5, 6]:
-        nhits = sum((hit.endcap == endcap and hit.sector == sector and hit.type == kCSC) for hit in evt.hits)
-        early_exit = (nhits <= 1)  # less than 2 CSC hits
+
+        # Early exit
+        fake_mode = 0
+        for hit in evt.hits:
+          if (hit.endcap == endcap and hit.sector == sector and hit.type == kCSC):
+            fake_mode |= (1 << (4 - hit.station))
+        early_exit = fake_mode not in [11, 13, 14, 15]
         if early_exit:  continue
 
-        if part is not None:  # cheat using gen particle info
-          ipt = np.digitize([np.true_divide(part.q, part.pt)], pt_bins)[0]
-          ieta = np.digitize([abs(part.eta)], eta_bins)[0]
+        # Cheat using gen particle info
+        if part is not None:
+          ipt = part.ipt
+          ieta = part.ieta
           tmp_phis = [hit.emtf_phi for hit in evt.hits if (hit.endcap == endcap and hit.sector == sector and hit.type == kCSC)]
-          tmp_phi = np.true_divide(sum(tmp_phis), len(tmp_phis))
+          tmp_phi = np.mean(tmp_phis)
           iphi = int(tmp_phi/16)
           iphi_range = range(iphi - 6, iphi + 7)
           for iphi in iphi_range:
@@ -327,9 +328,10 @@ class PatternRecognition(object):
               roads.append(road)
           continue
 
+        iphi_range = xrange(4800/16)  # divide by 'doublestrip' unit (2 * 8)
         for ipt in xrange(len(pt_bins)):
           for ieta in xrange(len(eta_bins)):
-            for iphi in xrange(4800/16):
+            for iphi in iphi_range:
               road = self._apply_pattern(endcap, sector, ipt, ieta, iphi, hits)
               if road.hits and road.mode in [11, 13, 14, 15]:
                 roads.append(road)
@@ -385,6 +387,17 @@ class RoadCleaning(object):
 histograms = {}
 histogram2Ds = {}
 
+# Efficiency
+eff_pt_bins = [0., 2., 4., 6., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 35., 40., 45., 50., 60., 70., 100.]
+for k in ["denom", "numer"]:
+  hname = "eff_vs_genpt_%s" % k
+  histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
+  histograms[hname].Sumw2()
+
+  hname = "eff_vs_geneta_%s" % k
+  histograms[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta|", type='F')
+  histograms[hname].Sumw2()
+
 
 # ______________________________________________________________________________
 # Open file
@@ -398,26 +411,49 @@ tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
 tree.define_collection(name='particles', prefix='vp_', size='vp_size')
 
 # Get number of events
-maxEvents = -1
+#maxEvents = -1
 #maxEvents = 400000
-#maxEvents = 10000
+maxEvents = 10000
 print('[INFO] Using max events: %i' % maxEvents)
+
+# Analysis mode
+#analysis = "training"
+analysis = "application"
+print('[INFO] Using analysis mode: %s' % analysis)
+
+# Other stuff
+bankfile = 'histos_tb.2.pkl'
+
+
+# ______________________________________________________________________________
+# Begin job
+
+# Analysis: training
+if analysis == "training":
+
+  # 3-dimensional arrays of lists
+  # [ipt][ieta][lay]
+  patterns_phi = [[[[] for k in xrange(nlayers)] for j in xrange(len(eta_bins)-1)] for i in xrange(len(pt_bins)-1)]
+  patterns_theta = [[[[] for k in xrange(nlayers)] for j in xrange(len(eta_bins)-1)] for i in xrange(len(pt_bins)-1)]
+
+# Analysis: application
+elif analysis == "application":
+
+  import pickle
+  with open(bankfile, 'rb') as f:
+    data = pickle.load(f)
+    patterns_phi, patterns_theta = data
+
+  bank = PatternBank(patterns_phi, patterns_theta)
+  recog = PatternRecognition(bank)
+  clean = RoadCleaning()
+  out_particles = []
+  out_roads = []
+  npassed, ntotal = 0, 0
+
 
 # ______________________________________________________________________________
 # Loop over events
-
-patterns_phi = []
-patterns_theta = []
-
-for i in xrange(len(pt_bins)):
-  patterns_phi.append([])
-  patterns_theta.append([])
-  for j in xrange(len(eta_bins)):
-    patterns_phi[-1].append([])
-    patterns_theta[-1].append([])
-    for lay in xrange(nlayers+1):
-      patterns_phi[-1][-1].append([])
-      patterns_theta[-1][-1].append([])
 
 for ievt, evt in enumerate(tree):
   if maxEvents != -1 and ievt == maxEvents:
@@ -445,107 +481,181 @@ for ievt, evt in enumerate(tree):
 
 
   # ____________________________________________________________________________
-  # Analysis
+  # Analysis: training
 
-  part = evt.particles[0]  # particle gun
+  if analysis == "training":
 
-  part.invpt = np.true_divide(part.q, part.pt)
-  part.exphi = extrapolate_to_emtf(part.phi, part.invpt, part.eta)
-  part.sector = find_sector(part.exphi)
-  part.endcap = 1 if part.eta >= 0. else -1
-  part.emtf_phi = calc_phi_loc_int(np.rad2deg(part.exphi), part.sector)
-  part.emtf_theta = calc_theta_int(calc_theta_deg_from_eta(part.eta), part.endcap)
+    part = evt.particles[0]  # particle gun
+    part.invpt = np.true_divide(part.q, part.pt)
+    part.exphi = extrapolate_to_emtf(part.phi, part.invpt, part.eta)
+    part.sector = find_sector(part.exphi)
+    part.endcap = 1 if part.eta >= 0. else -1
+    part.emtf_phi = calc_phi_loc_int(np.rad2deg(part.exphi), part.sector)
+    part.emtf_theta = calc_theta_int(calc_theta_deg_from_eta(part.eta), part.endcap)
 
-  smear = True
-  if smear:
-    # one sector is 60 deg + 20 deg from neighbor
-    # one emtf_phi unit is 1/60 deg
-    # so one sector covers 80 * 60 = 4800 units
-    quadstrip = 4 * 8 / np.sqrt(12)
-    doublestrip = 2 * 8 / np.sqrt(12)
-    smear = doublestrip * np.random.normal()
-    part.emtf_phi_nosmear = part.emtf_phi
-    part.emtf_phi += smear
+    smear = True
+    if smear:
+      # one sector is 60 deg + 20 deg from neighbor
+      # one emtf_phi unit is 1/60 deg
+      # so one sector covers 80 * 60 = 4800 units
+      quadstrip = (4 * 8) / np.sqrt(12)
+      doublestrip = (2 * 8) / np.sqrt(12)
+      smear = doublestrip * np.random.normal()
+      part.emtf_phi_nosmear = part.emtf_phi
+      part.emtf_phi += smear
 
-  if ievt < 20:
-    print("evt {0} has {1} particles and {2} hits".format(ievt, len(evt.particles), len(evt.hits)))
-    print(".. part invpt: {0} eta: {1} phi: {2} exphi: {3} se: {4} ph: {5} th: {6}".format(part.invpt, part.eta, part.phi, part.exphi, part.sector, part.emtf_phi, part.emtf_theta))
-
-  ipt = np.digitize([np.true_divide(part.q, part.pt)], pt_bins)[0]
-  ieta = np.digitize([abs(part.eta)], eta_bins)[0]
-  the_patterns_phi = patterns_phi[ipt][ieta]
-  the_patterns_theta = patterns_theta[ipt][ieta]
-
-  if ievt < 20:
-    print(".. .. ipt: {0} ieta: {1}".format(ipt, ieta))
-
-  #pgun_weight = emtf_pgun_weight(part)
-
-  # Loop over hits
-  for ihit, hit in enumerate(evt.hits):
-    lay = emtf_layer(hit)
-    assert(lay != -99)
     if ievt < 20:
-      print(".. hit {0} type: {1} st: {2} ri: {3} fr: {4} lay: {5} se: {6} ph: {7} th: {8} tp: {9}".format(ihit, hit.type, hit.station, hit.ring, hit.fr, lay, hit.sector, hit.emtf_phi, hit.emtf_theta, hit.sim_tp1))
+      print("evt {0} has {1} particles and {2} hits".format(ievt, len(evt.particles), len(evt.hits)))
+      print(".. part invpt: {0} eta: {1} phi: {2} exphi: {3} se: {4} ph: {5} th: {6}".format(part.invpt, part.eta, part.phi, part.exphi, part.sector, part.emtf_phi, part.emtf_theta))
 
-    if hit.sector == part.sector and hit.sim_tp1 == 0:
-      the_patterns_phi[lay].append(hit.emtf_phi - part.emtf_phi)
-      #the_patterns_theta[lay].append(hit.emtf_theta - part.emtf_theta)
-      the_patterns_theta[lay].append(hit.emtf_theta)
+    part.ipt = np.digitize([np.true_divide(part.q, part.pt)], pt_bins[1:])[0]  # skip lowest edge
+    part.ieta = np.digitize([abs(part.eta)], eta_bins[1:])[0]  # skip lowest edge
+    the_patterns_phi = patterns_phi[part.ipt][part.ieta]
+    the_patterns_theta = patterns_theta[part.ipt][part.ieta]
 
+    #pgun_weight = emtf_pgun_weight(part)
+
+    # Loop over hits
+    for ihit, hit in enumerate(evt.hits):
+      lay = emtf_layer(hit)
+      assert(lay != -99)
       if ievt < 20:
-        print(".. .. dphi: {0} dtheta: {1}".format(hit.emtf_phi - part.emtf_phi, hit.emtf_theta - part.emtf_theta))
+        print(".. hit {0} type: {1} st: {2} ri: {3} fr: {4} lay: {5} se: {6} ph: {7} th: {8} tp: {9}".format(ihit, hit.type, hit.station, hit.ring, hit.fr, lay, hit.sector, hit.emtf_phi, hit.emtf_theta, hit.sim_tp1))
 
-  the_patterns_phi[nlayers].append(part.emtf_phi)
-  the_patterns_theta[nlayers].append(part.emtf_theta)
+      if hit.sector == part.sector and hit.bx == 0 and hit.sim_tp1 == 0:
+        the_patterns_phi[lay].append(hit.emtf_phi - part.emtf_phi)
+        #the_patterns_theta[lay].append(hit.emtf_theta - part.emtf_theta)
+        the_patterns_theta[lay].append(hit.emtf_theta)
+
+    #the_patterns_phi[nlayers].append(part.emtf_phi)
+    #the_patterns_theta[nlayers].append(part.emtf_theta)
+
+
+  # ____________________________________________________________________________
+  # Analysis: application
+
+  elif analysis == "application":
+
+    #roads = recog.run(evt.hits)
+
+    # Cheat using gen particle info
+    part = evt.particles[0]  # particle gun
+    part.invpt = np.true_divide(part.q, part.pt)
+    part.ipt = np.digitize([np.true_divide(part.q, part.pt)], pt_bins[1:])[0]  # skip lowest edge
+    part.ieta = np.digitize([abs(part.eta)], eta_bins[1:])[0]  # skip lowest edge
+    roads = recog.run(evt.hits, part)
+
+    clean_roads = clean.run(roads)
+
+    mypart = (part.pt, part.eta)
+    out_particles.append(mypart)
+    try:
+      out_roads.append(clean_roads[0])
+    except IndexError:
+      out_roads.append(None)
+
+    if ievt < 20:
+      print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
+      print(".. part invpt: {0} eta: {1} phi: {2} ipt: {3} ieta: {4}".format(part.invpt, part.eta, part.phi, part.ipt, part.ieta))
+      for iroad, road in enumerate(roads):
+        print(".. road {0} {1} {2} {3}".format(iroad, road.id(), len(road.hits), road.mode))
+
+        for ihit, hit in enumerate(road.hits):
+          print(".. .. hit  {0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10}".format(ihit, hit.bx, hit.type, hit.station, hit.ring, hit.sector, hit.fr, hit.sim_phi, hit.sim_theta, hit.sim_tp1, hit.sim_tp2))
+
+      for iroad, road in enumerate(clean_roads):
+        print(".. croad {0} {1} {2} {3}".format(iroad, road.id(), len(road.hits), road.mode))
+
+    # Quick efficiency
+    trigger = len(clean_roads) > 0
+
+    k = "denom"
+    hname = "eff_vs_genpt_%s" % k
+    histograms[hname].fill(part.pt)
+    if trigger:
+      k = "numer"
+      hname = "eff_vs_genpt_%s" % k
+      histograms[hname].fill(part.pt)
+
+    if part.pt > 20.:
+      k = "denom"
+      hname = "eff_vs_geneta_%s" % k
+      histograms[hname].fill(abs(part.eta))
+      if trigger:
+        k = "numer"
+        hname = "eff_vs_geneta_%s" % k
+        histograms[hname].fill(abs(part.eta))
+
+    ntotal += 1
+    if trigger:
+      npassed += 1
+
+  continue  # end loop over events
+
+maxEvents = ievt
 
 
 # ______________________________________________________________________________
 # End job
 
-#check = np.zeros((len(pt_bins), len(eta_bins), nlayers+1), dtype=np.int32)
-#for i in xrange(len(pt_bins)):
-#  for j in xrange(len(eta_bins)):
-#    for k in xrange(nlayers+1):
-#      check[(i, j, k)] = len(patterns_phi[i][j][k])
+# Analysis: training
+if analysis == "training":
+
+  # Plot histograms
+  print('[INFO] Creating file: histos_tb.root')
+  with root_open('histos_tb.root', 'recreate') as f:
+    for i in xrange(len(pt_bins)-1):
+      for j in xrange(len(eta_bins)-1):
+        for k in xrange(nlayers):
+          hname = "patterns_phi_%i_%i_%i" % (i,j,k)
+          h1a = Hist(201, -402, 402, name=hname, title=hname, type='F')
+          for x in patterns_phi[i][j][k]:  h1a.fill(x)
+          h1a.Write()
+
+          hname = "patterns_theta_%i_%i_%i" % (i,j,k)
+          h1b = Hist(81, -40.5, 40.5, name=hname, title=hname, type='F')
+          for x in patterns_theta[i][j][k]:  h1b.fill(x)
+          h1b.Write()
+
+  # Save objects
+  import pickle
+  print('[INFO] Creating file: histos_tb.pkl')
+  with open('histos_tb.pkl', 'wb') as f:
+    for i in xrange(len(pt_bins)-1):
+      for j in xrange(len(eta_bins)-1):
+        for k in xrange(nlayers):
+          if len(patterns_phi[i][j][k]) > (0.001 * maxEvents):
+            patterns_phi[i][j][k].sort()
+            x = np.percentile(patterns_phi[i][j][k], [5, 50, 95])
+            patterns_phi[i][j][k] = x
+          else:
+            patterns_phi[i][j][k] = [0, 0, 0]
+
+          if len(patterns_theta[i][j][k]) > (0.001 * maxEvents):
+            patterns_theta[i][j][k].sort()
+            x = np.percentile(patterns_theta[i][j][k], [2, 50, 98])
+            patterns_theta[i][j][k] = x
+          else:
+            patterns_theta[i][j][k] = [0, 0, 0]
+
+    pickle.dump([patterns_phi, patterns_theta], f)
 
 
-# Plot histograms
-print('[INFO] Creating file: histos_tb.root')
-with root_open('histos_tb.root', 'recreate') as f:
-  for i in xrange(len(pt_bins)):
-    for j in xrange(len(eta_bins)):
-      for k in xrange(nlayers+1):
-        hname = "patterns_phi_%i_%i_%i" % (i,j,k)
-        h1a = Hist(201, -402, 402, name=hname, title=hname, type='F')
-        for x in patterns_phi[i][j][k]:  h1a.fill(x)
-        h1a.Write()
+# Analysis: application
+elif analysis == "application":
 
-        hname = "patterns_theta_%i_%i_%i" % (i,j,k)
-        h1b = Hist(81, -40.5, 40.5, name=hname, title=hname, type='F')
-        for x in patterns_theta[i][j][k]:  h1b.fill(x)
-        h1b.Write()
+  print('[INFO] Creating file: histos_tba.root')
+  with root_open('histos_tba.root', 'recreate') as f:
+    print('[INFO] npassed/ntotal: %i/%i = %f' % (npassed, ntotal, np.true_divide(npassed, ntotal)))
 
-# Save objects
-import pickle
-print('[INFO] Creating file: histos_tb.pkl')
-with open('histos_tb.pkl', 'wb') as f:
-  for i in xrange(len(pt_bins)):
-    for j in xrange(len(eta_bins)):
-      for k in xrange(nlayers+1):
-        if patterns_phi[i][j][k]:
-          patterns_phi[i][j][k].sort()
-          x = np.percentile(patterns_phi[i][j][k], [10, 50, 90])
-          patterns_phi[i][j][k] = x
-        else:
-          patterns_phi[i][j][k] = [0, 0, 0]
+    hname = "eff_vs_genpt"
+    hname_numer = "%s_%s" % (hname, "numer")
+    hname_denom = "%s_%s" % (hname, "denom")
+    eff = Efficiency(histograms[hname_numer], histograms[hname_denom], name=hname)
+    eff.Write()
 
-        if patterns_theta[i][j][k]:
-          patterns_theta[i][j][k].sort()
-          x = np.percentile(patterns_theta[i][j][k], [10, 50, 90])
-          patterns_theta[i][j][k] = x
-        else:
-          patterns_theta[i][j][k] = [0, 0, 0]
-
-  pickle.dump([patterns_phi, patterns_theta], f)
-
+    hname = "eff_vs_geneta"
+    hname_numer = "%s_%s" % (hname, "numer")
+    hname_denom = "%s_%s" % (hname, "denom")
+    eff = Efficiency(histograms[hname_numer], histograms[hname_denom], name=hname)
+    eff.Write()
