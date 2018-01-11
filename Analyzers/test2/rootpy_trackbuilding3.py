@@ -28,12 +28,6 @@ class Particle(TreeModel):
 # Enums
 kDT, kCSC, kRPC, kGEM, kTT = 0, 1, 2, 3, 20
 
-# Lambdas
-deg_to_rad = lambda x: x * np.pi/180.
-
-rad_to_deg = lambda x: x * 180./np.pi
-
-
 # Functions
 def delta_phi(lhs, rhs):  # in radians
   rad = lhs - rhs
@@ -98,8 +92,8 @@ def find_sector(phi):  # phi in radians
 
 
 # Globals
-eta_bins = [1.2, 1.40943, 1.58427, 1.76857, 1.94529, 2.15444, 2.5]
-pt_bins = [-0.2, -0.191121, -0.181153, -0.1684, -0.156863, -0.144086, -0.125538, -0.0946667, 0.0784762, 0.116727, 0.138507, 0.152444, 0.1666, 0.177728, 0.190803, 0.2]
+eta_bins = [1.2, 1.41795, 1.60581, 1.78535, 1.97377, 2.17831, 2.5]
+pt_bins = [-0.2, -0.190937, -0.180533, -0.169696, -0.158343, -0.143231, -0.123067, -0.0936418, 0.0895398, 0.123191, 0.142493, 0.157556, 0.169953, 0.180755, 0.190829, 0.2]
 assert(len(eta_bins) == 6+1)
 assert(len(pt_bins) == 15+1)
 
@@ -164,14 +158,14 @@ def wrapper_emtf_layer(f):
         (3,2,1,0),  # GE2/1
         (3,1,4,0),  # ME0
       ]
-      for i, ind in enumerate(indices):
-        lut[ind] = i
+      for i, index in enumerate(indices):
+        lut[index] = i
       assert(np.max(lut) == nlayers-1)
       cache["lut"] = lut
-      print "LUT: ", lut  #FIXME
+      #print "LUT: ", lut
     lut = cache["lut"]  # get the LUT
-    ind = f(x)  # get the index of the LUT
-    return lut[ind]
+    index = f(x)  # get the index of the LUT
+    return lut[index]
   return wrapper
 
 @wrapper_emtf_layer
@@ -188,8 +182,8 @@ def emtf_layer(hit):
     hit_fr = int(hit.fr)
   else:
     hit_fr = 0
-  ind = (hit.type, hit.station, hit_ring, hit_fr)
-  return ind
+  index = (hit.type, hit.station, hit_ring, hit_fr)
+  return index
 
 
 def wrapper_emtf_pgun_weight(f):
@@ -215,10 +209,10 @@ def wrapper_emtf_pgun_weight(f):
         c[i] = 1.0/c[i]  # 1/weight
 
       cache["lut"] = c
-      print "LUT: ", c  #FIXME
+      #print "LUT: ", c
     lut = cache["lut"]
-    ind = f(x)
-    return lut[ind]
+    index = f(x)
+    return lut[index]
   return wrapper
 
 @wrapper_emtf_pgun_weight
@@ -227,9 +221,166 @@ def emtf_pgun_weight(part):
   # The LUT is cached in wrapper_emtf_pgun_weight()
   ipt = np.digitize([part.invpt], pt_bins)[0]
   ieta = np.digitize([abs(part.eta)], eta_bins)[0]
-  ind = (ipt, ieta)
-  return ind
+  index = (ipt, ieta)
+  return index
 
+# ______________________________________________________________________________
+# Classes
+
+class Pattern(object):
+  def __init__(self, xmin, xmed, xmax, ymin, ymed, ymax):
+    self.xmin = xmin
+    self.xmed = xmed
+    self.xmax = xmax
+    self.ymin = ymin
+    self.ymed = ymed
+    self.ymax = ymax
+
+class PatternBank(object):
+  def __init__(self, patterns_phi, patterns_theta):
+    self.x_array = np.array(patterns_phi, dtype=np.int32)
+    self.y_array = np.array(patterns_theta, dtype=np.int32)
+    assert(self.x_array.shape == (len(pt_bins), len(eta_bins), nlayers+1, 3))
+    assert(self.y_array.shape == (len(pt_bins), len(eta_bins), nlayers+1, 3))
+
+  def __getitem__(self, index):
+    pattern = Pattern(
+      xmin = self.x_array[index+(0,)],
+      xmed = self.x_array[index+(1,)],
+      xmax = self.x_array[index+(2,)],
+      ymin = self.y_array[index+(0,)],
+      ymed = self.y_array[index+(1,)],
+      ymax = self.y_array[index+(2,)],
+    )
+    return pattern
+
+class Road(object):
+  def __init__(self, endcap, sector, ipt, ieta, iphi, hits):
+    self.endcap = endcap
+    self.sector = sector
+    self.ipt = ipt
+    self.ieta = ieta
+    self.iphi = iphi
+    self.hits = hits
+    #
+    self.mode = 0
+    for hit in self.hits:
+      self.mode |= (1 << (4 - hit.station))
+
+  def id(self):
+    index = (self.endcap, self.sector, self.ipt, self.ieta, self.iphi)
+    return index
+
+class PatternRecognition(object):
+  def __init__(self, bank):
+    self.bank = bank
+
+  def _apply_pattern(self, endcap, sector, ipt, ieta, iphi, hits):
+    def is_good_hit(hit):
+      result = False
+      if hit.endcap == endcap and hit.sector == sector and hit.lay != -99:
+        pattern = self.bank[(ipt, ieta, hit.lay)]
+        if (pattern.xmin <= (hit.emtf_phi - (iphi*16)) < pattern.xmax) and (pattern.ymin <= hit.emtf_theta < pattern.ymax):
+          result = True
+      return result
+
+    road_hits = []
+    for ihit, hit in enumerate(hits):
+      lay = emtf_layer(hit)
+      hit.lay = lay
+      if is_good_hit(hit):
+        road_hits.append(hit)
+
+    road = Road(
+      endcap = endcap,
+      sector = sector,
+      ipt = ipt,
+      ieta = ieta,
+      iphi = iphi,
+      hits = road_hits,
+    )
+
+    #FIXME: pick unique hits
+    #FIXME: check how to go from phi to phi star
+
+    return road
+
+  def run(self, hits, part=None):
+    roads = []
+    # Loop over patterns
+    for endcap in [-1, +1]:
+      for sector in [1, 2, 3, 4, 5, 6]:
+        nhits = sum((hit.endcap == endcap and hit.sector == sector and hit.type == kCSC) for hit in evt.hits)
+        early_exit = (nhits <= 1)  # less than 2 CSC hits
+        if early_exit:  continue
+
+        if part is not None:  # cheat using gen particle info
+          ipt = np.digitize([np.true_divide(part.q, part.pt)], pt_bins)[0]
+          ieta = np.digitize([abs(part.eta)], eta_bins)[0]
+          tmp_phis = [hit.emtf_phi for hit in evt.hits if (hit.endcap == endcap and hit.sector == sector and hit.type == kCSC)]
+          tmp_phi = np.true_divide(sum(tmp_phis), len(tmp_phis))
+          iphi = int(tmp_phi/16)
+          iphi_range = range(iphi - 6, iphi + 7)
+          for iphi in iphi_range:
+            road = self._apply_pattern(endcap, sector, ipt, ieta, iphi, hits)
+            if road.hits and road.mode in [11, 13, 14, 15]:
+              roads.append(road)
+          continue
+
+        for ipt in xrange(len(pt_bins)):
+          for ieta in xrange(len(eta_bins)):
+            for iphi in xrange(4800/16):
+              road = self._apply_pattern(endcap, sector, ipt, ieta, iphi, hits)
+              if road.hits and road.mode in [11, 13, 14, 15]:
+                roads.append(road)
+    return roads
+
+class RoadCleaning(object):
+  def __init__(self):
+    pass
+
+  def _groupby(self, data):
+    def is_adjacent(prev, curr, length):
+      return prev[:-1] == curr[:-1] and (prev[-1] + length) == curr[-1]
+
+    if data:
+      data.sort()
+      myiter = iter(data)
+      prev = curr = next(myiter)
+      # Iterate over data
+      while True:
+        group = []
+        stop = False
+        # Iterate until the next value is different
+        while is_adjacent(prev, curr, len(group)):
+          try:
+            group.append(curr)
+            curr = next(myiter)
+          except StopIteration:
+            stop = True
+            break
+        # Output group
+        yield group
+        prev = curr
+        if stop:
+          return
+
+  def run(self, roads):
+    amap = {}
+    for road in roads:
+      road_id = road.id()
+      amap[road_id] = road
+
+    clean_roads = []
+    for group in self._groupby(amap.keys()):
+      assert(len(group))
+      pivot = (len(group) - 1) // 2
+      road_id = group[pivot]
+      road = amap[road_id]
+      clean_roads.append(road)
+    return clean_roads
+
+# ______________________________________________________________________________
 # Book histograms
 histograms = {}
 histogram2Ds = {}
@@ -239,7 +390,7 @@ histogram2Ds = {}
 # Open file
 infile = root_open('ntuple_SingleMuon_Toy_5GeV_add.2.root')
 tree = infile.ntupler.tree
-print "[INFO] Opening file: %s" % infile
+print('[INFO] Opening file: %s' % infile)
 
 # Define collection
 tree.define_collection(name='hits', prefix='vh_', size='vh_size')
@@ -247,10 +398,10 @@ tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
 tree.define_collection(name='particles', prefix='vp_', size='vp_size')
 
 # Get number of events
-#maxEvents = -1
-maxEvents = 400000
+maxEvents = -1
+#maxEvents = 400000
 #maxEvents = 10000
-print "[INFO] Using max events: %i" % maxEvents
+print('[INFO] Using max events: %i' % maxEvents)
 
 # ______________________________________________________________________________
 # Loop over events
@@ -320,7 +471,7 @@ for ievt, evt in enumerate(tree):
     print("evt {0} has {1} particles and {2} hits".format(ievt, len(evt.particles), len(evt.hits)))
     print(".. part invpt: {0} eta: {1} phi: {2} exphi: {3} se: {4} ph: {5} th: {6}".format(part.invpt, part.eta, part.phi, part.exphi, part.sector, part.emtf_phi, part.emtf_theta))
 
-  ipt = np.digitize([part.invpt], pt_bins)[0]
+  ipt = np.digitize([np.true_divide(part.q, part.pt)], pt_bins)[0]
   ieta = np.digitize([abs(part.eta)], eta_bins)[0]
   the_patterns_phi = patterns_phi[ipt][ieta]
   the_patterns_theta = patterns_theta[ipt][ieta]
@@ -339,7 +490,8 @@ for ievt, evt in enumerate(tree):
 
     if hit.sector == part.sector and hit.sim_tp1 == 0:
       the_patterns_phi[lay].append(hit.emtf_phi - part.emtf_phi)
-      the_patterns_theta[lay].append(hit.emtf_theta - part.emtf_theta)
+      #the_patterns_theta[lay].append(hit.emtf_theta - part.emtf_theta)
+      the_patterns_theta[lay].append(hit.emtf_theta)
 
       if ievt < 20:
         print(".. .. dphi: {0} dtheta: {1}".format(hit.emtf_phi - part.emtf_phi, hit.emtf_theta - part.emtf_theta))
@@ -359,7 +511,8 @@ for ievt, evt in enumerate(tree):
 
 
 # Plot histograms
-with root_open("histos_tb.root", "recreate") as f:
+print('[INFO] Creating file: histos_tb.root')
+with root_open('histos_tb.root', 'recreate') as f:
   for i in xrange(len(pt_bins)):
     for j in xrange(len(eta_bins)):
       for k in xrange(nlayers+1):
@@ -375,5 +528,24 @@ with root_open("histos_tb.root", "recreate") as f:
 
 # Save objects
 import pickle
+print('[INFO] Creating file: histos_tb.pkl')
 with open('histos_tb.pkl', 'wb') as f:
+  for i in xrange(len(pt_bins)):
+    for j in xrange(len(eta_bins)):
+      for k in xrange(nlayers+1):
+        if patterns_phi[i][j][k]:
+          patterns_phi[i][j][k].sort()
+          x = np.percentile(patterns_phi[i][j][k], [10, 50, 90])
+          patterns_phi[i][j][k] = x
+        else:
+          patterns_phi[i][j][k] = [0, 0, 0]
+
+        if patterns_theta[i][j][k]:
+          patterns_theta[i][j][k].sort()
+          x = np.percentile(patterns_theta[i][j][k], [10, 50, 90])
+          patterns_theta[i][j][k] = x
+        else:
+          patterns_theta[i][j][k] = [0, 0, 0]
+
   pickle.dump([patterns_phi, patterns_theta], f)
+

@@ -33,8 +33,8 @@ def select_by_vertex(vx, vy, vz):
   return np.sqrt(vx*vx + vy*vy) < 15. and abs(vz) < 50.
 
 # Globals
-eta_bins = [1.2, 1.40943, 1.58427, 1.76857, 1.94529, 2.15444, 2.5]
-pt_bins = [-0.2, -0.191121, -0.181153, -0.1684, -0.156863, -0.144086, -0.125538, -0.0946667, 0.0784762, 0.116727, 0.138507, 0.152444, 0.1666, 0.177728, 0.190803, 0.2]
+eta_bins = [1.2, 1.41795, 1.60581, 1.78535, 1.97377, 2.17831, 2.5]
+pt_bins = [-0.2, -0.190937, -0.180533, -0.169696, -0.158343, -0.143231, -0.123067, -0.0936418, 0.0895398, 0.123191, 0.142493, 0.157556, 0.169953, 0.180755, 0.190829, 0.2]
 assert(len(eta_bins) == 6+1)
 assert(len(pt_bins) == 15+1)
 
@@ -97,7 +97,7 @@ for ievt, evt in enumerate(tree):
   for ipart, part in enumerate(evt.particles):
     if part.pt > 5.:
       if select_by_eta(part.eta):
-        if select_by_bx(part.bx):
+        if select_by_bx(part.bx) or True:  #FIXME
           if select_by_vertex(part.vx, part.vy, part.vz):
             h1a.fill(float(part.q)/part.pt, abs(part.eta))
             h1b.fill(float(part.q)/part.pt, abs(part.eta))
