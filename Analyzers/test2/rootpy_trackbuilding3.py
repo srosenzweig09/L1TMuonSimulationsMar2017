@@ -98,7 +98,7 @@ pt_bins = [-0.2, -0.190937, -0.180533, -0.169696, -0.158343, -0.143231, -0.12306
 assert(len(eta_bins) == 6+1)
 assert(len(pt_bins) == 15+1)
 
-nlayers = 23  # 12 (CSC) + 8 (RPC) + 3 (GEM)
+nlayers = 25  # 13 (CSC) + 9 (RPC) + 3 (GEM)
 
 
 # More functions
@@ -137,13 +137,15 @@ def wrapper_emtf_layer(f):
         (1,1,3,0),  # ME1/3
         (1,2,1,1),  # ME2/1f
         (1,2,1,0),  # ME2/1r
-        (1,2,2,0),  # ME2/2
+        (1,2,2,1),  # ME2/2f
+        (1,2,2,0),  # ME2/2r
         (1,3,1,0),  # ME3/1
         (1,3,2,0),  # ME3/2
         (1,4,1,0),  # ME4/1
         (1,4,2,0),  # ME4/2
         # RPC
-        (2,1,2,0),  # RE1/2
+        (2,1,2,1),  # RE1/2f
+        (2,1,2,0),  # RE1/2r
         (2,2,2,0),  # RE2/2
         (2,3,1,0),  # RE3/1
         (2,3,2,0),  # RE3/2
@@ -176,7 +178,9 @@ def emtf_layer(hit):
     hit_ring = hit.ring
   if hit.type == kCSC and hit.station == 1:  # special case: ME1/*
     hit_fr = int(hit.fr)
-  elif hit.type == kCSC and hit.station == 2 and hit.ring == 1:  # special case: ME2/1
+  elif hit.type == kCSC and hit.station == 2:  # special case: ME2/*
+    hit_fr = int(hit.fr)
+  elif hit.type == kRPC and hit.station == 1:  # special case: RE1/*
     hit_fr = int(hit.fr)
   else:
     hit_fr = 0
@@ -225,6 +229,13 @@ def emtf_pgun_weight(part):
 # ______________________________________________________________________________
 # Classes
 
+class Particle(object):
+  def __init__(self, pt, eta, phi, q):
+    self.pt = pt
+    self.eta = eta
+    self.phi = phi
+    self.q = q
+
 class Pattern(object):
   def __init__(self, xmin, xmed, xmax, ymin, ymed, ymax):
     self.xmin = xmin
@@ -264,6 +275,7 @@ class Road(object):
     self.mode = 0
     for hit in self.hits:
       self.mode |= (1 << (4 - hit.station))
+    self.quality = 15//2 - abs(self.ipt - 15//2)
 
   def id(self):
     index = (self.endcap, self.sector, self.ipt, self.ieta, self.iphi)
@@ -279,7 +291,7 @@ class PatternRecognition(object):
       if (hit.endcap == endcap and hit.sector == sector and hit.lay != -99):
         pattern = self.bank[(ipt, ieta, hit.lay)]
         if not (int(pattern.xmin) == 0 and int(pattern.xmax) == 0):  # if layer is valid
-          if (pattern.xmin <= (hit.emtf_phi - (iphi*16)) < pattern.xmax) and (pattern.ymin <= hit.emtf_theta < pattern.ymax):  # multiply by 'doublestrip' unit (2 * 8)
+          if (pattern.xmin <= (hit.emtf_phi - (iphi*16)) < pattern.xmax) and (pattern.ymin - 2 <= hit.emtf_theta < pattern.ymax + 2):  # multiply by 'doublestrip' unit (2 * 8)
             result = True
       return result
 
@@ -300,6 +312,17 @@ class PatternRecognition(object):
     )
     return road
 
+  def _apply_patterns(self, endcap, sector, ipt_range, ieta_range, iphi_range, hits):
+    roads = []
+    for ipt in ipt_range:
+      for ieta in ieta_range:
+        for iphi in iphi_range:
+          road = self._apply_pattern(endcap, sector, ipt, ieta, iphi, hits)
+          if road.hits and road.mode in [11, 13, 14, 15]:
+            roads.append(road)
+    return roads
+
+
   def run(self, hits, part=None):
     roads = []
     # Loop over patterns
@@ -311,30 +334,25 @@ class PatternRecognition(object):
         for hit in evt.hits:
           if (hit.endcap == endcap and hit.sector == sector and hit.type == kCSC):
             fake_mode |= (1 << (4 - hit.station))
-        early_exit = fake_mode not in [11, 13, 14, 15]
+        early_exit = sum([(fake_mode>>3) & 1, (fake_mode>>2) & 1, (fake_mode>>1) & 1, (fake_mode>>0) & 1]) < 2  # at least 2 hits
         if early_exit:  continue
+
+        # Loop over patterns
+        ipt_range = xrange(len(pt_bins))
+        ieta_range = xrange(len(eta_bins))
+        iphi_range = xrange(4800/16)  # divide by 'doublestrip' unit (2 * 8)
 
         # Cheat using gen particle info
         if part is not None:
-          ipt = part.ipt
-          ieta = part.ieta
+          ipt_range = [part.ipt]
+          ieta_range = [part.ieta]
           tmp_phis = [hit.emtf_phi for hit in evt.hits if (hit.endcap == endcap and hit.sector == sector and hit.type == kCSC)]
           tmp_phi = np.mean(tmp_phis)
           iphi = int(tmp_phi/16)
-          iphi_range = range(iphi - 6, iphi + 7)
-          for iphi in iphi_range:
-            road = self._apply_pattern(endcap, sector, ipt, ieta, iphi, hits)
-            if road.hits and road.mode in [11, 13, 14, 15]:
-              roads.append(road)
-          continue
+          iphi_range = range(iphi - 4, iphi + 4 + 1)
 
-        iphi_range = xrange(4800/16)  # divide by 'doublestrip' unit (2 * 8)
-        for ipt in xrange(len(pt_bins)):
-          for ieta in xrange(len(eta_bins)):
-            for iphi in iphi_range:
-              road = self._apply_pattern(endcap, sector, ipt, ieta, iphi, hits)
-              if road.hits and road.mode in [11, 13, 14, 15]:
-                roads.append(road)
+        roads_tmp = self._apply_patterns(endcap, sector, ipt_range, ieta_range, iphi_range, hits)
+        roads += roads_tmp
     return roads
 
 class RoadCleaning(object):
@@ -398,10 +416,14 @@ for k in ["denom", "numer"]:
   histograms[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta|", type='F')
   histograms[hname].Sumw2()
 
+  hname = "eff_vs_genphi_%s" % k
+  histograms[hname] = Hist(32, -3.2, 3.2, name=hname, title="; gen |#phi|", type='F')
+  histograms[hname].Sumw2()
+
 
 # ______________________________________________________________________________
 # Open file
-infile = root_open('ntuple_SingleMuon_Toy_5GeV_add.2.root')
+infile = root_open('ntuple_SingleMuon_Toy_5GeV_add.3.root')
 tree = infile.ntupler.tree
 print('[INFO] Opening file: %s' % infile)
 
@@ -412,7 +434,7 @@ tree.define_collection(name='particles', prefix='vp_', size='vp_size')
 
 # Get number of events
 #maxEvents = -1
-#maxEvents = 400000
+#maxEvents = 1000000
 maxEvents = 10000
 print('[INFO] Using max events: %i' % maxEvents)
 
@@ -422,7 +444,7 @@ analysis = "application"
 print('[INFO] Using analysis mode: %s' % analysis)
 
 # Other stuff
-bankfile = 'histos_tb.2.pkl'
+bankfile = 'histos_tb.3.pkl'
 
 
 # ______________________________________________________________________________
@@ -546,13 +568,17 @@ for ievt, evt in enumerate(tree):
     roads = recog.run(evt.hits, part)
 
     clean_roads = clean.run(roads)
+    clean_roads.sort(key=lambda x: (x.mode, x.quality), reverse=True)
 
-    mypart = (part.pt, part.eta)
-    out_particles.append(mypart)
-    try:
+    if clean_roads:
+      mypart = Particle(
+        pt = part.pt,
+        eta = part.eta,
+        phi = part.phi,
+        q = part.q,
+      )
+      out_particles.append(mypart)
       out_roads.append(clean_roads[0])
-    except IndexError:
-      out_roads.append(None)
 
     if ievt < 20:
       print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
@@ -569,22 +595,23 @@ for ievt, evt in enumerate(tree):
     # Quick efficiency
     trigger = len(clean_roads) > 0
 
-    k = "denom"
-    hname = "eff_vs_genpt_%s" % k
+    hname = "eff_vs_genpt_denom"
     histograms[hname].fill(part.pt)
     if trigger:
-      k = "numer"
-      hname = "eff_vs_genpt_%s" % k
+      hname = "eff_vs_genpt_numer"
       histograms[hname].fill(part.pt)
 
     if part.pt > 20.:
-      k = "denom"
-      hname = "eff_vs_geneta_%s" % k
+      hname = "eff_vs_geneta_denom"
       histograms[hname].fill(abs(part.eta))
       if trigger:
-        k = "numer"
-        hname = "eff_vs_geneta_%s" % k
+        hname = "eff_vs_geneta_numer"
         histograms[hname].fill(abs(part.eta))
+      hname = "eff_vs_genphi_denom"
+      histograms[hname].fill(part.phi)
+      if trigger:
+        hname = "eff_vs_genphi_numer"
+        histograms[hname].fill(part.phi)
 
     ntotal += 1
     if trigger:
@@ -655,6 +682,12 @@ elif analysis == "application":
     eff.Write()
 
     hname = "eff_vs_geneta"
+    hname_numer = "%s_%s" % (hname, "numer")
+    hname_denom = "%s_%s" % (hname, "denom")
+    eff = Efficiency(histograms[hname_numer], histograms[hname_denom], name=hname)
+    eff.Write()
+
+    hname = "eff_vs_genphi"
     hname_numer = "%s_%s" % (hname, "numer")
     hname_denom = "%s_%s" % (hname, "denom")
     eff = Efficiency(histograms[hname_numer], histograms[hname_denom], name=hname)
