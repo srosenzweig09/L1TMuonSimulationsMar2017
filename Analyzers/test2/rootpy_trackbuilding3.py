@@ -2,6 +2,7 @@ import numpy as np
 np.random.seed(2023)
 
 from itertools import izip
+import time
 from rootpy.plotting import Hist, Hist2D, Graph, Efficiency, Legend, Canvas
 from rootpy.tree import Tree, TreeModel, FloatCol, IntCol, ShortCol
 from rootpy.io import root_open
@@ -247,111 +248,116 @@ class Pattern(object):
 
 class PatternBank(object):
   def __init__(self, patterns_phi, patterns_theta):
-    self.x_array = np.array(patterns_phi, dtype=np.int32)
+    self.x_array = np.array(patterns_phi, dtype=np.int32) # make a copy
     self.y_array = np.array(patterns_theta, dtype=np.int32)
     assert(self.x_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
     assert(self.y_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
 
-  def __getitem__(self, index):
-    pattern = Pattern(
-      xmin = self.x_array[index+(0,)],
-      xmed = self.x_array[index+(1,)],
-      xmax = self.x_array[index+(2,)],
-      ymin = self.y_array[index+(0,)],
-      ymed = self.y_array[index+(1,)],
-      ymax = self.y_array[index+(2,)],
-    )
-    return pattern
+class Hit(object):
+  def __init__(self, _id, emtf_layer, emtf_phi, emtf_theta, emtf_bend):
+    self.id = _id
+    self.emtf_layer = emtf_layer
+    self.emtf_phi = emtf_phi
+    self.emtf_theta = emtf_theta
+    self.emtf_bend = emtf_bend
 
 class Road(object):
-  def __init__(self, endcap, sector, ipt, ieta, iphi, hits):
-    self.endcap = endcap
-    self.sector = sector
-    self.ipt = ipt
-    self.ieta = ieta
-    self.iphi = iphi
+  def __init__(self, _id, hits, mode, quality):
+    self.id = _id
     self.hits = hits
-    #
-    self.mode = 0
-    for hit in self.hits:
-      self.mode |= (1 << (4 - hit.station))
-    self.quality = 15//2 - abs(self.ipt - 15//2)
-
-  def id(self):
-    index = (self.endcap, self.sector, self.ipt, self.ieta, self.iphi)
-    return index
+    self.mode = mode
+    self.quality = quality
 
 class PatternRecognition(object):
   def __init__(self, bank):
     self.bank = bank
 
-  def _apply_pattern(self, endcap, sector, ipt, ieta, iphi, hits):
-    def is_good_hit(hit):
-      result = False
-      if (hit.endcap == endcap and hit.sector == sector and hit.lay != -99):
-        pattern = self.bank[(ipt, ieta, hit.lay)]
-        if not (int(pattern.xmin) == 0 and int(pattern.xmax) == 0):  # if layer is valid
-          if (pattern.xmin <= (hit.emtf_phi - (iphi*16)) < pattern.xmax) and (pattern.ymin - 2 <= hit.emtf_theta < pattern.ymax + 2):  # multiply by 'doublestrip' unit (2 * 8)
-            result = True
-      return result
+  def _apply_patterns(self, endcap, sector, ipt_range, ieta_range, iphi_range, sector_hits):
+    amap = {}
 
-    road_hits = []
-    for ihit, hit in enumerate(hits):
-      lay = emtf_layer(hit)
-      hit.lay = lay
-      if is_good_hit(hit):
-        road_hits.append(hit)
+    # Retrieve patterns with (ipt, ieta, lay, pattern)
+    ipt_slice = slice(ipt_range[0], ipt_range[-1]+1, None)
+    ieta_slice = slice(ieta_range[0], ieta_range[-1]+1, None)
+    pattern_x = self.bank.x_array[ipt_slice, ieta_slice, np.newaxis, :, :]
+    pattern_y = self.bank.y_array[ipt_slice, ieta_slice, np.newaxis, :, :]
+    pattern_iphi = np.arange(iphi_range[0], iphi_range[-1]+1, dtype=np.int32)
 
-    road = Road(
-      endcap = endcap,
-      sector = sector,
-      ipt = ipt,
-      ieta = ieta,
-      iphi = iphi,
-      hits = road_hits,
-    )
-    return road
+    # Loop over hits
+    for ihit, hit in enumerate(sector_hits):
+      # Make hit coordinates
+      hit_x = hit.emtf_phi - pattern_iphi * 16  # multiply by 'doublestrip' unit (2 * 8)
+      hit_y = hit.emtf_theta
+      hit_lay = hit.lay
 
-  def _apply_patterns(self, endcap, sector, ipt_range, ieta_range, iphi_range, hits):
+      # Match patterns
+      mask = (pattern_x[...,hit_lay,0] <= hit_x) & (hit_x < pattern_x[...,hit_lay,2]) & (pattern_y[...,hit_lay,0] - 2 <= hit_y) & (hit_y < pattern_y[...,hit_lay,2] + 2)
+
+      # Create a hit (for output)
+      hit_id = (hit.type, hit.station, hit.ring, hit.fr)
+      myhit = Hit(hit_id, hit_lay, hit.emtf_phi, hit.emtf_theta, hit.pattern)
+
+      # Get results
+      for index, condition in np.ndenumerate(mask):
+        if condition:  # good hit
+          ipt, ieta, iphi = index
+          road_id = (endcap, sector, ipt, ieta, iphi)
+          amap.setdefault(road_id, []).append(myhit)  # append hit to road
+
+    # Create a road
     roads = []
-    for ipt in ipt_range:
-      for ieta in ieta_range:
-        for iphi in iphi_range:
-          road = self._apply_pattern(endcap, sector, ipt, ieta, iphi, hits)
-          if road.hits and road.mode in [11, 13, 14, 15]:
-            roads.append(road)
+    for road_id, road_hits in amap.iteritems():
+      road_mode = 0
+      for hit in road_hits:
+        _type, station, ring, fr = hit.id
+        road_mode |= (1 << (4 - station))
+      #
+      endcap, sector, ipt, ieta, iphi = road_id
+      road_quality = 15//2 - abs(ipt - 15//2)
+      #
+      if road_mode in (11, 13, 14, 15):  # single-muon modes
+        myroad = Road(road_id, road_hits, road_mode, road_quality)
+        roads.append(myroad)
     return roads
-
 
   def run(self, hits, part=None):
     roads = []
-    # Loop over patterns
+
+    fake_modes = np.zeros(12, dtype=np.int32)
+    for ihit, hit in enumerate(hits):
+      hit.endsec = (hit.sector - 1) if hit.endcap == 1 else (hit.sector - 1 + 6)
+      hit.lay = emtf_layer(hit)
+      assert(hit.lay != -99)
+      if hit.type == kCSC:  # at least 2 CSC hits
+        fake_modes[hit.endsec] |= (1 << (4 - hit.station))
+
+    # Loop over sector processors
     for endcap in [-1, +1]:
       for sector in [1, 2, 3, 4, 5, 6]:
-
-        # Early exit
-        fake_mode = 0
-        for hit in evt.hits:
-          if (hit.endcap == endcap and hit.sector == sector and hit.type == kCSC):
-            fake_mode |= (1 << (4 - hit.station))
-        early_exit = sum([(fake_mode>>3) & 1, (fake_mode>>2) & 1, (fake_mode>>1) & 1, (fake_mode>>0) & 1]) < 2  # at least 2 hits
+        endsec = (sector - 1) if endcap == 1 else (sector - 1 + 6)
+        fake_mode = fake_modes[endsec]
+        early_exit = sum([(fake_mode>>3) & 1, (fake_mode>>2) & 1, (fake_mode>>1) & 1, (fake_mode>>0) & 1]) < 2  # at least 2 CSC hits
         if early_exit:  continue
 
-        # Loop over patterns
+        # Patterns to run
         ipt_range = xrange(len(pt_bins))
         ieta_range = xrange(len(eta_bins))
         iphi_range = xrange(4800/16)  # divide by 'doublestrip' unit (2 * 8)
+
+        # Hits
+        sector_hits = [hit for hit in hits if hit.endsec == endsec]
 
         # Cheat using gen particle info
         if part is not None:
           ipt_range = [part.ipt]
           ieta_range = [part.ieta]
-          tmp_phis = [hit.emtf_phi for hit in evt.hits if (hit.endcap == endcap and hit.sector == sector and hit.type == kCSC)]
+          ipt_range = [x for x in xrange(part.ipt-1, part.ipt+1+1) if 0 <= x < len(pt_bins)-1]
+          ieta_range = [x for x in xrange(part.ieta-1, part.ieta+1+1) if 0 <= x < len(eta_bins)-1]
+          tmp_phis = [hit.emtf_phi for hit in sector_hits if hit.type == kCSC]
           tmp_phi = np.mean(tmp_phis)
           iphi = int(tmp_phi/16)
-          iphi_range = range(iphi - 4, iphi + 4 + 1)
+          iphi_range = xrange(iphi-4, iphi+4+1)
 
-        roads_tmp = self._apply_patterns(endcap, sector, ipt_range, ieta_range, iphi_range, hits)
+        roads_tmp = self._apply_patterns(endcap, sector, ipt_range, ieta_range, iphi_range, sector_hits)
         roads += roads_tmp
     return roads
 
@@ -386,10 +392,7 @@ class RoadCleaning(object):
           return
 
   def run(self, roads):
-    amap = {}
-    for road in roads:
-      road_id = road.id()
-      amap[road_id] = road
+    amap = {road.id : road for road in roads}
 
     clean_roads = []
     for group in self._groupby(amap.keys()):
@@ -399,6 +402,7 @@ class RoadCleaning(object):
       road = amap[road_id]
       clean_roads.append(road)
     return clean_roads
+
 
 # ______________________________________________________________________________
 # Book histograms
@@ -544,7 +548,7 @@ for ievt, evt in enumerate(tree):
       if ievt < 20:
         print(".. hit {0} type: {1} st: {2} ri: {3} fr: {4} lay: {5} se: {6} ph: {7} th: {8} tp: {9}".format(ihit, hit.type, hit.station, hit.ring, hit.fr, lay, hit.sector, hit.emtf_phi, hit.emtf_theta, hit.sim_tp1))
 
-      if hit.sector == part.sector and hit.bx == 0 and hit.sim_tp1 == 0:
+      if hit.sector == part.sector and hit.bx == 0 and hit.sim_tp1 == 0 and hit.sim_tp2 == 0:
         the_patterns_phi[lay].append(hit.emtf_phi - part.emtf_phi)
         #the_patterns_theta[lay].append(hit.emtf_theta - part.emtf_theta)
         the_patterns_theta[lay].append(hit.emtf_theta)
@@ -565,12 +569,13 @@ for ievt, evt in enumerate(tree):
     part.invpt = np.true_divide(part.q, part.pt)
     part.ipt = np.digitize([np.true_divide(part.q, part.pt)], pt_bins[1:])[0]  # skip lowest edge
     part.ieta = np.digitize([abs(part.eta)], eta_bins[1:])[0]  # skip lowest edge
+
     roads = recog.run(evt.hits, part)
 
     clean_roads = clean.run(roads)
     clean_roads.sort(key=lambda x: (x.mode, x.quality), reverse=True)
 
-    if clean_roads:
+    if len(clean_roads) > 0:
       mypart = Particle(
         pt = part.pt,
         eta = part.eta,
@@ -583,14 +588,13 @@ for ievt, evt in enumerate(tree):
     if ievt < 20:
       print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
       print(".. part invpt: {0} eta: {1} phi: {2} ipt: {3} ieta: {4}".format(part.invpt, part.eta, part.phi, part.ipt, part.ieta))
-      for iroad, road in enumerate(roads):
-        print(".. road {0} {1} {2} {3}".format(iroad, road.id(), len(road.hits), road.mode))
+      for iroad, myroad in enumerate(roads):
+        print(".. road {0} {1} {2} {3} {4}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality))
 
-        for ihit, hit in enumerate(road.hits):
-          print(".. .. hit  {0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10}".format(ihit, hit.bx, hit.type, hit.station, hit.ring, hit.sector, hit.fr, hit.sim_phi, hit.sim_theta, hit.sim_tp1, hit.sim_tp2))
-
-      for iroad, road in enumerate(clean_roads):
-        print(".. croad {0} {1} {2} {3}".format(iroad, road.id(), len(road.hits), road.mode))
+      for iroad, myroad in enumerate(clean_roads):
+        print(".. croad {0} {1} {2} {3} {4}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality))
+        for ihit, myhit in enumerate(myroad.hits):
+          print(".. .. hit  {0} {1} {2} {3} {4}".format(ihit, myhit.id, myhit.emtf_phi, myhit.emtf_theta, myhit.emtf_bend))
 
     # Quick efficiency
     trigger = len(clean_roads) > 0
@@ -607,12 +611,14 @@ for ievt, evt in enumerate(tree):
       if trigger:
         hname = "eff_vs_geneta_numer"
         histograms[hname].fill(abs(part.eta))
+
       hname = "eff_vs_genphi_denom"
       histograms[hname].fill(part.phi)
       if trigger:
         hname = "eff_vs_genphi_numer"
         histograms[hname].fill(part.phi)
 
+    # Keep statistics
     ntotal += 1
     if trigger:
       npassed += 1
@@ -654,6 +660,7 @@ if analysis == "training":
           if len(patterns_phi[i][j][k]) > (0.001 * maxEvents):
             patterns_phi[i][j][k].sort()
             x = np.percentile(patterns_phi[i][j][k], [5, 50, 95])
+            x = [int(round(xx)) for xx in x]
             patterns_phi[i][j][k] = x
           else:
             patterns_phi[i][j][k] = [0, 0, 0]
@@ -661,34 +668,32 @@ if analysis == "training":
           if len(patterns_theta[i][j][k]) > (0.001 * maxEvents):
             patterns_theta[i][j][k].sort()
             x = np.percentile(patterns_theta[i][j][k], [2, 50, 98])
+            x = [int(round(xx)) for xx in x]
             patterns_theta[i][j][k] = x
           else:
             patterns_theta[i][j][k] = [0, 0, 0]
-
+    patterns_phi = np.array(patterns_phi, dtype=np.int32)
+    patterns_theta = np.array(patterns_theta, dtype=np.int32)
     pickle.dump([patterns_phi, patterns_theta], f)
 
 
 # Analysis: application
 elif analysis == "application":
 
+  # Plot histograms
   print('[INFO] Creating file: histos_tba.root')
   with root_open('histos_tba.root', 'recreate') as f:
+    for hname in ["eff_vs_genpt", "eff_vs_geneta", "eff_vs_genphi"]:
+      hname_numer = "%s_%s" % (hname, "numer")
+      hname_denom = "%s_%s" % (hname, "denom")
+      eff = Efficiency(histograms[hname_numer], histograms[hname_denom], name=hname)
+      eff.Write()
     print('[INFO] npassed/ntotal: %i/%i = %f' % (npassed, ntotal, np.true_divide(npassed, ntotal)))
 
-    hname = "eff_vs_genpt"
-    hname_numer = "%s_%s" % (hname, "numer")
-    hname_denom = "%s_%s" % (hname, "denom")
-    eff = Efficiency(histograms[hname_numer], histograms[hname_denom], name=hname)
-    eff.Write()
-
-    hname = "eff_vs_geneta"
-    hname_numer = "%s_%s" % (hname, "numer")
-    hname_denom = "%s_%s" % (hname, "denom")
-    eff = Efficiency(histograms[hname_numer], histograms[hname_denom], name=hname)
-    eff.Write()
-
-    hname = "eff_vs_genphi"
-    hname_numer = "%s_%s" % (hname, "numer")
-    hname_denom = "%s_%s" % (hname, "denom")
-    eff = Efficiency(histograms[hname_numer], histograms[hname_denom], name=hname)
-    eff.Write()
+  # Save objects
+  import pickle
+  print('[INFO] Creating file: histos_tba.pkl')
+  with open('histos_tba.pkl', 'wb') as f:
+    assert(len(out_particles) == npassed)
+    assert(len(out_roads) == npassed)
+    pickle.dump([out_particles, out_roads], f)
