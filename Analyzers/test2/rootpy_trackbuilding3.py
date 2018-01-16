@@ -11,20 +11,6 @@ gROOT.SetBatch(True)
 
 
 # ______________________________________________________________________________
-# Tree models
-#   see: http://www.rootpy.org/auto_examples/tree/model.html
-
-class Hit(TreeModel):
-  pass
-
-class Track(TreeModel):
-  pass
-
-class Particle(TreeModel):
-  pass
-
-
-# ______________________________________________________________________________
 # Analyzer
 
 # Enums
@@ -95,9 +81,10 @@ def find_sector(phi):  # phi in radians
 
 # Globals
 eta_bins = [1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4]
-pt_bins = [-0.2, -0.190937, -0.180533, -0.169696, -0.158343, -0.143231, -0.123067, -0.0936418, 0.0895398, 0.123191, 0.142493, 0.157556, 0.169953, 0.180755, 0.190829, 0.2]
+#pt_bins = [-0.2, -0.190937, -0.180533, -0.169696, -0.158343, -0.143231, -0.123067, -0.0936418, 0.0895398, 0.123191, 0.142493, 0.157556, 0.169953, 0.180755, 0.190829, 0.2]
+pt_bins = [-0.2, -0.18, -0.16, -0.133333, -0.10, -0.05, 0.05, 0.10, 0.133333, 0.16, 0.18, 0.2]
 assert(len(eta_bins) == 6+1)
-assert(len(pt_bins) == 15+1)
+assert(len(pt_bins) == 11+1)
 
 nlayers = 25  # 13 (CSC) + 9 (RPC) + 3 (GEM)
 
@@ -188,6 +175,14 @@ def emtf_layer(hit):
   index = (hit.type, hit.station, hit_ring, hit_fr)
   return index
 
+def emtf_bend(hit):
+  if hit.type == kCSC:
+    clct = int(hit.pattern)
+    lut = (5, -5, 4, -4, 3, -3, 2, -2, 1, -1, 0)
+    bend = lut[clct]
+  else:
+    bend = 0
+  return bend
 
 def wrapper_emtf_pgun_weight(f):
   # [ipt][ieta]
@@ -294,12 +289,14 @@ class PatternRecognition(object):
 
       # Create a hit (for output)
       hit_id = (hit.type, hit.station, hit.ring, hit.fr)
-      myhit = Hit(hit_id, hit_lay, hit.emtf_phi, hit.emtf_theta, hit.pattern)
+      myhit = Hit(hit_id, hit_lay, hit.emtf_phi, hit.emtf_theta, emtf_bend(hit))
 
       # Get results
       for index, condition in np.ndenumerate(mask):
         if condition:  # good hit
-          ipt, ieta, iphi = index
+          ipt = ipt_range[index[0]]
+          ieta = ieta_range[index[1]]
+          iphi = iphi_range[index[2]]
           road_id = (endcap, sector, ipt, ieta, iphi)
           amap.setdefault(road_id, []).append(myhit)  # append hit to road
 
@@ -312,7 +309,7 @@ class PatternRecognition(object):
         road_mode |= (1 << (4 - station))
       #
       endcap, sector, ipt, ieta, iphi = road_id
-      road_quality = 15//2 - abs(ipt - 15//2)
+      road_quality = 11//2 - abs(ipt - 11//2)
       #
       if road_mode in (11, 13, 14, 15):  # single-muon modes
         myroad = Road(road_id, road_hits, road_mode, road_quality)
@@ -448,7 +445,7 @@ analysis = "application"
 print('[INFO] Using analysis mode: %s' % analysis)
 
 # Other stuff
-bankfile = 'histos_tb.3.pkl'
+bankfile = 'histos_tb.4.npz'
 
 
 # ______________________________________________________________________________
@@ -465,10 +462,9 @@ if analysis == "training":
 # Analysis: application
 elif analysis == "application":
 
-  import pickle
-  with open(bankfile, 'rb') as f:
-    data = pickle.load(f)
-    patterns_phi, patterns_theta = data
+  loaded = np.load(bankfile)
+  patterns_phi = loaded['patterns_phi']
+  patterns_theta = loaded['patterns_theta']
 
   bank = PatternBank(patterns_phi, patterns_theta)
   recog = PatternRecognition(bank)
@@ -537,7 +533,7 @@ for ievt, evt in enumerate(tree):
     part.ipt = np.digitize([np.true_divide(part.q, part.pt)], pt_bins[1:])[0]  # skip lowest edge
     part.ieta = np.digitize([abs(part.eta)], eta_bins[1:])[0]  # skip lowest edge
     the_patterns_phi = patterns_phi[part.ipt][part.ieta]
-    the_patterns_theta = patterns_theta[part.ipt][part.ieta]
+    the_patterns_theta = patterns_theta[0][part.ieta]  # no binning in pt
 
     #pgun_weight = emtf_pgun_weight(part)
 
@@ -651,30 +647,47 @@ if analysis == "training":
           h1b.Write()
 
   # Save objects
-  import pickle
-  print('[INFO] Creating file: histos_tb.pkl')
-  with open('histos_tb.pkl', 'wb') as f:
+  print('[INFO] Creating file: histos_tb.npz')
+  if True:
+    patterns_phi_tmp = patterns_phi
+    patterns_theta_tmp = patterns_theta
+    patterns_phi = np.zeros((len(pt_bins)-1, len(eta_bins)-1, nlayers, 3), dtype=np.int32)
+    patterns_theta = np.zeros((len(pt_bins)-1, len(eta_bins)-1, nlayers, 3), dtype=np.int32)
+
     for i in xrange(len(pt_bins)-1):
       for j in xrange(len(eta_bins)-1):
         for k in xrange(nlayers):
-          if len(patterns_phi[i][j][k]) > (0.001 * maxEvents):
-            patterns_phi[i][j][k].sort()
-            x = np.percentile(patterns_phi[i][j][k], [5, 50, 95])
+          patterns_phi_tmp_ijk = patterns_phi_tmp[i][j][k]
+          if len(patterns_phi_tmp_ijk) > (0.001 * maxEvents):
+            patterns_phi_tmp_ijk.sort()
+            x = np.percentile(patterns_phi_tmp_ijk, [5, 50, 95])
             x = [int(round(xx)) for xx in x]
-            patterns_phi[i][j][k] = x
-          else:
-            patterns_phi[i][j][k] = [0, 0, 0]
+            patterns_phi[i,j,k] = x
 
-          if len(patterns_theta[i][j][k]) > (0.001 * maxEvents):
-            patterns_theta[i][j][k].sort()
-            x = np.percentile(patterns_theta[i][j][k], [2, 50, 98])
+          patterns_theta_tmp_ijk = patterns_theta_tmp[0][j][k]  # no binning in pt
+          if len(patterns_theta_tmp_ijk) > (0.001 * maxEvents):
+            patterns_theta_tmp_ijk.sort()
+            x = np.percentile(patterns_theta_tmp_ijk, [2, 50, 98])
             x = [int(round(xx)) for xx in x]
-            patterns_theta[i][j][k] = x
-          else:
-            patterns_theta[i][j][k] = [0, 0, 0]
-    patterns_phi = np.array(patterns_phi, dtype=np.int32)
-    patterns_theta = np.array(patterns_theta, dtype=np.int32)
-    pickle.dump([patterns_phi, patterns_theta], f)
+            patterns_theta[i,j,k] = x
+
+    # Mask layers by (ieta, lay)
+    valid_layers = [
+      (0,2), (0,3), (0,4), (0,7), (0,8), (0,10), (0,12), (0,13), (0,14), (0,15), (0,18), (0,21),
+      (1,2), (1,3), (1,7), (1,8), (1,10), (1,12), (1,13), (1,14), (1,15), (1,17), (1,20), (1,21), (1,22),
+      (2,0), (2,1), (2,5), (2,6), (2,9), (2,10), (2,11), (2,12), (2,17), (2,20), (2,22), (2,23),
+      (3,0), (3,1), (3,5), (3,6), (3,9), (3,11), (3,16), (3,19), (3,22), (3,23),
+      (4,0), (4,1), (4,5), (4,6), (4,9), (4,11), (4,16), (4,19), (4,22), (4,23),
+      (5,0), (5,1), (5,5), (5,6), (5,9), (5,11), (5,16), (5,19), (5,23),
+    ]
+    mask = np.ones_like(patterns_phi, dtype=np.bool)
+    for valid_layer in valid_layers:
+      mask[:,valid_layer[0],valid_layer[1],:] = False
+    patterns_phi[mask] = 0
+    patterns_theta[mask] = 0
+
+    outfile = 'histos_tb.npz'
+    np.savez_compressed(outfile, patterns_phi=patterns_phi, patterns_theta=patterns_theta)
 
 
 # Analysis: application
@@ -691,9 +704,42 @@ elif analysis == "application":
     print('[INFO] npassed/ntotal: %i/%i = %f' % (npassed, ntotal, np.true_divide(npassed, ntotal)))
 
   # Save objects
-  import pickle
-  print('[INFO] Creating file: histos_tba.pkl')
-  with open('histos_tba.pkl', 'wb') as f:
+  print('[INFO] Creating file: histos_tba.npz')
+  if True:
     assert(len(out_particles) == npassed)
     assert(len(out_roads) == npassed)
-    pickle.dump([out_particles, out_roads], f)
+    parameters = np.zeros((npassed, 3), dtype=np.float32)
+    variables = np.zeros((npassed, (nlayers * 4) + (3)), dtype=np.float32)
+
+    for i, (part, road) in enumerate(izip(out_particles, out_roads)):
+      parameters[i] = (np.true_divide(part.q, part.pt), part.phi, part.eta)
+      #
+      amap = {}
+      np.random.shuffle(road.hits)  # pick a random hit for now
+      for hit in road.hits:
+        if hit.emtf_layer not in amap:
+          amap[hit.emtf_layer] = hit
+      #
+      hits_phi = []
+      hits_theta = []
+      hits_bend = []
+      hits_mask = []
+      for lay in xrange(nlayers):
+        if lay in amap:
+          hit = amap[lay]
+          hits_phi.append(hit.emtf_phi)
+          hits_theta.append(hit.emtf_theta)
+          hits_bend.append(hit.emtf_bend)
+          hits_mask.append(False)
+        else:
+          hits_phi.append(np.nan)
+          hits_theta.append(np.nan)
+          hits_bend.append(np.nan)
+          hits_mask.append(True)
+      #
+      endcap, sector, ipt, ieta, iphi = road.id
+      road_info = [ipt, iphi, ieta]
+      variables[i] = tuple(hits_phi + hits_theta + hits_bend + hits_mask + road_info)
+
+    outfile = 'histos_tba.npz'
+    np.savez_compressed(outfile, parameters=parameters, variables=variables)
