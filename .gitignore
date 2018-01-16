@@ -10,6 +10,9 @@ AutoDict_*
 
 # Python
 *.pkl
+*.npy
+*.npz
+.ipynb_checkpoints
 
 # Other
 *~
