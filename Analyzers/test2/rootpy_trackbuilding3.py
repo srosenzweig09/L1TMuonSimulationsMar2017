@@ -309,7 +309,7 @@ class PatternBank(object):
 
 class Hit(object):
   def __init__(self, _id, emtf_layer, emtf_phi, emtf_theta, emtf_bend):
-    self.id = _id  # _type, station, ring, fr
+    self.id = _id  # (_type, station, ring, fr)
     self.emtf_layer = emtf_layer
     self.emtf_phi = emtf_phi
     self.emtf_theta = emtf_theta
@@ -317,7 +317,7 @@ class Hit(object):
 
 class Road(object):
   def __init__(self, _id, hits, mode, quality):
-    self.id = _id  # endcap, sector, ipt, ieta, iphi
+    self.id = _id  # (endcap, sector, ipt, ieta, iphi)
     self.hits = hits
     self.mode = mode
     self.quality = quality
@@ -340,9 +340,19 @@ class Road(object):
       hits_mask[lay] = False
     #
     (endcap, sector, ipt, ieta, iphi) = self.id
-    road_info = [ipt, iphi, ieta]
+    road_info = [ipt, ieta, iphi]
     variables = np.hstack((hits_phi, hits_theta, hits_bend, hits_mask, road_info))
     return variables
+
+class Track(object):
+  def __init__(self, _id, hits, mode, pt, q, emtf_phi, emtf_theta):
+    self.id = _id  # (endcap, sector)
+    self.hits = hits
+    self.mode = mode
+    self.pt = pt
+    self.q = q
+    self.emtf_phi = emtf_phi
+    self.emtf_theta = emtf_theta
 
 class PatternRecognition(object):
   def __init__(self, bank):
@@ -511,7 +521,7 @@ class RoadCleaning(object):
       return
 
   def run(self, roads):
-    # road_id = endcap, sector, ipt, ieta, iphi
+    # road_id = (endcap, sector, ipt, ieta, iphi)
     amap = {road.id : road for road in roads}
 
     # pick median in each iphi group
@@ -541,12 +551,23 @@ class PtAssignment(object):
       self.x_std  = data['x_std']
 
     from keras.models import load_model
-    self.loaded_model = load_model(model)
+    import keras.backend as K
+    def huber_loss(y_true, y_pred, delta=1.345):
+      x = K.abs(y_true - y_pred)
+      squared_loss = 0.5*K.square(x)
+      absolute_loss = delta * (x - 0.5*delta)
+      xx = K.switch(x < delta, squared_loss, absolute_loss)
+      #return K.mean(xx, axis=-1)
+      return K.sum(xx, axis=-1)
+
+    self.loaded_model = load_model(model, custom_objects={'huber_loss': huber_loss})
     self.loaded_model.load_weights(model_weights)
 
   def run(self, x):
+    x_new = np.array([], dtype=np.float32)
+    y = np.array([], dtype=np.float32)
     if len(x) == 0:
-      return np.array([], dtype=np.float32)
+      return (x_new, y)
 
     assert(len(x.shape) == 2)
     assert(x.shape[1] == (nlayers * 4) + 3)
@@ -558,12 +579,16 @@ class PtAssignment(object):
     self.x_theta = self.x_copy[:, nlayers*1:nlayers*2]
     self.x_bend  = self.x_copy[:, nlayers*2:nlayers*3]
     self.x_mask  = self.x_copy[:, nlayers*3:nlayers*4]
-    self.x_road  = self.x_copy[:, nlayers*4:nlayers*5]
+    self.x_road  = self.x_copy[:, nlayers*4:nlayers*5]  # ipt, ieta, iphi
 
     # Modify thetas
     self.x_theta_median  = np.nanmedian(self.x_theta, axis=1)
     self.x_theta_median  = self.x_theta_median[:, np.newaxis]
     self.x_theta        -= self.x_theta_median
+
+    # Pattern iphi
+    self.x_iphi          = self.x_road[...,2]
+    self.x_iphi          = self.x_iphi[:, np.newaxis]
 
     # Standard scales
     self.x_copy -= self.x_mean
@@ -581,12 +606,60 @@ class PtAssignment(object):
     self.x_copy[np.isnan(self.x_copy)] = 0.0
 
     # Get x
-    x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend, self.x_theta_median))
+    assert(len(self.x_theta_median) > 0 and self.x_theta_median.shape[0] == self.x_theta.shape[0])
+    x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend, self.x_iphi, self.x_theta_median))
 
     # Predict y
     y = self.loaded_model.predict(x_new)
-    return y
+    return (x_new, y)
 
+class TrackProducer(object):
+  def __init__(self):
+    pass
+
+  def run(self, clean_roads, variables, predictions):
+    assert(len(clean_roads) == len(variables))
+    assert(len(clean_roads) == len(predictions))
+
+    tracks = []
+
+    for myroad, myvars, mypreds in izip(clean_roads, variables, predictions):
+      trk_hits = []
+      trk_mode = 0
+      trk_ipt = np.digitize([mypreds[0]], pt_bins[1:])[0]  # skip lowest edge
+
+      # Check thetas
+      theta_median_index = (nlayers * 3) + 1  # check this!
+      theta_median = myvars[theta_median_index]
+
+      for hit in myroad.hits:
+        keep = True
+        (_type, station, ring, fr) = hit.id
+        if _type == kCSC:
+          if abs(hit.emtf_theta - theta_median) > 4.0:
+            keep = False
+        elif _type == kRPC:
+          if abs(hit.emtf_theta - theta_median) > 8.0:
+            keep = False
+        elif _type == kGEM:
+          if abs(hit.emtf_theta - theta_median) > 6.0:
+            keep = False
+
+        if keep:
+          trk_mode |= (1 << (4 - station))
+          trk_hits.append(hit)
+
+      quality1 = myroad.quality
+      quality2 = emtf_road_quality(trk_ipt)
+
+      if emtf_is_singlemu(trk_mode) and quality2 <= (quality1 + 1):
+        (endcap, sector, ipt, ieta, iphi) = myroad.id
+        trk_id = (endcap, sector)
+        trk_pt = np.abs(1.0/mypreds[0])
+        trk_q  = np.sign(mypreds[0])
+        trk = Track(trk_id, trk_hits, trk_mode, trk_pt, trk_q, iphi, theta_median)
+        tracks.append(trk)
+    return tracks
 
 # ______________________________________________________________________________
 # Book histograms
@@ -594,7 +667,7 @@ histograms = {}
 histogram2Ds = {}
 
 # Efficiency
-eff_pt_bins = [0., 2., 4., 6., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 35., 40., 45., 50., 60., 70., 100.]
+eff_pt_bins = [0., 2., 4., 6., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 35., 40., 45., 50., 60., 80., 120.]
 for k in ["denom", "numer"]:
   hname = "eff_vs_genpt_%s" % k
   histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
@@ -611,8 +684,9 @@ for k in ["denom", "numer"]:
 
 # ______________________________________________________________________________
 # Open file
-infile = root_open('ntuple_SingleMuon_Toy_5GeV_add.3.root')
-tree = infile.ntupler.tree
+infile = 'ntuple_SingleMuon_Toy_5GeV_add.3.root'
+infile_r = root_open(infile)
+tree = infile_r.ntupler.tree
 print('[INFO] Opening file: %s' % infile)
 
 # Define collection
@@ -629,8 +703,8 @@ print('[INFO] Using max events: %i' % maxEvents)
 # Analysis mode
 #analysis = "training"
 #analysis = "application"
-analysis = "rates"
-#analysis = "effie"
+#analysis = "rates"
+analysis = "effie"
 print('[INFO] Using analysis mode: %s' % analysis)
 
 # Other stuff
@@ -639,7 +713,8 @@ bankfile = 'histos_tb.6.npz'
 kerasfile = ['encoder.6.npz', 'model.6.h5', 'model_weights.6.h5']
 
 #pufiles = ['root://cmsxrootd.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU140/ParticleGuns/CRAB3/180116_214607/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(100)]
-pufiles = ['root://cmsxrootd.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
+#pufiles = ['root://cmsxrootd.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
+pufiles = ['root://cmsio2.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
 
 
 # ______________________________________________________________________________
@@ -665,8 +740,8 @@ elif analysis == "application":
   out_roads = []
   npassed, ntotal = 0, 0
 
-# Analysis: rates
-elif analysis == "rates":
+# Analysis: rates, effie
+elif analysis == "rates" or analysis == "effie":
   pass
 
 
@@ -815,15 +890,16 @@ for ievt, evt in enumerate(tree):
 
 
   # ____________________________________________________________________________
-  # Analysis: rates
+  # Analysis: rates, effie
 
-  elif analysis == "rates":
+  elif analysis == "rates" or analysis == "effie":
     break
 
 
   continue  # end loop over events
 
 maxEvents = ievt
+infile_r.close()
 
 
 # ______________________________________________________________________________
@@ -919,9 +995,11 @@ elif analysis == "application":
   print('[INFO] Creating file: histos_tba.root')
   with root_open('histos_tba.root', 'recreate') as f:
     for hname in ["eff_vs_genpt", "eff_vs_geneta", "eff_vs_genphi"]:
-      hname_numer = "%s_%s" % (hname, "numer")
-      hname_denom = "%s_%s" % (hname, "denom")
-      eff = Efficiency(histograms[hname_numer], histograms[hname_denom], name=hname)
+      denom = histograms[hname + "_denom"]
+      numer = histograms[hname + "_numer"]
+      eff = Efficiency(numer, denom, name=hname)
+      eff.SetStatisticOption(0)  # kFCP
+      eff.SetConfidenceLevel(0.682689492137)  # one sigma
       eff.Write()
     print('[INFO] npassed/ntotal: %i/%i = %f' % (npassed, ntotal, float(npassed)/ntotal))
 
@@ -944,9 +1022,16 @@ elif analysis == "application":
 
 elif analysis == "rates":
 
+  # Workers
+  bank = PatternBank(bankfile)
+  recog = PatternRecognition(bank)
+  clean = RoadCleaning()
+  ptassign = PtAssignment(kerasfile)
+  trkprod = TrackProducer()
+
   def make_rates(infile_j):
-    infile = root_open(infile_j)
-    tree = infile.ntupler.tree
+    infile_r = root_open(infile_j)
+    tree = infile_r.ntupler.tree
 
     # Define collection
     tree.define_collection(name='hits', prefix='vh_', size='vh_size')
@@ -957,7 +1042,7 @@ elif analysis == "rates":
     out = {}
     out["nevents"] = []
     out["highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"] = []
-    out["highest_emtf2_absEtaMin0_absEtaMax2.5_qmin12_pt"] = []
+    out["highest_emtf2023_absEtaMin0_absEtaMax2.5_qmin12_pt"] = []
 
     # Loop over events
     for ievt, evt in enumerate(tree):
@@ -965,57 +1050,51 @@ elif analysis == "rates":
       roads = recog.run(evt.hits)
       clean_roads = clean.run(roads)
       variables = np.array([road.to_variables() for road in clean_roads], dtype=np.float32)
-      emtf2_tracks = ptassign.run(variables)
-      assert(len(emtf2_tracks) == len(clean_roads))
+      variables_1, predictions = ptassign.run(variables)
+      emtf2023_tracks = trkprod.run(clean_roads, variables_1, predictions)
 
-      if ievt < 20:
-        print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
+      if ievt < 20 and False:
+        print("evt {0} has {1} roads, {2} clean roads, {3} tracks".format(ievt, len(roads), len(clean_roads), len(emtf2023_tracks)))
         for ipart, part in enumerate(evt.particles):
-          if part.pt > 10.:
+          if part.pt > 5.:
             part.invpt = np.true_divide(part.q, part.pt)
             print(".. part {0} {1} {2} {3} {4}".format(ipart, part.invpt, part.pt, part.eta, part.phi))
         for iroad, myroad in enumerate(clean_roads):
-          pt = 1.0/abs(emtf2_tracks[iroad])
-          print(".. croad {0} {1} {2} {3} {4} {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, pt))
-          for ihit, myhit in enumerate(myroad.hits):
+          print(".. croad {0} {1} {2} {3} {4}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality))
+          #for ihit, myhit in enumerate(myroad.hits):
+          #  print(".. .. hit  {0} {1} {2} {3} {4} {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.emtf_bend))
+        for itrk, mytrk in enumerate(emtf2023_tracks):
+          print(".. trk {0} {1} {2} {3} {4} {5}".format(itrk, mytrk.id, len(mytrk.hits), mytrk.mode, mytrk.pt, mytrk.q))
+          for ihit, myhit in enumerate(mytrk.hits):
             print(".. .. hit  {0} {1} {2} {3} {4} {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.emtf_bend))
 
 
       # Fill histograms
       out["nevents"].append(1.0)
 
-      def get_emtf_highest_pt():
+      def fill_highest_pt():
         highest_pt = -999999.
-        for itrk, trk in enumerate(evt.tracks):
+        for itrk, trk in enumerate(tracks):
           if select(trk):
             if highest_pt < trk.pt:
               highest_pt = trk.pt
         if highest_pt > 0.:
           highest_pt = min(100.-1e-3, highest_pt)
           out[hname].append(highest_pt)
-          #print "..", ievt, "emtf", highest_pt
 
       select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in (11,13,14,15))
+      tracks = evt.tracks
       hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"
-      get_emtf_highest_pt()
+      fill_highest_pt()
 
-      def get_emtf2_highest_pt():
-        highest_pt = -999999.
-        for itrk, trk in enumerate(emtf2_tracks):
-          pt = 1.0/abs(trk)
-          if highest_pt < pt:
-            highest_pt = pt
-        if highest_pt > 0.:
-          highest_pt = min(100.-1e-3, highest_pt)
-          out[hname].append(highest_pt)
-          #print "..", ievt, "emtf2!", highest_pt
-
-      hname = "highest_emtf2_absEtaMin0_absEtaMax2.5_qmin12_pt"
-      get_emtf2_highest_pt()
+      select = lambda trk: True
+      tracks = emtf2023_tracks
+      hname = "highest_emtf2023_absEtaMin0_absEtaMax2.5_qmin12_pt"
+      fill_highest_pt()
 
       continue  # end loop over events
 
-    #infile.close()
+    #infile_r.close()
     return out
 
   def make_rates_endjob(outputs):
@@ -1031,7 +1110,7 @@ elif analysis == "rates":
       histograms_1[hname] = Hist(5, 0, 5, name=hname, title="; count", type='F')
       hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"
       histograms_1[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
-      hname = "highest_emtf2_absEtaMin0_absEtaMax2.5_qmin12_pt"
+      hname = "highest_emtf2023_absEtaMin0_absEtaMax2.5_qmin12_pt"
       histograms_1[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
 
       for k, v in histograms_1.iteritems():
@@ -1039,20 +1118,154 @@ elif analysis == "rates":
           for x in out[k]:
             v.fill(x)
         v.Write()
+    return
 
   # ____________________________________________________________________________
   # Parallel processing
-  infile.close()
+
+  with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+    outputs = executor.map(make_rates, pufiles[:4], chunksize=4)
+    make_rates_endjob(outputs)
+
+  #out = make_rates('ntuple_SingleMuon_Toy_5GeV_add.3.root')
+  #out = make_rates('ntuple_SingleNeutrino_PU200_1.root')
+  #make_rates_endjob([out])
+
+
+# ______________________________________________________________________________
+# Analysis: effie
+
+elif analysis == "effie":
 
   # Workers
   bank = PatternBank(bankfile)
   recog = PatternRecognition(bank)
   clean = RoadCleaning()
   ptassign = PtAssignment(kerasfile)
+  trkprod = TrackProducer()
 
-  #with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-  #  outputs = executor.map(make_rates, pufiles, chunksize=4)
-  #  make_rates_endjob(outputs)
+  def make_effie(evt_range):
+    infile_r = root_open(infile)
+    tree = infile_r.ntupler.tree
 
-  #make_rates('ntuple_SingleMuon_Toy_5GeV_add.3.root')
-  make_rates('ntuple_SingleNeutrino_PU200_1.root')
+    # Define collection
+    tree.define_collection(name='hits', prefix='vh_', size='vh_size')
+    tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
+    tree.define_collection(name='particles', prefix='vp_', size='vp_size')
+
+    evt = next(iter(tree))
+
+    # Outputs
+    out = {}
+    out["emtf_eff_vs_genpt_l1pt20"] = []
+    out["emtf_eff_vs_geneta_l1pt20"] = []
+    out["emtf_l1pt_vs_genpt"] = []
+    out["emtf_l1ptres_vs_genpt"] = []
+    out["emtf2023_eff_vs_genpt_l1pt20"] = []
+    out["emtf2023_eff_vs_geneta_l1pt20"] = []
+    out["emtf2023_l1pt_vs_genpt"] = []
+    out["emtf2023_l1ptres_vs_genpt"] = []
+
+    # Loop over events
+    for ievt in evt_range:
+      tree.GetEntry(ievt)
+
+      part = evt.particles[0]  # particle gun
+      part.invpt = np.true_divide(part.q, part.pt)
+
+      roads = recog.run(evt.hits)
+      clean_roads = clean.run(roads)
+      variables = np.array([road.to_variables() for road in clean_roads], dtype=np.float32)
+      variables_1, predictions = ptassign.run(variables)
+      emtf2023_tracks = trkprod.run(clean_roads, variables_1, predictions)
+
+      # Fill histograms
+      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in (11,13,14,15)) and (trk.pt > 20.)
+      trigger = any([select(trk) for trk in evt.tracks])
+      out["emtf_eff_vs_genpt_l1pt20"].append((part.pt, trigger))
+      if part.pt > 20.:
+        out["emtf_eff_vs_geneta_l1pt20"].append((abs(part.eta), trigger))
+      if len(evt.tracks) > 0:
+        trk = evt.tracks[0]
+        trk.invpt = np.true_divide(trk.q, trk.pt)
+        out["emtf_l1pt_vs_genpt"].append((part.invpt, trk.invpt))
+        out["emtf_l1ptres_vs_genpt"].append((abs(part.invpt), (abs(trk.invpt) - abs(part.invpt))/abs(part.invpt)))
+
+      select = lambda trk: trk.pt > 20.
+      trigger = any([select(trk) for trk in emtf2023_tracks])
+      out["emtf2023_eff_vs_genpt_l1pt20"].append((part.pt, trigger))
+      if part.pt > 20.:
+        out["emtf2023_eff_vs_geneta_l1pt20"].append((abs(part.eta), trigger))
+      if len(emtf2023_tracks) > 0:
+        trk = emtf2023_tracks[0]
+        trk.invpt = np.true_divide(trk.q, trk.pt)
+        out["emtf2023_l1pt_vs_genpt"].append((part.invpt, trk.invpt))
+        out["emtf2023_l1ptres_vs_genpt"].append((abs(part.invpt), (abs(trk.invpt) - abs(part.invpt))/abs(part.invpt)))
+
+        continue  # end loop over events
+
+    infile_r.close()
+    return out
+
+  def make_effie_endjob(outputs):
+    outputs_copy = []
+    for j, out in enumerate(outputs):
+      print("Retrieving job: {0}".format(j))
+      outputs_copy.append(out)
+
+    print('[INFO] Creating file: histos_tbc.root')
+    with root_open('histos_tbc.root', 'recreate') as f:
+      histograms_1 = {}
+      for k in ["denom", "numer"]:
+        hname = "emtf_eff_vs_genpt_l1pt20_%s" % k
+        histograms_1[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
+        hname = "emtf_eff_vs_geneta_l1pt20_%s" % k
+        histograms_1[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta|", type='F')
+      hname = "emtf_l1pt_vs_genpt"
+      histograms_1[hname] = Hist2D(100, -0.3, 0.3, 300, -0.3, 0.3, name=hname, title="; gen 1/p_{T} [1/GeV]; 1/p_{T} [1/GeV]", type='F')
+      hname = "emtf_l1ptres_vs_genpt"
+      histograms_1[hname] = Hist2D(100, -0.3, 0.3, 300, -2, 2, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
+      for k in ["denom", "numer"]:
+        hname = "emtf2023_eff_vs_genpt_l1pt20_%s" % k
+        histograms_1[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
+        hname = "emtf2023_eff_vs_geneta_l1pt20_%s" % k
+        histograms_1[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta|", type='F')
+      hname = "emtf2023_l1pt_vs_genpt"
+      histograms_1[hname] = Hist2D(100, -0.3, 0.3, 300, -0.3, 0.3, name=hname, title="; gen 1/p_{T} [1/GeV]; 1/p_{T} [1/GeV]", type='F')
+      hname = "emtf2023_l1ptres_vs_genpt"
+      histograms_1[hname] = Hist2D(100, 0, 0.5, 300, -2, 2, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
+
+      for hname in ["emtf_eff_vs_genpt_l1pt20", "emtf_eff_vs_geneta_l1pt20", "emtf2023_eff_vs_genpt_l1pt20", "emtf2023_eff_vs_geneta_l1pt20"]:
+        denom = histograms_1[hname + "_denom"]
+        numer = histograms_1[hname + "_numer"]
+        for j, out in enumerate(outputs_copy):
+          for x, trigger in out[hname]:
+            denom.fill(x)
+            if trigger:
+              numer.fill(x)
+        denom.Write()
+        numer.Write()
+        eff = Efficiency(numer, denom, name=hname)
+        eff.SetStatisticOption(0)  # kFCP
+        eff.SetConfidenceLevel(0.682689492137)  # one sigma
+        eff.Write()
+
+      for hname in ["emtf_l1pt_vs_genpt", "emtf_l1ptres_vs_genpt", "emtf2023_l1pt_vs_genpt", "emtf2023_l1ptres_vs_genpt"]:
+        h = histograms_1[hname]
+        for j, out in enumerate(outputs_copy):
+          for x, y in out[hname]:
+            h.fill(x, y)
+        h.Write()
+    return
+
+
+  # ____________________________________________________________________________
+  # Parallel processing
+
+  #with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+  #  outputs = executor.map(make_effie, [range(j*10, (j+1)*10) for j in xrange(4)], chunksize=4)
+  #  make_effie_endjob(outputs)
+
+  out = make_effie(range(1000))
+  make_effie_endjob([out])
+
