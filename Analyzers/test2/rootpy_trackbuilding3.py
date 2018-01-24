@@ -5,7 +5,7 @@ from itertools import izip
 import time
 import concurrent.futures
 from rootpy.plotting import Hist, Hist2D, Graph, Efficiency, Legend, Canvas
-from rootpy.tree import Tree, TreeModel, FloatCol, IntCol, ShortCol
+from rootpy.tree import Tree, TreeChain, TreeModel, FloatCol, IntCol, ShortCol
 from rootpy.io import root_open
 from ROOT import gROOT
 gROOT.SetBatch(True)
@@ -349,7 +349,8 @@ class Track(object):
     self.id = _id  # (endcap, sector)
     self.hits = hits
     self.mode = mode
-    self.pt = pt
+    self.xml_pt = pt
+    self.pt = pt * 1.3
     self.q = q
     self.emtf_phi = emtf_phi
     self.emtf_theta = emtf_theta
@@ -686,8 +687,9 @@ for k in ["denom", "numer"]:
 # ______________________________________________________________________________
 # Open file
 infile = 'ntuple_SingleMuon_Toy_5GeV_add.3.root'
-infile_r = root_open(infile)
-tree = infile_r.ntupler.tree
+#infile_r = root_open(infile)
+#tree = infile_r.ntupler.tree
+tree = TreeChain('ntupler/tree', [infile])
 print('[INFO] Opening file: %s' % infile)
 
 # Define collection
@@ -899,7 +901,7 @@ for ievt, evt in enumerate(tree):
 
   continue  # end loop over events
 
-infile_r.close()
+#infile_r.close()
 
 
 # ______________________________________________________________________________
@@ -972,7 +974,7 @@ if analysis == "training":
     # Mask layers by (ieta, lay)
     valid_layers = [
       (0,2), (0,3), (0,4), (0,7), (0,8), (0,10), (0,12), (0,13), (0,14), (0,15), (0,18), (0,21),
-      (1,2), (1,3), (1,7), (1,8), (1,10), (1,12), (1,13), (1,14), (1,15), (1,17), (1,20), (1,21), (1,22),
+      (1,2), (1,3), (1,7), (1,8), (1,10), (1,12), (1,13), (1,14), (1,15), (1,17), (1,18), (1,20), (1,21), (1,22),
       (2,0), (2,1), (2,5), (2,6), (2,9), (2,10), (2,11), (2,12), (2,17), (2,20), (2,22), (2,23),
       (3,0), (3,1), (3,5), (3,6), (3,9), (3,11), (3,16), (3,19), (3,20), (3,22), (3,23),
       (4,0), (4,1), (4,5), (4,6), (4,9), (4,11), (4,16), (4,19), (4,22), (4,23),
@@ -1041,8 +1043,8 @@ elif analysis == "rates":
     # Outputs
     out = {}
     out["nevents"] = []
-    out["highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"] = []
-    out["highest_emtf2023_absEtaMin0_absEtaMax2.5_qmin12_pt"] = []
+    for m in ["emtf", "emtf2023"]:
+      out["highest_%s_absEtaMin0_absEtaMax2.5_qmin12_pt" % m] = []
 
     # Loop over events
     for ievt, evt in enumerate(tree):
@@ -1076,7 +1078,7 @@ elif analysis == "rates":
         highest_pt = -999999.
         for itrk, trk in enumerate(tracks):
           if select(trk):
-            if highest_pt < trk.pt:
+            if highest_pt < trk.pt:  # using scaled pT
               highest_pt = trk.pt
         if highest_pt > 0.:
           highest_pt = min(100.-1e-3, highest_pt)
@@ -1148,26 +1150,15 @@ elif analysis == "effie":
   trkprod = TrackProducer()
 
   def make_effie(evt_range):
-    infile_r = root_open(infile)
-    tree = infile_r.ntupler.tree
-
-    # Define collection
-    tree.define_collection(name='hits', prefix='vh_', size='vh_size')
-    tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
-    tree.define_collection(name='particles', prefix='vp_', size='vp_size')
-
     evt = next(iter(tree))
 
     # Outputs
     out = {}
-    out["emtf_eff_vs_genpt_l1pt20"] = []
-    out["emtf_eff_vs_geneta_l1pt20"] = []
-    out["emtf_l1pt_vs_genpt"] = []
-    out["emtf_l1ptres_vs_genpt"] = []
-    out["emtf2023_eff_vs_genpt_l1pt20"] = []
-    out["emtf2023_eff_vs_geneta_l1pt20"] = []
-    out["emtf2023_l1pt_vs_genpt"] = []
-    out["emtf2023_l1ptres_vs_genpt"] = []
+    for m in ["emtf", "emtf2023"]:
+      out["%s_eff_vs_genpt_l1pt20" % m] = []
+      out["%s_eff_vs_geneta_l1pt20" % m] = []
+      out["%s_l1pt_vs_genpt" % m] = []
+      out["%s_l1ptres_vs_genpt" % m] = []
 
     # Loop over events
     for ievt in evt_range:
@@ -1183,31 +1174,39 @@ elif analysis == "effie":
       emtf2023_tracks = trkprod.run(clean_roads, variables_1, predictions)
 
       # Fill histograms
-      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in (11,13,14,15)) and (trk.xml_pt > 20.)
-      trigger = any([select(trk) for trk in evt.tracks])
-      out["emtf_eff_vs_genpt_l1pt20"].append((part.pt, trigger))
-      if part.pt > 20.:
-        out["emtf_eff_vs_geneta_l1pt20"].append((abs(part.eta), trigger))
-      if len(evt.tracks) > 0:
-        trk = evt.tracks[0]
-        trk.invpt = np.true_divide(trk.q, trk.xml_pt)
-        out["emtf_l1pt_vs_genpt"].append((part.invpt, trk.invpt))
-        out["emtf_l1ptres_vs_genpt"].append((abs(part.invpt), (abs(trk.invpt) - abs(part.invpt))/abs(part.invpt)))
+      def fill_efficiency():
+        trigger = any([select(trk) for trk in tracks])
+        out[hname1].append((part.pt, trigger))
+        if part.pt > 20.:
+          out[hname2].append((abs(part.eta), trigger))
 
-      select = lambda trk: trk.pt > 20.
-      trigger = any([select(trk) for trk in emtf2023_tracks])
-      out["emtf2023_eff_vs_genpt_l1pt20"].append((part.pt, trigger))
-      if part.pt > 20.:
-        out["emtf2023_eff_vs_geneta_l1pt20"].append((abs(part.eta), trigger))
-      if len(emtf2023_tracks) > 0:
-        trk = emtf2023_tracks[0]
-        trk.invpt = np.true_divide(trk.q, trk.pt)
-        out["emtf2023_l1pt_vs_genpt"].append((part.invpt, trk.invpt))
-        out["emtf2023_l1ptres_vs_genpt"].append((abs(part.invpt), (abs(trk.invpt) - abs(part.invpt))/abs(part.invpt)))
+      def fill_resolution():
+        if len(tracks) > 0:
+          trk = tracks[0]
+          trk.invpt = np.true_divide(trk.q, trk.xml_pt)  # using unscaled pT
+          out[hname1].append((part.invpt, trk.invpt))
+          out[hname2].append((abs(part.invpt), (abs(trk.invpt) - abs(part.invpt))/abs(part.invpt)))
 
-        continue  # end loop over events
+      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in (11,13,14,15)) and (trk.pt > 20.)  # using scaled pT
+      tracks = evt.tracks
+      hname1 = "emtf_eff_vs_genpt_l1pt20"
+      hname2 = "emtf_eff_vs_geneta_l1pt20"
+      fill_efficiency()
+      hname1 = "emtf_l1pt_vs_genpt"
+      hname2 = "emtf_l1ptres_vs_genpt"
+      fill_resolution()
 
-    infile_r.close()
+      select = lambda trk: trk.pt > 20.  # using scaled pT
+      tracks = emtf2023_tracks
+      hname1 = "emtf2023_eff_vs_genpt_l1pt20"
+      hname2 = "emtf2023_eff_vs_geneta_l1pt20"
+      fill_efficiency()
+      hname1 = "emtf2023_l1pt_vs_genpt"
+      hname2 = "emtf2023_l1ptres_vs_genpt"
+      fill_resolution()
+
+      continue  # end loop over events
+
     return out
 
   def make_effie_endjob(outputs):
@@ -1219,24 +1218,16 @@ elif analysis == "effie":
     print('[INFO] Creating file: histos_tbc.root')
     with root_open('histos_tbc.root', 'recreate') as f:
       histograms_1 = {}
-      for k in ["denom", "numer"]:
-        hname = "emtf_eff_vs_genpt_l1pt20_%s" % k
-        histograms_1[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
-        hname = "emtf_eff_vs_geneta_l1pt20_%s" % k
-        histograms_1[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta|", type='F')
-      hname = "emtf_l1pt_vs_genpt"
-      histograms_1[hname] = Hist2D(100, -0.3, 0.3, 300, -0.3, 0.3, name=hname, title="; gen 1/p_{T} [1/GeV]; 1/p_{T} [1/GeV]", type='F')
-      hname = "emtf_l1ptres_vs_genpt"
-      histograms_1[hname] = Hist2D(100, -0.3, 0.3, 300, -2, 2, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
-      for k in ["denom", "numer"]:
-        hname = "emtf2023_eff_vs_genpt_l1pt20_%s" % k
-        histograms_1[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
-        hname = "emtf2023_eff_vs_geneta_l1pt20_%s" % k
-        histograms_1[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta|", type='F')
-      hname = "emtf2023_l1pt_vs_genpt"
-      histograms_1[hname] = Hist2D(100, -0.3, 0.3, 300, -0.3, 0.3, name=hname, title="; gen 1/p_{T} [1/GeV]; 1/p_{T} [1/GeV]", type='F')
-      hname = "emtf2023_l1ptres_vs_genpt"
-      histograms_1[hname] = Hist2D(100, 0, 0.5, 300, -2, 2, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
+      for m in ["emtf", "emtf2023"]:
+        for k in ["denom", "numer"]:
+          hname = "%s_eff_vs_genpt_l1pt20_%s" % (m,k)
+          histograms_1[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
+          hname = "%s_eff_vs_geneta_l1pt20_%s" % (m,k)
+          histograms_1[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
+        hname = "%s_l1pt_vs_genpt" % m
+        histograms_1[hname] = Hist2D(100, -0.3, 0.3, 300, -0.3, 0.3, name=hname, title="; gen 1/p_{T} [1/GeV]; 1/p_{T} [1/GeV]", type='F')
+        hname = "%s_l1ptres_vs_genpt" % m
+        histograms_1[hname] = Hist2D(100, -0.3, 0.3, 300, -2, 2, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
 
       for hname in ["emtf_eff_vs_genpt_l1pt20", "emtf_eff_vs_geneta_l1pt20", "emtf2023_eff_vs_genpt_l1pt20", "emtf2023_eff_vs_geneta_l1pt20"]:
         denom = histograms_1[hname + "_denom"]
