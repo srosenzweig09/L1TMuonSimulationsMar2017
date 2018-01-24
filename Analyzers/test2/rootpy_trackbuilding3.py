@@ -557,8 +557,8 @@ class PtAssignment(object):
       squared_loss = 0.5*K.square(x)
       absolute_loss = delta * (x - 0.5*delta)
       xx = K.switch(x < delta, squared_loss, absolute_loss)
-      #return K.mean(xx, axis=-1)
-      return K.sum(xx, axis=-1)
+      #return K.sum(xx, axis=-1)
+      return K.mean(xx, axis=-1)
 
     self.loaded_model = load_model(model, custom_objects={'huber_loss': huber_loss})
     self.loaded_model.load_weights(model_weights)
@@ -581,14 +581,15 @@ class PtAssignment(object):
     self.x_mask  = self.x_copy[:, nlayers*3:nlayers*4]
     self.x_road  = self.x_copy[:, nlayers*4:nlayers*5]  # ipt, ieta, iphi
 
+    # Modify phis
+    self.x_phi_median    = self.x_road[:, 2] * 16  # multiply by 'doublestrip' unit (2 * 8)
+    self.x_phi_median    = self.x_phi_median[:, np.newaxis]
+    self.x_phi          -= self.x_phi_median
+
     # Modify thetas
     self.x_theta_median  = np.nanmedian(self.x_theta, axis=1)
     self.x_theta_median  = self.x_theta_median[:, np.newaxis]
     self.x_theta        -= self.x_theta_median
-
-    # Pattern iphi
-    self.x_iphi          = self.x_road[...,2]
-    self.x_iphi          = self.x_iphi[:, np.newaxis]
 
     # Standard scales
     self.x_copy -= self.x_mean
@@ -606,8 +607,8 @@ class PtAssignment(object):
     self.x_copy[np.isnan(self.x_copy)] = 0.0
 
     # Get x
-    assert(len(self.x_theta_median) > 0 and self.x_theta_median.shape[0] == self.x_theta.shape[0])
-    x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend, self.x_iphi, self.x_theta_median))
+    #x_new = self.x_phi
+    x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend, self.x_phi_median, self.x_theta_median))
 
     # Predict y
     y = self.loaded_model.predict(x_new)
@@ -898,7 +899,6 @@ for ievt, evt in enumerate(tree):
 
   continue  # end loop over events
 
-maxEvents = ievt
 infile_r.close()
 
 
@@ -944,7 +944,7 @@ if analysis == "training":
       for j in xrange(len(eta_bins)-1):
         for k in xrange(nlayers):
           patterns_phi_tmp_ijk = patterns_phi_tmp[i][j][k]
-          if len(patterns_phi_tmp_ijk) > (0.001 * maxEvents):
+          if len(patterns_phi_tmp_ijk) > 1000:
             patterns_phi_tmp_ijk.sort()
             x = np.percentile(patterns_phi_tmp_ijk, [5, 50, 95])
             x = [int(round(xx)) for xx in x]
@@ -955,7 +955,7 @@ if analysis == "training":
 
           #patterns_theta_tmp_ijk = patterns_theta_tmp[i][j][k]
           patterns_theta_tmp_ijk = patterns_theta_tmp[0][j][k]  # no binning in pt
-          if len(patterns_theta_tmp_ijk) > (0.001 * maxEvents):
+          if len(patterns_theta_tmp_ijk) > 1000:
             patterns_theta_tmp_ijk.sort()
             x = np.percentile(patterns_theta_tmp_ijk, [2, 50, 98])
             x = [int(round(xx)) for xx in x]
@@ -963,7 +963,7 @@ if analysis == "training":
 
           if k == 0:
             patterns_exphi_tmp_ijk = patterns_exphi_tmp[i][j]
-            if len(patterns_exphi_tmp_ijk) > (0.001 * maxEvents):
+            if len(patterns_exphi_tmp_ijk) > 1000:
               patterns_exphi_tmp_ijk.sort()
               x = np.percentile(patterns_exphi_tmp_ijk, [5, 50, 95])
               #x = [int(round(xx)) for xx in x]
@@ -1123,13 +1123,16 @@ elif analysis == "rates":
   # ____________________________________________________________________________
   # Parallel processing
 
-  with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-    outputs = executor.map(make_rates, pufiles[:4], chunksize=4)
-    make_rates_endjob(outputs)
+  #with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+  #  outputs = executor.map(make_rates, pufiles[:4], chunksize=4)
+  #  make_rates_endjob(outputs)
 
-  #out = make_rates('ntuple_SingleMuon_Toy_5GeV_add.3.root')
-  #out = make_rates('ntuple_SingleNeutrino_PU200_1.root')
-  #make_rates_endjob([out])
+  #outputs = map(make_rates, pufiles[:4])
+  #make_rates_endjob(outputs)
+
+  j = 0
+  out = make_rates(pufiles[j])
+  make_rates_endjob([out])
 
 
 # ______________________________________________________________________________
@@ -1180,14 +1183,14 @@ elif analysis == "effie":
       emtf2023_tracks = trkprod.run(clean_roads, variables_1, predictions)
 
       # Fill histograms
-      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in (11,13,14,15)) and (trk.pt > 20.)
+      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in (11,13,14,15)) and (trk.xml_pt > 20.)
       trigger = any([select(trk) for trk in evt.tracks])
       out["emtf_eff_vs_genpt_l1pt20"].append((part.pt, trigger))
       if part.pt > 20.:
         out["emtf_eff_vs_geneta_l1pt20"].append((abs(part.eta), trigger))
       if len(evt.tracks) > 0:
         trk = evt.tracks[0]
-        trk.invpt = np.true_divide(trk.q, trk.pt)
+        trk.invpt = np.true_divide(trk.q, trk.xml_pt)
         out["emtf_l1pt_vs_genpt"].append((part.invpt, trk.invpt))
         out["emtf_l1ptres_vs_genpt"].append((abs(part.invpt), (abs(trk.invpt) - abs(part.invpt))/abs(part.invpt)))
 
@@ -1266,6 +1269,7 @@ elif analysis == "effie":
   #  outputs = executor.map(make_effie, [range(j*10, (j+1)*10) for j in xrange(4)], chunksize=4)
   #  make_effie_endjob(outputs)
 
-  out = make_effie(range(1000))
+  j = 0
+  out = make_effie(xrange(j*10000, (j+1)*10000))
   make_effie_endjob([out])
 
