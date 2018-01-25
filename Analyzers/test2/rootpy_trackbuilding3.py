@@ -91,6 +91,8 @@ nlayers = 25  # 13 (CSC) + 9 (RPC) + 3 (GEM)
 are_csc_layers = np.zeros(nlayers, dtype=np.bool)
 are_csc_layers[:13] = True
 
+safe_ipt = lambda x: max(min(x, len(pt_bins)-2), 0)
+
 
 # More functions
 
@@ -230,6 +232,7 @@ class EMTFPGunWeight(object):
   def get(self, part):
     ipt = np.digitize([part.invpt], pt_bins[1:])[0]  # skip lowest edge
     ieta = np.digitize([abs(part.eta)], eta_bins[1:])[0]  # skip lowest edge
+    ipt = safe_ipt(ipt)
     index = (ipt, ieta)
     return self.lut[index]
 
@@ -262,6 +265,7 @@ class EMTFExtrapolation(object):
   def get(self, part):
     ipt = np.digitize([part.invpt], pt_bins[1:])[0]  # skip lowest edge
     ieta = np.digitize([abs(part.eta)], eta_bins[1:])[0]  # skip lowest edge
+    ipt = safe_ipt(ipt)
     index = (ipt, ieta)
     c = self.lut[index]
     exphi = part.phi + c * (part.invpt * np.sinh(1.9) / np.sinh(abs(part.eta)))
@@ -579,7 +583,7 @@ class PtAssignment(object):
     self.x_phi   = self.x_copy[:, nlayers*0:nlayers*1]
     self.x_theta = self.x_copy[:, nlayers*1:nlayers*2]
     self.x_bend  = self.x_copy[:, nlayers*2:nlayers*3]
-    self.x_mask  = self.x_copy[:, nlayers*3:nlayers*4]
+    self.x_mask  = self.x_copy[:, nlayers*3:nlayers*4].copy()  # avoid getting scaled
     self.x_road  = self.x_copy[:, nlayers*4:nlayers*5]  # ipt, ieta, iphi
 
     # Modify phis
@@ -603,13 +607,21 @@ class PtAssignment(object):
     self.x_bend [x_theta_tmp] = np.nan
     self.x_mask [x_theta_tmp] = 1.0
 
+    # Something wrong with GE2/1?
+    bad_ge21 = 23
+    self.x_phi  [:, bad_ge21] = np.nan
+    self.x_theta[:, bad_ge21] = np.nan
+    self.x_bend [:, bad_ge21] = np.nan
+    self.x_mask [:, bad_ge21] = 1.0
+
     # Remove NaN
     #np.nan_to_num(self.x_copy, copy=False)
     self.x_copy[np.isnan(self.x_copy)] = 0.0
 
     # Get x
     #x_new = self.x_phi
-    x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend, self.x_phi_median, self.x_theta_median))
+    x_theta_median = self.x_theta_median / 30.  # theta_int = 30 -> eta = 1.9
+    x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend, x_theta_median))
 
     # Predict y
     y = self.loaded_model.predict(x_new)
@@ -629,25 +641,20 @@ class TrackProducer(object):
       trk_hits = []
       trk_mode = 0
       trk_ipt = np.digitize([mypreds[0]], pt_bins[1:])[0]  # skip lowest edge
+      trk_ipt = safe_ipt(trk_ipt)
 
-      # Check thetas
-      theta_median_index = (nlayers * 3) + 1  # check this!
-      theta_median = myvars[theta_median_index]
+      # Find hits
+      hits_phi   = myvars[nlayers*0:nlayers*1]
+      hits_theta = myvars[nlayers*1:nlayers*2]
+      hits_bend  = myvars[nlayers*2:nlayers*3]
+      hits_theta_median = myvars[nlayers*3]
+      hits_theta_median *= 30. # theta_int = 30 -> eta = 1.9
+      hits_station = (1,1,1,1,1,2,2,2,2,3,3,4,4,1,1,2,3,3,3,4,4,4,1,2,1)
 
       for hit in myroad.hits:
-        keep = True
-        (_type, station, ring, fr) = hit.id
-        if _type == kCSC:
-          if abs(hit.emtf_theta - theta_median) > 4.0:
-            keep = False
-        elif _type == kRPC:
-          if abs(hit.emtf_theta - theta_median) > 8.0:
-            keep = False
-        elif _type == kGEM:
-          if abs(hit.emtf_theta - theta_median) > 6.0:
-            keep = False
-
-        if keep:
+        hit_lay = hit.emtf_layer
+        if hits_phi[hit_lay] != 0.0 and hits_theta[hit_lay] != 0.0 and hits_bend[hit_lay] != 0.0:
+          station = hits_station[hit_lay]
           trk_mode |= (1 << (4 - station))
           trk_hits.append(hit)
 
@@ -659,7 +666,7 @@ class TrackProducer(object):
         trk_id = (endcap, sector)
         trk_pt = np.abs(1.0/mypreds[0])
         trk_q  = np.sign(mypreds[0])
-        trk = Track(trk_id, trk_hits, trk_mode, trk_pt, trk_q, iphi, theta_median)
+        trk = Track(trk_id, trk_hits, trk_mode, trk_pt, trk_q, iphi, hits_theta_median)
         tracks.append(trk)
     return tracks
 
@@ -805,6 +812,8 @@ for ievt, evt in enumerate(tree):
 
     part.ipt = np.digitize([part.invpt], pt_bins[1:])[0]  # skip lowest edge
     part.ieta = np.digitize([abs(part.eta)], eta_bins[1:])[0]  # skip lowest edge
+    part.ipt = safe_ipt(part.ipt)
+
     the_patterns_phi = patterns_phi[part.ipt][part.ieta]
     the_patterns_theta = patterns_theta[0][part.ieta]  # no binning in pt
     the_patterns_exphi = patterns_exphi[part.ipt][part.ieta]
@@ -840,6 +849,7 @@ for ievt, evt in enumerate(tree):
     part.invpt = np.true_divide(part.q, part.pt)
     part.ipt = np.digitize([part.invpt], pt_bins[1:])[0]  # skip lowest edge
     part.ieta = np.digitize([abs(part.eta)], eta_bins[1:])[0]  # skip lowest edge
+    part.ipt = safe_ipt(part.ipt)
 
     roads = recog.run(evt.hits, part)
     clean_roads = clean.run(roads)
@@ -1066,7 +1076,7 @@ elif analysis == "rates":
           #for ihit, myhit in enumerate(myroad.hits):
           #  print(".. .. hit  {0} {1} {2} {3} {4} {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.emtf_bend))
         for itrk, mytrk in enumerate(emtf2023_tracks):
-          print(".. trk {0} {1} {2} {3} {4} {5}".format(itrk, mytrk.id, len(mytrk.hits), mytrk.mode, mytrk.pt, mytrk.q))
+          print(".. trk {0} {1} {2} {3} {4}".format(itrk, mytrk.id, len(mytrk.hits), mytrk.mode, mytrk.pt))
           for ihit, myhit in enumerate(mytrk.hits):
             print(".. .. hit  {0} {1} {2} {3} {4} {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.emtf_bend))
 
