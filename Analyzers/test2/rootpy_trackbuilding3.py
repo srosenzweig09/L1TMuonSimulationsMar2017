@@ -312,8 +312,9 @@ class PatternBank(object):
     assert(self.y_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
 
 class Hit(object):
-  def __init__(self, _id, emtf_layer, emtf_phi, emtf_theta, emtf_bend):
+  def __init__(self, _id, bx, emtf_layer, emtf_phi, emtf_theta, emtf_bend):
     self.id = _id  # (_type, station, ring, fr)
+    self.bx = bx
     self.emtf_layer = emtf_layer
     self.emtf_phi = emtf_phi
     self.emtf_theta = emtf_theta
@@ -386,7 +387,7 @@ class PatternRecognition(object):
 
       # Create a hit (for output)
       hit_id = (hit.type, hit.station, hit.ring, hit.fr)
-      myhit = Hit(hit_id, hit_lay, hit.emtf_phi, hit.emtf_theta, emtf_bend(hit))
+      myhit = Hit(hit_id, hit.bx, hit_lay, hit.emtf_phi, hit.emtf_theta, emtf_bend(hit))
 
       # Get results
       for index, condition in np.ndenumerate(mask):
@@ -400,15 +401,24 @@ class PatternRecognition(object):
     # Create a road
     roads = []
     for road_id, road_hits in amap.iteritems():
+      # Try BX window (-1,0)
       road_mode = 0
       for hit in road_hits:
-        (_type, station, ring, fr) = hit.id
-        road_mode |= (1 << (4 - station))
-      #
-      (endcap, sector, ipt, ieta, iphi) = road_id
-      road_quality = emtf_road_quality(ipt)
-      #
+        if hit.bx in (-1,0):
+          (_type, station, ring, fr) = hit.id
+          road_mode |= (1 << (4 - station))
+
+      if not emtf_is_singlemu(road_mode):
+        # Try BX window (0,+1)
+        road_mode = 0
+        for hit in road_hits:
+          if hit.bx in (0,+1):
+            (_type, station, ring, fr) = hit.id
+            road_mode |= (1 << (4 - station))
+
       if emtf_is_singlemu(road_mode):
+        (endcap, sector, ipt, ieta, iphi) = road_id
+        road_quality = emtf_road_quality(ipt)
         myroad = Road(road_id, road_hits, road_mode, road_quality)
         roads.append(myroad)
     return roads
@@ -661,7 +671,15 @@ class TrackProducer(object):
       quality1 = myroad.quality
       quality2 = emtf_road_quality(trk_ipt)
 
-      if emtf_is_singlemu(trk_mode) and quality2 <= (quality1 + 1):
+      bx_counter1 = 0  # count hits with BX <= -1
+      bx_counter2 = 0  # count hits with BX <= 0
+      for hit in trk_hits:
+        if hit.bx <= -1:
+          bx_counter1 += 1
+        if hit.bx <= 0:
+          bx_counter2 += 1
+
+      if emtf_is_singlemu(trk_mode) and quality2 <= (quality1 + 1) and bx_counter1 < 2 and bx_counter2 >= 2:
         (endcap, sector, ipt, ieta, iphi) = myroad.id
         trk_id = (endcap, sector)
         trk_pt = np.abs(1.0/mypreds[0])
@@ -718,9 +736,9 @@ analysis = "effie"
 print('[INFO] Using analysis mode: %s' % analysis)
 
 # Other stuff
-bankfile = 'histos_tb.6.npz'
+bankfile = 'histos_tb.7.npz'
 
-kerasfile = ['encoder.6.npz', 'model.6.h5', 'model_weights.6.h5']
+kerasfile = ['encoder.7.npz', 'model.7.h5', 'model_weights.7.h5']
 
 #pufiles = ['root://cmsxrootd.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU140/ParticleGuns/CRAB3/180116_214607/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(100)]
 #pufiles = ['root://cmsxrootd.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
