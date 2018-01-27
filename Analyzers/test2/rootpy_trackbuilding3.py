@@ -4,7 +4,7 @@ np.random.seed(2023)
 from itertools import izip
 import time
 import concurrent.futures
-from rootpy.plotting import Hist, Hist2D, Graph, Efficiency, Legend, Canvas
+from rootpy.plotting import Hist, Hist2D, Graph, Efficiency
 from rootpy.tree import Tree, TreeChain, TreeModel, FloatCol, IntCol, ShortCol
 from rootpy.io import root_open
 from ROOT import gROOT
@@ -91,7 +91,7 @@ nlayers = 25  # 13 (CSC) + 9 (RPC) + 3 (GEM)
 are_csc_layers = np.zeros(nlayers, dtype=np.bool)
 are_csc_layers[:13] = True
 
-safe_ipt = lambda x: max(min(x, len(pt_bins)-2), 0)
+safe_ipt = lambda x: np.clip(x, 0, len(pt_bins)-2)
 
 
 # More functions
@@ -327,12 +327,23 @@ class Road(object):
     self.mode = mode
     self.quality = quality
 
-  def to_variables(self):
+  def to_variables(self, use_sim_tp=False):
     amap = {}
-    np.random.shuffle(self.hits)  # pick a random hit for now
+    #np.random.shuffle(self.hits)  # pick a random hit for now
     for hit in self.hits:
-      if hit.emtf_layer not in amap:
-        amap[hit.emtf_layer] = hit
+      hit_lay = hit.emtf_layer
+      if (not use_sim_tp) or (use_sim_tp and (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)):
+        if hit_lay not in amap:
+          amap[hit_lay] = hit
+    #
+    if not use_sim_tp:
+      tmp_thetas =[v.emtf_theta for k, v in amap.iteritems()]
+      tmp_theta =  np.median(tmp_thetas, overwrite_input=True)
+      for hit in self.hits:
+        hit_lay = hit.emtf_layer
+        hit_check = amap[hit_lay]
+        if abs(hit.emtf_theta - tmp_theta) < abs(hit_check.emtf_theta - tmp_theta):
+          amap[hit_lay] = hit
     #
     hits_phi = np.zeros(nlayers, dtype=np.float32) + np.nan
     hits_theta = np.zeros(nlayers, dtype=np.float32) + np.nan
@@ -454,13 +465,12 @@ class PatternRecognition(object):
 
         # Cheat using gen particle info
         if part is not None:
-          ipt_range = [part.ipt]
-          ieta_range = [part.ieta]
-          ipt_range = [x for x in xrange(part.ipt-1, part.ipt+1+1) if 0 <= x < len(pt_bins)-1]
+          #ipt_range = [x for x in xrange(part.ipt-1, part.ipt+1+1) if 0 <= x < len(pt_bins)-1]
+          ipt_range = xrange(0,(len(pt_bins)-1)//2+1) if part.q < 0 else xrange((len(pt_bins)-1)//2, len(pt_bins)-1)
           ieta_range = [x for x in xrange(part.ieta-1, part.ieta+1+1) if 0 <= x < len(eta_bins)-1]
           tmp_phis = [hit.emtf_phi for hit in sector_hits if hit.type == kCSC and hit.station >= 2]
           #tmp_phi = np.mean(tmp_phis)
-          tmp_phi = np.median(tmp_phis)
+          tmp_phi = np.median(tmp_phis, overwrite_input=True)
           #iphi = int(tmp_phi/32)  # divide by 'quadstrip' unit (4 * 8)
           iphi = int(tmp_phi/16)  # divide by 'doublestrip' unit (2 * 8)
           iphi_range = xrange(iphi-6, iphi+6+1)
@@ -513,7 +523,10 @@ class RoadCleaning(object):
         code |= ((mode >> 1) & 1) << 2
         code |= ((qual >> 0) & 1) << 1
         code |= ((mode >> 0) & 1) << 0
-        return code
+        #
+        get_ieta = lambda x: x[3]
+        ieta = get_ieta(road.id)
+        return (code, ieta)
 
       clean_roads.sort(key=madorsky_code, reverse=True)
       # Iterate over clean_roads
@@ -596,12 +609,12 @@ class PtAssignment(object):
     self.x_mask  = self.x_copy[:, nlayers*3:nlayers*4].copy()  # avoid getting scaled
     self.x_road  = self.x_copy[:, nlayers*4:nlayers*5]  # ipt, ieta, iphi
 
-    # Modify phis
-    self.x_phi_median    = self.x_road[:, 2] * 16  # multiply by 'doublestrip' unit (2 * 8)
+    # Subtract median phi from hit phis
+    self.x_phi_median    = self.x_road[:, 2] * 16 + 8  # multiply by 'doublestrip' unit (2 * 8)
     self.x_phi_median    = self.x_phi_median[:, np.newaxis]
     self.x_phi          -= self.x_phi_median
 
-    # Modify thetas
+    # Subtract median theta from hit thetas
     self.x_theta_median  = np.nanmedian(self.x_theta, axis=1)
     self.x_theta_median  = self.x_theta_median[:, np.newaxis]
     self.x_theta        -= self.x_theta_median
@@ -610,7 +623,7 @@ class PtAssignment(object):
     self.x_copy -= self.x_mean
     self.x_copy /= self.x_std
 
-    # Remove outlier hits (check thetas)
+    # Remove outlier hits by checking hit thetas
     x_theta_tmp = np.abs(self.x_theta) > 3.0
     self.x_phi  [x_theta_tmp] = np.nan
     self.x_theta[x_theta_tmp] = np.nan
@@ -705,7 +718,7 @@ for k in ["denom", "numer"]:
   histograms[hname].Sumw2()
 
   hname = "eff_vs_genphi_%s" % k
-  histograms[hname] = Hist(32, -3.2, 3.2, name=hname, title="; gen |#phi|", type='F')
+  histograms[hname] = Hist(32, -3.2, 3.2, name=hname, title="; gen #phi", type='F')
   histograms[hname].Sumw2()
 
 
@@ -736,9 +749,9 @@ analysis = "effie"
 print('[INFO] Using analysis mode: %s' % analysis)
 
 # Other stuff
-bankfile = 'histos_tb.7.npz'
+bankfile = 'histos_tb.8.npz'
 
-kerasfile = ['encoder.7.npz', 'model.7.h5', 'model_weights.7.h5']
+kerasfile = ['encoder.8.npz', 'model.8.h5', 'model_weights.8.h5']
 
 #pufiles = ['root://cmsxrootd.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU140/ParticleGuns/CRAB3/180116_214607/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(100)]
 #pufiles = ['root://cmsxrootd.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
@@ -1042,7 +1055,7 @@ elif analysis == "application":
     variables = np.zeros((npassed, (nlayers * 4) + (3)), dtype=np.float32)
     for i, (part, road) in enumerate(izip(out_particles, out_roads)):
       parameters[i] = part.to_parameters()
-      variables[i] = road.to_variables()
+      variables[i] = road.to_variables(use_sim_tp=True)
     outfile = 'histos_tba.npz'
     np.savez_compressed(outfile, parameters=parameters, variables=variables)
 
@@ -1201,9 +1214,16 @@ elif analysis == "effie":
       variables_1, predictions = ptassign.run(variables)
       emtf2023_tracks = trkprod.run(clean_roads, variables_1, predictions)
 
+      if ievt < 20 and False:
+        print("evt {0} has {1} roads, {2} clean roads, {3} tracks".format(ievt, len(roads), len(clean_roads), len(emtf2023_tracks)))
+        for itrk, mytrk in enumerate(emtf2023_tracks):
+          y = np.true_divide(part.q, part.pt)
+          y_pred = np.true_divide(mytrk.q, mytrk.xml_pt)
+          print(".. {0} {1}".format(y, y_pred))
+
       # Fill histograms
       def fill_efficiency():
-        trigger = any([select(trk) for trk in tracks])
+        trigger = any([select(trk) for trk in tracks])  # using scaled pT
         out[hname1].append((part.pt, trigger))
         if part.pt > 20.:
           out[hname2].append((abs(part.eta), trigger))
@@ -1215,7 +1235,7 @@ elif analysis == "effie":
           out[hname1].append((part.invpt, trk.invpt))
           out[hname2].append((abs(part.invpt), (abs(trk.invpt) - abs(part.invpt))/abs(part.invpt)))
 
-      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in (11,13,14,15)) and (trk.pt > 20.)  # using scaled pT
+      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in (11,13,14,15)) and (trk.pt > 20.)
       tracks = evt.tracks
       hname1 = "emtf_eff_vs_genpt_l1pt20"
       hname2 = "emtf_eff_vs_geneta_l1pt20"
@@ -1224,7 +1244,7 @@ elif analysis == "effie":
       hname2 = "emtf_l1ptres_vs_genpt"
       fill_resolution()
 
-      select = lambda trk: trk.pt > 20.  # using scaled pT
+      select = lambda trk: trk.pt > 20.
       tracks = emtf2023_tracks
       hname1 = "emtf2023_eff_vs_genpt_l1pt20"
       hname2 = "emtf2023_eff_vs_geneta_l1pt20"
