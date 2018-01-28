@@ -243,32 +243,31 @@ def emtf_pgun_weight(part):
 
 class EMTFExtrapolation(object):
   def __init__(self):
-    s = '''
--1.168773412704467773e+00 -1.189913630485534668e+00 -1.243079304695129395e+00 -1.241224288940429688e+00 -1.231645226478576660e+00 -1.214431405067443848e+00
--1.163153171539306641e+00 -1.187562584877014160e+00 -1.238066077232360840e+00 -1.236049771308898926e+00 -1.229536056518554688e+00 -1.211434602737426758e+00
--1.159580349922180176e+00 -1.184663057327270508e+00 -1.235687971115112305e+00 -1.235497355461120605e+00 -1.226262092590332031e+00 -1.208630323410034180e+00
--1.151517868041992188e+00 -1.180393218994140625e+00 -1.228015542030334473e+00 -1.230029821395874023e+00 -1.222363948822021484e+00 -1.206022262573242188e+00
--1.140756726264953613e+00 -1.174803137779235840e+00 -1.218901872634887695e+00 -1.224272489547729492e+00 -1.217968583106994629e+00 -1.202632427215576172e+00
--1.130029201507568359e+00 -1.169831037521362305e+00 -1.212077736854553223e+00 -1.215224266052246094e+00 -1.210086107254028320e+00 -1.196247816085815430e+00
--1.140985369682312012e+00 -1.175911307334899902e+00 -1.221199512481689453e+00 -1.223194122314453125e+00 -1.213139414787292480e+00 -1.196894168853759766e+00
--1.152846932411193848e+00 -1.181503415107727051e+00 -1.231024980545043945e+00 -1.231943488121032715e+00 -1.220150232315063477e+00 -1.203685760498046875e+00
--1.159744858741760254e+00 -1.184717655181884766e+00 -1.236533164978027344e+00 -1.236312031745910645e+00 -1.223711013793945312e+00 -1.206030845642089844e+00
--1.165894508361816406e+00 -1.187783718109130859e+00 -1.240128636360168457e+00 -1.239593982696533203e+00 -1.226222634315490723e+00 -1.207299470901489258e+00
--1.171306729316711426e+00 -1.192417740821838379e+00 -1.247142076492309570e+00 -1.242109179496765137e+00 -1.231981396675109863e+00 -1.212601423263549805e+00
-'''
+    self.theta_bins = (14, 0.5, 1.9)
+    self.pt_bins = (100, -0.2, 0.2)
+    self.loaded = False
 
-    c = np.fromstring(s, dtype=np.float32, sep=' ')
-    assert(len(c) == (len(pt_bins)-1) * (len(eta_bins)-1))
-    c = c.reshape((len(pt_bins)-1, len(eta_bins)-1))
-    self.lut = c
+  def _find_bin(self, x, bins):
+    x = np.clip(x, bins[1], bins[2])
+    binx = (x - bins[1]) / (bins[2] - bins[1]) * bins[0]
+    return int(binx)
+
+  def find_theta_bin(self, part):
+    x = np.sinh(1.8) / np.sinh(abs(part.eta))
+    return self._find_bin(x, self.theta_bins)
+
+  def find_pt_bin(self, part):
+    x = part.invpt
+    return self._find_bin(x, self.pt_bins)
 
   def get(self, part):
-    ipt = np.digitize([part.invpt], pt_bins[1:])[0]  # skip lowest edge
-    ieta = np.digitize([abs(part.eta)], eta_bins[1:])[0]  # skip lowest edge
-    ipt = safe_ipt(ipt)
-    index = (ipt, ieta)
+    if not self.loaded:
+      with np.load(bankfile) as data:
+        self.lut = data['patterns_exphi']
+        self.loaded = True
+    index = (self.find_theta_bin(part), self.find_pt_bin(part))
     c = self.lut[index]
-    exphi = part.phi + c * (part.invpt * np.sinh(1.9) / np.sinh(abs(part.eta)))
+    exphi = part.phi + c * (part.invpt * np.sinh(1.8) / np.sinh(abs(part.eta)))
     return exphi
 
 anemtfextrapolation = EMTFExtrapolation()
@@ -312,13 +311,14 @@ class PatternBank(object):
     assert(self.y_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
 
 class Hit(object):
-  def __init__(self, _id, bx, emtf_layer, emtf_phi, emtf_theta, emtf_bend):
+  def __init__(self, _id, bx, emtf_layer, emtf_phi, emtf_theta, emtf_bend, sim_tp):
     self.id = _id  # (_type, station, ring, fr)
     self.bx = bx
     self.emtf_layer = emtf_layer
     self.emtf_phi = emtf_phi
     self.emtf_theta = emtf_theta
     self.emtf_bend = emtf_bend
+    self.sim_tp = sim_tp
 
 class Road(object):
   def __init__(self, _id, hits, mode, quality):
@@ -332,7 +332,7 @@ class Road(object):
     #np.random.shuffle(self.hits)  # pick a random hit for now
     for hit in self.hits:
       hit_lay = hit.emtf_layer
-      if (not use_sim_tp) or (use_sim_tp and (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)):
+      if (not use_sim_tp) or (use_sim_tp and hit.sim_tp == True):
         if hit_lay not in amap:
           amap[hit_lay] = hit
     #
@@ -394,11 +394,12 @@ class PatternRecognition(object):
       hit_lay = hit.lay
 
       # Match patterns
-      mask = (pattern_x[...,hit_lay,0] <= hit_x) & (hit_x < pattern_x[...,hit_lay,2]) & (pattern_y[...,hit_lay,0] - 2 <= hit_y) & (hit_y < pattern_y[...,hit_lay,2] + 2)
+      mask = (pattern_x[...,hit_lay,0] <= hit_x) & (hit_x <= pattern_x[...,hit_lay,2]) & (pattern_y[...,hit_lay,0] - 2 <= hit_y) & (hit_y <= pattern_y[...,hit_lay,2] + 2)
 
       # Create a hit (for output)
       hit_id = (hit.type, hit.station, hit.ring, hit.fr)
-      myhit = Hit(hit_id, hit.bx, hit_lay, hit.emtf_phi, hit.emtf_theta, emtf_bend(hit))
+      hit_sim_tp = (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)
+      myhit = Hit(hit_id, hit.bx, hit_lay, hit.emtf_phi, hit.emtf_theta, emtf_bend(hit), hit_sim_tp)
 
       # Get results
       for index, condition in np.ndenumerate(mask):
@@ -610,6 +611,7 @@ class PtAssignment(object):
     self.x_road  = self.x_copy[:, nlayers*4:nlayers*5]  # ipt, ieta, iphi
 
     # Subtract median phi from hit phis
+    #self.x_phi_median    = self.x_road[:, 2] * 32 + 16  # multiply by 'quadstrip' unit (4 * 8)
     self.x_phi_median    = self.x_road[:, 2] * 16 + 8  # multiply by 'doublestrip' unit (2 * 8)
     self.x_phi_median    = self.x_phi_median[:, np.newaxis]
     self.x_phi          -= self.x_phi_median
@@ -643,7 +645,7 @@ class PtAssignment(object):
 
     # Get x
     #x_new = self.x_phi
-    x_theta_median = self.x_theta_median / 30.  # theta_int = 30 -> eta = 1.9
+    x_theta_median = self.x_theta_median / 36.  # theta_int = 36 -> eta = 1.8
     x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend, x_theta_median))
 
     # Predict y
@@ -671,7 +673,7 @@ class TrackProducer(object):
       hits_theta = myvars[nlayers*1:nlayers*2]
       hits_bend  = myvars[nlayers*2:nlayers*3]
       hits_theta_median = myvars[nlayers*3]
-      hits_theta_median *= 30. # theta_int = 30 -> eta = 1.9
+      hits_theta_median *= 36. # theta_int = 36 -> eta = 1.8
       hits_station = (1,1,1,1,1,2,2,2,2,3,3,4,4,1,1,2,3,3,3,4,4,4,1,2,1)
 
       for hit in myroad.hits:
@@ -768,7 +770,8 @@ if analysis == "training":
   # [ipt][ieta][lay]
   patterns_phi = [[[[] for k in xrange(nlayers)] for j in xrange(len(eta_bins)-1)] for i in xrange(len(pt_bins)-1)]
   patterns_theta = [[[[] for k in xrange(nlayers)] for j in xrange(len(eta_bins)-1)] for i in xrange(len(pt_bins)-1)]
-  patterns_exphi = [[[] for j in xrange(len(eta_bins)-1)] for i in xrange(len(pt_bins)-1)]
+  e = EMTFExtrapolation()
+  patterns_exphi = [[[] for j in xrange(e.pt_bins[0])] for i in xrange(e.theta_bins[0])]
 
 # Analysis: application
 elif analysis == "application":
@@ -833,6 +836,7 @@ for ievt, evt in enumerate(tree):
       # CLCT spatial resolution (halfstrip) = (w/2)/sqrt(12)
       pitch = 2.3271e-3  # in radians
       sigma = (pitch/2)/np.sqrt(12)
+      sigma *= 2  # this is an arbitrary scale factor
       smear = sigma * np.random.normal()
       part.emtf_phi_nosmear = part.emtf_phi
       part.emtf_phi = calc_phi_loc_int(np.rad2deg(part.exphi + smear), part.sector)
@@ -847,7 +851,9 @@ for ievt, evt in enumerate(tree):
 
     the_patterns_phi = patterns_phi[part.ipt][part.ieta]
     the_patterns_theta = patterns_theta[0][part.ieta]  # no binning in pt
-    the_patterns_exphi = patterns_exphi[part.ipt][part.ieta]
+
+    e = EMTFExtrapolation()
+    the_patterns_exphi = patterns_exphi[e.find_theta_bin(part)][e.find_pt_bin(part)]
 
     #pgun_weight = emtf_pgun_weight(part)
 
@@ -863,9 +869,10 @@ for ievt, evt in enumerate(tree):
         #the_patterns_theta[lay].append(hit.emtf_theta - part.emtf_theta)
         the_patterns_theta[lay].append(hit.emtf_theta)
 
-        if hit.type == kCSC and hit.station == 2:  # extrapolate to emtf
+        if hit.type == kCSC and hit.station == 3:  # extrapolate to ME3/1
           dphi = delta_phi(np.deg2rad(hit.sim_phi), part.phi)
-          the_patterns_exphi.append(dphi / (part.invpt * np.sinh(1.9) / np.sinh(abs(part.eta))))
+          dphi /= (part.invpt * np.sinh(1.8) / np.sinh(abs(part.eta)))
+          the_patterns_exphi.append(dphi)
 
 
   # ____________________________________________________________________________
@@ -967,22 +974,14 @@ if analysis == "training":
           for x in patterns_theta[i][j][k]:  h1b.fill(x)
           h1b.Write()
 
-          if k == 0:
-            hname = "patterns_exphi_%i_%i_%i" % (i,j,k)
-            h1c = Hist(201, -1005, 1005, name=hname, title=hname, type='F')
-            for x in patterns_exphi[i][j]:  h1c.fill(x)
-            h1c.Write()
-
   # Save objects
   print('[INFO] Creating file: histos_tb.npz')
   if True:
     patterns_phi_tmp = patterns_phi
     patterns_theta_tmp = patterns_theta
-    patterns_exphi_tmp = patterns_exphi
     patterns_phi = np.zeros((len(pt_bins)-1, len(eta_bins)-1, nlayers, 3), dtype=np.int32)
     patterns_theta = np.zeros((len(pt_bins)-1, len(eta_bins)-1, nlayers, 3), dtype=np.int32)
-    patterns_exphi = np.zeros((len(pt_bins)-1, len(eta_bins)-1, 3), dtype=np.float32)
-
+    #
     for i in xrange(len(pt_bins)-1):
       for j in xrange(len(eta_bins)-1):
         for k in xrange(nlayers):
@@ -990,6 +989,8 @@ if analysis == "training":
           if len(patterns_phi_tmp_ijk) > 1000:
             patterns_phi_tmp_ijk.sort()
             x = np.percentile(patterns_phi_tmp_ijk, [5, 50, 95])
+            if k == 22 or k == 23 or k == 24:  # keep more GEMs
+              x = np.percentile(patterns_phi_tmp_ijk, [3.5, 50, 96.5])
             x = [int(round(xx)) for xx in x]
             while (x[2] - x[0]) < 32:  # make sure the range is larger than twice the 'doublestrip' unit
               x[0] -= 1
@@ -1003,14 +1004,6 @@ if analysis == "training":
             x = np.percentile(patterns_theta_tmp_ijk, [2, 50, 98])
             x = [int(round(xx)) for xx in x]
             patterns_theta[i,j,k] = x
-
-          if k == 0:
-            patterns_exphi_tmp_ijk = patterns_exphi_tmp[i][j]
-            if len(patterns_exphi_tmp_ijk) > 1000:
-              patterns_exphi_tmp_ijk.sort()
-              x = np.percentile(patterns_exphi_tmp_ijk, [5, 50, 95])
-              #x = [int(round(xx)) for xx in x]
-              patterns_exphi[i,j] = x
 
     # Mask layers by (ieta, lay)
     valid_layers = [
@@ -1026,6 +1019,28 @@ if analysis == "training":
       mask[:,valid_layer[0],valid_layer[1],:] = False
     patterns_phi[mask] = 0
     patterns_theta[mask] = 0
+
+    overwrite_extrapolation = False
+    smooth_extrapolation = True
+    if overwrite_extrapolation:
+      e = EMTFExtrapolation()
+      patterns_exphi_tmp = patterns_exphi
+      patterns_exphi_tmp = np.asarray(patterns_exphi_tmp)
+      patterns_exphi = np.zeros(patterns_exphi_tmp.shape, dtype=np.float32)
+      for index, x in np.ndenumerate(patterns_exphi_tmp):
+        if x:
+          patterns_exphi[index] = np.median(x, overwrite_input=True)
+      if smooth_extrapolation:
+        from scipy.interpolate import Rbf
+        patterns_exphi_tmp = patterns_exphi
+        patterns_exphi = np.zeros(patterns_exphi_tmp.shape, dtype=np.float32)
+        x = [e.pt_bins[1] + (i+0.5)/e.pt_bins[0]*(e.pt_bins[2] - e.pt_bins[1]) for i in xrange(e.pt_bins[0])]
+        for index in np.ndindex(patterns_exphi_tmp.shape[:1]):
+          rbf = Rbf(x, patterns_exphi_tmp[index], smooth = 0.3, function='multiquadric')
+          patterns_exphi[index] = rbf(x)
+    else:
+      with np.load(bankfile) as data:
+        patterns_exphi = data['patterns_exphi']
 
     outfile = 'histos_tb.npz'
     np.savez_compressed(outfile, patterns_phi=patterns_phi, patterns_theta=patterns_theta, patterns_exphi=patterns_exphi)
