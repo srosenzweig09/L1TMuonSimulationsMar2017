@@ -184,7 +184,7 @@ anemtfbend = EMTFBend()
 def emtf_bend(hit):
   return anemtfbend.get(hit)
 
-# Decide EMTF road quality
+# Decide EMTF road quality (by pT)
 class EMTFRoadQuality(object):
   def __init__(self):
     self.best_ipt = np.digitize([0.], pt_bins[1:])[0]  # skip lowest edge
@@ -195,6 +195,40 @@ class EMTFRoadQuality(object):
 anemtfroadquality = EMTFRoadQuality()
 def emtf_road_quality(ipt):
   return anemtfroadquality.get(ipt)
+
+# Decide EMTF road sort code
+class EMTFRoadSortCode(object):
+  def __init__(self):
+    pass
+
+  def get(self, road_mode, road_quality, road_hits):
+    #def madorsky_code(mode, qual):
+    #  code = 0
+    #  code |= ((mode >> 3) & 1) << 6
+    #  code |= ((qual >> 2) & 1) << 5
+    #  code |= ((mode >> 2) & 1) << 4
+    #  code |= ((qual >> 1) & 1) << 3
+    #  code |= ((mode >> 1) & 1) << 2
+    #  code |= ((qual >> 0) & 1) << 1
+    #  code |= ((mode >> 0) & 1) << 0
+    #return code
+
+    def mlayer_code(hits, qual):
+      # 11     10     9      8      7    6      5    4    3      2..0
+      # GE1/1, ME1/1, ME1/2, GE2/1, ME2, RE1&2, ME3, ME4, RE3&4, qual
+      hits_to_mlayer = (10,10,9,9,9,7,7,7,7,5,5,4,4,6,6,6,3,3,3,3,3,3,11,8,11)
+      code = 0
+      for hit in hits:
+        hit_lay = hit.emtf_layer
+        mlayer = hits_to_mlayer[hit_lay]
+        code |= (1 << mlayer)
+      code |= qual
+      return code
+    return mlayer_code(road_hits, road_quality)
+
+anemtfroadsortcode = EMTFRoadSortCode()
+def emtf_road_sort_code(road_mode, road_quality, road_hits):
+  return anemtfroadsortcode.get(road_mode, road_quality, road_hits)
 
 # Decide EMTF road mode
 class EMTFRoadMode(object):
@@ -321,11 +355,12 @@ class Hit(object):
     self.sim_tp = sim_tp
 
 class Road(object):
-  def __init__(self, _id, hits, mode, quality):
+  def __init__(self, _id, hits, mode, quality, sort_code):
     self.id = _id  # (endcap, sector, ipt, ieta, iphi)
     self.hits = hits
     self.mode = mode
     self.quality = quality
+    self.sort_code = sort_code
 
   def to_variables(self, use_sim_tp=False):
     amap = {}
@@ -388,8 +423,8 @@ class PatternRecognition(object):
     # Loop over hits
     for ihit, hit in enumerate(sector_hits):
       # Make hit coordinates
-      #hit_x = hit.emtf_phi - pattern_iphi * 32 + 16  # multiply by 'quadstrip' unit (4 * 8)
-      hit_x = hit.emtf_phi - pattern_iphi * 16 + 8  # multiply by 'doublestrip' unit (2 * 8)
+      #hit_x = hit.emtf_phi - (pattern_iphi * 32 - 16)  # multiply by 'quadstrip' unit (4 * 8)
+      hit_x = hit.emtf_phi - (pattern_iphi * 16 - 8)  # multiply by 'doublestrip' unit (2 * 8)
       hit_y = hit.emtf_theta
       hit_lay = hit.lay
 
@@ -415,23 +450,28 @@ class PatternRecognition(object):
     for road_id, road_hits in amap.iteritems():
       # Try BX window (-1,0)
       road_mode = 0
+      tmp_road_hits = []
       for hit in road_hits:
         if hit.bx in (-1,0):
           (_type, station, ring, fr) = hit.id
           road_mode |= (1 << (4 - station))
+          tmp_road_hits.append(hit)
 
       if not emtf_is_singlemu(road_mode):
         # Try BX window (0,+1)
         road_mode = 0
+        tmp_road_hits = []
         for hit in road_hits:
           if hit.bx in (0,+1):
             (_type, station, ring, fr) = hit.id
             road_mode |= (1 << (4 - station))
+            tmp_road_hits.append(hit)
 
       if emtf_is_singlemu(road_mode):
         (endcap, sector, ipt, ieta, iphi) = road_id
         road_quality = emtf_road_quality(ipt)
-        myroad = Road(road_id, road_hits, road_mode, road_quality)
+        road_sort_code = emtf_road_sort_code(road_mode, road_quality, tmp_road_hits)
+        myroad = Road(road_id, tmp_road_hits, road_mode, road_quality, road_sort_code)
         roads.append(myroad)
     return roads
 
@@ -484,6 +524,18 @@ class RoadCleaning(object):
   def __init__(self):
     pass
 
+  # https://stackoverflow.com/a/30396816
+  def _iter_from_middle(self, lst):
+    try:
+      middle = len(lst)//2
+      yield lst[middle]
+      for shift in xrange(1, middle+1):
+        # order is important!
+        yield lst[middle - shift]
+        yield lst[middle + shift]
+    except IndexError: # occures on lst[len(lst)] or for empty list
+      raise StopIteration
+
   def _groupby(self, data):
     def is_adjacent(prev, curr, length):
       return prev[:-1] == curr[:-1] and (prev[-1] + length) == curr[-1]
@@ -510,38 +562,22 @@ class RoadCleaning(object):
         if stop:
           return
 
-  def _sortby(self, clean_roads, bmap):
+  def _sortby(self, clean_roads, groupinfo):
     if clean_roads:
-      def madorsky_code(road):
-        #mode = (road.mode >> 1) | (road.mode & 1)
-        mode = road.mode
-        qual = road.quality
-        code = 0
-        code |= ((mode >> 3) & 1) << 6
-        code |= ((qual >> 2) & 1) << 5
-        code |= ((mode >> 2) & 1) << 4
-        code |= ((qual >> 1) & 1) << 3
-        code |= ((mode >> 1) & 1) << 2
-        code |= ((qual >> 0) & 1) << 1
-        code |= ((mode >> 0) & 1) << 0
-        #
-        get_ieta = lambda x: x[3]
-        ieta = get_ieta(road.id)
-        return (code, ieta)
+      clean_roads.sort(key=lambda road: road.sort_code, reverse=True)
 
-      clean_roads.sort(key=madorsky_code, reverse=True)
       # Iterate over clean_roads
       for i, road in enumerate(clean_roads):
         keep = True
-        groupinfo = bmap[road.id]
+        gi = groupinfo[road.id]
 
         # No intersect between two ranges (x1, x2), (y1, y2): (x2 < y1) || (x1 > y2)
         # Intersect: !((x2 < y1) || (x1 > y2)) = (x2 >= y1) and (x1 <= y2)
         for j, road_to_check in enumerate(clean_roads[:i]):
-          groupinfo_to_check = bmap[road_to_check.id]
-          embiggen_iphi_range = lambda x1, x2: (x1[:-1] + (x1[-1]-1,), x2[:-1] + (x2[-1]+1,))
-          groupinfo_to_check = embiggen_iphi_range(groupinfo_to_check[0], groupinfo_to_check[1])
-          if (groupinfo[1] >= groupinfo_to_check[0]) and (groupinfo[0] <= groupinfo_to_check[1]):
+          gj = groupinfo[road_to_check.id]
+          get_endsec = lambda x: x[:2]
+          # Allow +/-2 due to extrapolation-to-ME3 error
+          if (get_endsec(road.id) == get_endsec(road_to_check.id)) and (gi[1] >= gj[0]-2) and (gi[0] <= gj[1]+2):
             keep = False
             break
 
@@ -555,20 +591,27 @@ class RoadCleaning(object):
 
     # pick median in each iphi group
     clean_roads = []
-    bmap = {}
+    groupinfo = {}
     for group in self._groupby(amap.keys()):
-      pivot = (len(group) - 1) // 2
-      road_id = group[pivot]
-      road = amap[road_id]
+      for index in self._iter_from_middle(range(len(group))):
+        road_id = group[index]
+        road = amap[road_id]
+        keep = True
+        if (0 <= index-1) and road.sort_code < amap[group[index-1]].sort_code:
+          keep = False
+        if (index+1 < len(group)) and road.sort_code < amap[group[index+1]].sort_code:
+          keep = False
+        if keep:
+          break
       clean_roads.append(road)
       #
-      erase_ipt = lambda x: x[:2] + (0,) + x[3:]
-      groupinfo = (erase_ipt(group[0]), erase_ipt(group[-1]))  # first and last road_id's in the iphi group
-      bmap[road_id] = groupinfo
+      get_iphi = lambda x: x[4]
+      g = (get_iphi(group[0]), get_iphi(group[-1]))  # first and last road_id's in the iphi group
+      groupinfo[road_id] = g
 
     # sort the roads by (mode, quality)
     sorted_clean_roads = []
-    for road in self._sortby(clean_roads, bmap):
+    for road in self._sortby(clean_roads, groupinfo):
       sorted_clean_roads.append(road)
     return sorted_clean_roads
 
@@ -611,8 +654,8 @@ class PtAssignment(object):
     self.x_road  = self.x_copy[:, nlayers*4:nlayers*5]  # ipt, ieta, iphi
 
     # Subtract median phi from hit phis
-    #self.x_phi_median    = self.x_road[:, 2] * 32 + 16  # multiply by 'quadstrip' unit (4 * 8)
-    self.x_phi_median    = self.x_road[:, 2] * 16 + 8  # multiply by 'doublestrip' unit (2 * 8)
+    #self.x_phi_median    = self.x_road[:, 2] * 32 - 16  # multiply by 'quadstrip' unit (4 * 8)
+    self.x_phi_median    = self.x_road[:, 2] * 16 - 8  # multiply by 'doublestrip' unit (2 * 8)
     self.x_phi_median    = self.x_phi_median[:, np.newaxis]
     self.x_phi          -= self.x_phi_median
 
@@ -633,11 +676,11 @@ class PtAssignment(object):
     self.x_mask [x_theta_tmp] = 1.0
 
     # Something wrong with GE2/1?
-    bad_ge21 = 23
-    self.x_phi  [:, bad_ge21] = np.nan
-    self.x_theta[:, bad_ge21] = np.nan
-    self.x_bend [:, bad_ge21] = np.nan
-    self.x_mask [:, bad_ge21] = 1.0
+    #bad_ge21 = 23
+    #self.x_phi  [:, bad_ge21] = np.nan
+    #self.x_theta[:, bad_ge21] = np.nan
+    #self.x_bend [:, bad_ge21] = np.nan
+    #self.x_mask [:, bad_ge21] = 1.0
 
     # Remove NaN
     #np.nan_to_num(self.x_copy, copy=False)
@@ -674,12 +717,12 @@ class TrackProducer(object):
       hits_bend  = myvars[nlayers*2:nlayers*3]
       hits_theta_median = myvars[nlayers*3]
       hits_theta_median *= 36. # theta_int = 36 -> eta = 1.8
-      hits_station = (1,1,1,1,1,2,2,2,2,3,3,4,4,1,1,2,3,3,3,4,4,4,1,2,1)
+      hits_to_station = (1,1,1,1,1,2,2,2,2,3,3,4,4,1,1,2,3,3,3,4,4,4,1,2,1)
 
       for hit in myroad.hits:
         hit_lay = hit.emtf_layer
         if hits_phi[hit_lay] != 0.0 and hits_theta[hit_lay] != 0.0 and hits_bend[hit_lay] != 0.0:
-          station = hits_station[hit_lay]
+          station = hits_to_station[hit_lay]
           trk_mode |= (1 << (4 - station))
           trk_hits.append(hit)
 
@@ -694,7 +737,7 @@ class TrackProducer(object):
         if hit.bx <= 0:
           bx_counter2 += 1
 
-      if emtf_is_singlemu(trk_mode) and quality2 <= (quality1 + 1) and bx_counter1 < 2 and bx_counter2 >= 2:
+      if emtf_is_singlemu(trk_mode) and quality2 <= quality1 and bx_counter1 < 2 and bx_counter2 >= 2:
         (endcap, sector, ipt, ieta, iphi) = myroad.id
         trk_id = (endcap, sector)
         trk_pt = np.abs(1.0/mypreds[0])
@@ -869,7 +912,7 @@ for ievt, evt in enumerate(tree):
         #the_patterns_theta[lay].append(hit.emtf_theta - part.emtf_theta)
         the_patterns_theta[lay].append(hit.emtf_theta)
 
-        if hit.type == kCSC and hit.station == 3:  # extrapolate to ME3/1
+        if hit.type == kCSC and hit.station == 3:  # extrapolate to ME3
           dphi = delta_phi(np.deg2rad(hit.sim_phi), part.phi)
           dphi /= (part.invpt * np.sinh(1.8) / np.sinh(abs(part.eta)))
           the_patterns_exphi.append(dphi)
@@ -906,9 +949,9 @@ for ievt, evt in enumerate(tree):
       print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
       print(".. part invpt: {0} pt: {1} eta: {2} phi: {3} ipt: {4} ieta: {5}".format(part.invpt, part.pt, part.eta, part.phi, part.ipt, part.ieta))
       for iroad, myroad in enumerate(roads):
-        print(".. road {0} {1} {2} {3} {4}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality))
+        print(".. road {0} {1} {2} {3} {4} {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
       for iroad, myroad in enumerate(clean_roads):
-        print(".. croad {0} {1} {2} {3} {4}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality))
+        print(".. croad {0} {1} {2} {3} {4} {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
         for ihit, myhit in enumerate(myroad.hits):
           print(".. .. hit  {0} {1} {2} {3} {4} {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.emtf_bend))
 
@@ -1070,7 +1113,8 @@ elif analysis == "application":
     variables = np.zeros((npassed, (nlayers * 4) + (3)), dtype=np.float32)
     for i, (part, road) in enumerate(izip(out_particles, out_roads)):
       parameters[i] = part.to_parameters()
-      variables[i] = road.to_variables(use_sim_tp=True)
+      variables[i] = road.to_variables()
+      #variables[i] = road.to_variables(use_sim_tp=True)
     outfile = 'histos_tba.npz'
     np.savez_compressed(outfile, parameters=parameters, variables=variables)
 
@@ -1118,7 +1162,7 @@ elif analysis == "rates":
             part.invpt = np.true_divide(part.q, part.pt)
             print(".. part {0} {1} {2} {3} {4}".format(ipart, part.invpt, part.pt, part.eta, part.phi))
         for iroad, myroad in enumerate(clean_roads):
-          print(".. croad {0} {1} {2} {3} {4}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality))
+          print(".. croad {0} {1} {2} {3} {4} {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
           #for ihit, myhit in enumerate(myroad.hits):
           #  print(".. .. hit  {0} {1} {2} {3} {4} {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.emtf_bend))
         for itrk, mytrk in enumerate(emtf2023_tracks):
