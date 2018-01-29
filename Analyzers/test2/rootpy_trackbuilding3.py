@@ -2,8 +2,9 @@ import numpy as np
 np.random.seed(2023)
 
 from itertools import izip
+import sys
 import time
-import concurrent.futures
+#import concurrent.futures
 from rootpy.plotting import Hist, Hist2D, Graph, Efficiency
 from rootpy.tree import Tree, TreeChain, TreeModel, FloatCol, IntCol, ShortCol
 from rootpy.io import root_open
@@ -401,7 +402,7 @@ class Track(object):
     self.hits = hits
     self.mode = mode
     self.xml_pt = pt
-    self.pt = pt * 1.3
+    self.pt = pt * (1.0 + 0.22 * 1.28155)  # erf(1.28155/sqrt(2)) = 0.8 [90% upper limit from -1 to -1]
     self.q = q
     self.emtf_phi = emtf_phi
     self.emtf_theta = emtf_theta
@@ -644,13 +645,14 @@ class PtAssignment(object):
     assert(len(x.shape) == 2)
     assert(x.shape[1] == (nlayers * 4) + 3)
 
+    self.nentries = x.shape[0]
     self.x_copy = x.copy()
 
     # Get views
     self.x_phi   = self.x_copy[:, nlayers*0:nlayers*1]
     self.x_theta = self.x_copy[:, nlayers*1:nlayers*2]
     self.x_bend  = self.x_copy[:, nlayers*2:nlayers*3]
-    self.x_mask  = self.x_copy[:, nlayers*3:nlayers*4].copy()  # avoid getting scaled
+    self.x_mask  = self.x_copy[:, nlayers*3:nlayers*4].astype(np.bool)  # this makes a copy
     self.x_road  = self.x_copy[:, nlayers*4:nlayers*5]  # ipt, ieta, iphi
 
     # Subtract median phi from hit phis
@@ -669,7 +671,7 @@ class PtAssignment(object):
     self.x_copy /= self.x_std
 
     # Remove outlier hits by checking hit thetas
-    x_theta_tmp = np.abs(self.x_theta) > 3.0
+    x_theta_tmp = np.abs(self.x_theta) > 4.0
     self.x_phi  [x_theta_tmp] = np.nan
     self.x_theta[x_theta_tmp] = np.nan
     self.x_bend [x_theta_tmp] = np.nan
@@ -682,14 +684,25 @@ class PtAssignment(object):
     #self.x_bend [:, bad_ge21] = np.nan
     #self.x_mask [:, bad_ge21] = 1.0
 
+    # Add variables: theta_median and mode variables
+    self.x_theta_median -= 3  # scaled to [0,1]
+    self.x_theta_median /= 83
+    hits_to_station = np.array((5,5,1,1,1,2,2,2,2,3,3,4,4,1,1,2,3,3,3,4,4,4,5,2,1), dtype=np.int32)  # '5' denotes ME1/1
+    assert(len(hits_to_station) == nlayers)
+    self.x_mode_vars = np.zeros((self.nentries, 5), dtype=np.float32)
+    self.x_mode_vars[:,0] = np.any(self.x_mask[:,hits_to_station == 5] == 0, axis=1)
+    self.x_mode_vars[:,1] = np.any(self.x_mask[:,hits_to_station == 1] == 0, axis=1)
+    self.x_mode_vars[:,2] = np.any(self.x_mask[:,hits_to_station == 2] == 0, axis=1)
+    self.x_mode_vars[:,3] = np.any(self.x_mask[:,hits_to_station == 3] == 0, axis=1)
+    self.x_mode_vars[:,4] = np.any(self.x_mask[:,hits_to_station == 4] == 0, axis=1)
+
     # Remove NaN
     #np.nan_to_num(self.x_copy, copy=False)
     self.x_copy[np.isnan(self.x_copy)] = 0.0
 
     # Get x
     #x_new = self.x_phi
-    x_theta_median = self.x_theta_median / 36.  # theta_int = 36 -> eta = 1.8
-    x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend, x_theta_median))
+    x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend, self.x_theta_median, self.x_mode_vars))
 
     # Predict y
     y = self.loaded_model.predict(x_new)
@@ -706,43 +719,42 @@ class TrackProducer(object):
     tracks = []
 
     for myroad, myvars, mypreds in izip(clean_roads, variables, predictions):
-      trk_hits = []
-      trk_mode = 0
-      trk_ipt = np.digitize([mypreds[0]], pt_bins[1:])[0]  # skip lowest edge
-      trk_ipt = safe_ipt(trk_ipt)
-
-      # Find hits
+      # Unpack variables
       hits_phi   = myvars[nlayers*0:nlayers*1]
       hits_theta = myvars[nlayers*1:nlayers*2]
       hits_bend  = myvars[nlayers*2:nlayers*3]
       hits_theta_median = myvars[nlayers*3]
-      hits_theta_median *= 36. # theta_int = 36 -> eta = 1.8
-      hits_to_station = (1,1,1,1,1,2,2,2,2,3,3,4,4,1,1,2,3,3,3,4,4,4,1,2,1)
+      hits_mode_vars = myvars[nlayers*3+1:nlayers*3+6]
 
-      for hit in myroad.hits:
-        hit_lay = hit.emtf_layer
-        if hits_phi[hit_lay] != 0.0 and hits_theta[hit_lay] != 0.0 and hits_bend[hit_lay] != 0.0:
-          station = hits_to_station[hit_lay]
+      trk_mode = 0
+      for i, x in enumerate(hits_mode_vars):
+        if i == 0:
+          station = 1
+        else:
+          station = i
+        if x:
           trk_mode |= (1 << (4 - station))
-          trk_hits.append(hit)
 
+      trk_ipt = np.digitize([mypreds[0]], pt_bins[1:])[0]  # skip lowest edge
+      trk_ipt = safe_ipt(trk_ipt)
       quality1 = myroad.quality
       quality2 = emtf_road_quality(trk_ipt)
 
       bx_counter1 = 0  # count hits with BX <= -1
       bx_counter2 = 0  # count hits with BX <= 0
-      for hit in trk_hits:
+      for hit in myroad.hits:
         if hit.bx <= -1:
           bx_counter1 += 1
         if hit.bx <= 0:
           bx_counter2 += 1
+      trk_bx_zero = (bx_counter1 < 2 and bx_counter2 >= 2)
 
-      if emtf_is_singlemu(trk_mode) and quality2 <= quality1 and bx_counter1 < 2 and bx_counter2 >= 2:
+      if emtf_is_singlemu(trk_mode) and quality2 <= (quality1+1) and trk_bx_zero:
         (endcap, sector, ipt, ieta, iphi) = myroad.id
         trk_id = (endcap, sector)
         trk_pt = np.abs(1.0/mypreds[0])
         trk_q  = np.sign(mypreds[0])
-        trk = Track(trk_id, trk_hits, trk_mode, trk_pt, trk_q, iphi, hits_theta_median)
+        trk = Track(trk_id, myroad.hits, trk_mode, trk_pt, trk_q, iphi, hits_theta_median)
         tracks.append(trk)
     return tracks
 
@@ -782,7 +794,7 @@ tree.define_collection(name='particles', prefix='vp_', size='vp_size')
 
 # Get number of events
 #maxEvents = -1
-#maxEvents = 1000000
+#maxEvents = 2000000
 maxEvents = 10000
 print('[INFO] Using max events: %i' % maxEvents)
 
@@ -1155,8 +1167,8 @@ elif analysis == "rates":
       variables_1, predictions = ptassign.run(variables)
       emtf2023_tracks = trkprod.run(clean_roads, variables_1, predictions)
 
-      if ievt < 20 and False:
-        print("evt {0} has {1} roads, {2} clean roads, {3} tracks".format(ievt, len(roads), len(clean_roads), len(emtf2023_tracks)))
+      if ievt < 100:
+        print("evt {0} has {1} roads, {2} clean roads, {3} tracks, {4} old tracks".format(ievt, len(roads), len(clean_roads), len(emtf2023_tracks), len(evt.tracks)))
         for ipart, part in enumerate(evt.particles):
           if part.pt > 5.:
             part.invpt = np.true_divide(part.q, part.pt)
@@ -1169,6 +1181,8 @@ elif analysis == "rates":
           print(".. trk {0} {1} {2} {3} {4}".format(itrk, mytrk.id, len(mytrk.hits), mytrk.mode, mytrk.pt))
           for ihit, myhit in enumerate(mytrk.hits):
             print(".. .. hit  {0} {1} {2} {3} {4} {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.emtf_bend))
+        for itrk, mytrk in enumerate(evt.tracks):
+          print(".. otrk {0} {1} {2}".format(itrk, mytrk.mode, mytrk.pt))
 
 
       # Fill histograms
