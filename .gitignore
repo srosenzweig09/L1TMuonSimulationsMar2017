@@ -12,6 +12,7 @@ AutoDict_*
 *.pkl
 *.npy
 *.npz
+*.h5
 .ipynb_checkpoints
 
 # Other
