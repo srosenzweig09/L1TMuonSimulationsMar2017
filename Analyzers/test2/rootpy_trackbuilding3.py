@@ -397,7 +397,7 @@ class Road(object):
     return variables
 
 class Track(object):
-  def __init__(self, _id, hits, mode, pt, q, emtf_phi, emtf_theta):
+  def __init__(self, _id, hits, mode, pt, q, emtf_phi, emtf_theta, chi2, ndof):
     self.id = _id  # (endcap, sector)
     self.hits = hits
     self.mode = mode
@@ -406,6 +406,8 @@ class Track(object):
     self.q = q
     self.emtf_phi = emtf_phi
     self.emtf_theta = emtf_theta
+    self.chi2 = chi2
+    self.ndof = ndof
 
 class PatternRecognition(object):
   def __init__(self, bank):
@@ -618,10 +620,17 @@ class RoadCleaning(object):
 
 class PtAssignment(object):
   def __init__(self, kerasfile):
-    (encoder, model, model_weights) = kerasfile
-    with np.load(encoder) as data:
-      self.x_mean = data['x_mean']
-      self.x_std  = data['x_std']
+    (encoder, model, model_weights, bpca) = kerasfile
+    with np.load(encoder) as loaded:
+      self.x_mean = loaded['x_mean']
+      self.x_std  = loaded['x_std']
+
+    with np.load(bpca) as loaded:
+      self.Vt_all = loaded['Vt_all']
+      self.v_k_all = loaded['v_k_all']
+      self.v_n_all = loaded['v_n_all']
+      self.v_mean_all = loaded['v_mean_all']
+      self.v_std_all = loaded['v_std_all']
 
     from keras.models import load_model
     import keras.backend as K
@@ -639,8 +648,9 @@ class PtAssignment(object):
   def run(self, x):
     x_new = np.array([], dtype=np.float32)
     y = np.array([], dtype=np.float32)
+    z = np.array([], dtype=np.float32)
     if len(x) == 0:
-      return (x_new, y)
+      return (x_new, y, z)
 
     assert(len(x.shape) == 2)
     assert(x.shape[1] == (nlayers * 4) + 3)
@@ -666,18 +676,21 @@ class PtAssignment(object):
     self.x_theta_median  = self.x_theta_median[:, np.newaxis]
     self.x_theta        -= self.x_theta_median
 
+    # Zones
+    self.x_ieta  = self.x_road[:, 1].astype(np.int32)
+
     # Standard scales
     self.x_copy -= self.x_mean
     self.x_copy /= self.x_std
 
-    # Remove outlier hits by checking hit thetas
-    x_theta_tmp = np.abs(self.x_theta) > 4.0
-    self.x_phi  [x_theta_tmp] = np.nan
-    self.x_theta[x_theta_tmp] = np.nan
-    self.x_bend [x_theta_tmp] = np.nan
-    self.x_mask [x_theta_tmp] = 1.0
+    ## Remove outlier hits by checking hit thetas
+    #x_theta_tmp = np.abs(self.x_theta) > 4.0
+    #self.x_phi  [x_theta_tmp] = np.nan
+    #self.x_theta[x_theta_tmp] = np.nan
+    #self.x_bend [x_theta_tmp] = np.nan
+    #self.x_mask [x_theta_tmp] = 1.0
 
-    # Something wrong with GE2/1?
+    ## Something wrong with GE2/1?
     #bad_ge21 = 23
     #self.x_phi  [:, bad_ge21] = np.nan
     #self.x_theta[:, bad_ge21] = np.nan
@@ -706,28 +719,61 @@ class PtAssignment(object):
 
     # Predict y
     y = self.loaded_model.predict(x_new)
-    return (x_new, y)
+
+    # PCA stuff
+    z = self._bpca()
+    return (x_new, y, z)
+
+  def _bpca(self):
+    x_copy = np.hstack((self.x_phi, self.x_theta, self.x_bend))
+    x_mask_copy = self.x_mask.copy()
+
+    result = np.zeros((x_copy.shape[0], 3), dtype=np.float32)
+
+    for i in xrange(x_copy.shape[0]):
+      zone = self.x_ieta[i]
+      Vt = self.Vt_all[zone]
+      v_k = self.v_k_all[zone]
+      v_n = self.v_n_all[zone]
+      v_mean = self.v_mean_all[zone]
+      v_std = self.v_std_all[zone]
+
+      x_transformed = np.dot(x_copy[i], Vt.T)
+      x_transformed -= v_mean
+      x_transformed /= v_std
+      x_transformed **= 2
+      x_transformed = x_transformed[v_k:v_n]
+
+      chi2 = np.sum(x_transformed)
+      ndof = np.sum(x_copy[i] != 0.0) - v_k
+      ndof_mask = np.sum(~x_mask_copy[i])
+      result[i] = (chi2, ndof, ndof_mask)
+    return result
+
 
 class TrackProducer(object):
   def __init__(self):
     pass
 
-  def run(self, clean_roads, variables, predictions):
+  def run(self, clean_roads, variables, predictions, chi2_vars):
     assert(len(clean_roads) == len(variables))
     assert(len(clean_roads) == len(predictions))
+    assert(len(clean_roads) == len(chi2_vars))
 
     tracks = []
 
-    for myroad, myvars, mypreds in izip(clean_roads, variables, predictions):
+    for myroad, myvars, mypreds, mychi2 in izip(clean_roads, variables, predictions, chi2_vars):
       # Unpack variables
-      hits_phi   = myvars[nlayers*0:nlayers*1]
-      hits_theta = myvars[nlayers*1:nlayers*2]
-      hits_bend  = myvars[nlayers*2:nlayers*3]
-      hits_theta_median = myvars[nlayers*3]
-      hits_mode_vars = myvars[nlayers*3+1:nlayers*3+6]
+      assert(len(myvars.shape) == 1)
+      assert(myvars.shape[0] == (nlayers * 3) + 6)
+      x_phi          = myvars[nlayers*0:nlayers*1]
+      x_theta        = myvars[nlayers*1:nlayers*2]
+      x_bend         = myvars[nlayers*2:nlayers*3]
+      x_theta_median = myvars[nlayers*3]
+      x_mode_vars    = myvars[nlayers*3+1:nlayers*3+6]
 
       trk_mode = 0
-      for i, x in enumerate(hits_mode_vars):
+      for i, x in enumerate(x_mode_vars):
         if i == 0:
           station = 1
         else:
@@ -754,7 +800,7 @@ class TrackProducer(object):
         trk_id = (endcap, sector)
         trk_pt = np.abs(1.0/mypreds[0])
         trk_q  = np.sign(mypreds[0])
-        trk = Track(trk_id, myroad.hits, trk_mode, trk_pt, trk_q, iphi, hits_theta_median)
+        trk = Track(trk_id, myroad.hits, trk_mode, trk_pt, trk_q, iphi, x_theta_median, mychi2[0], mychi2[1])
         tracks.append(trk)
     return tracks
 
@@ -808,7 +854,7 @@ print('[INFO] Using analysis mode: %s' % analysis)
 # Other stuff
 bankfile = 'histos_tb.8.npz'
 
-kerasfile = ['encoder.8.npz', 'model.8.h5', 'model_weights.8.h5']
+kerasfile = ['encoder.8.npz', 'model.8.h5', 'model_weights.8.h5', 'bpca.8.npz']
 
 #pufiles = ['root://cmsxrootd.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU140/ParticleGuns/CRAB3/180116_214607/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(100)]
 #pufiles = ['root://cmsxrootd.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
@@ -1125,10 +1171,11 @@ elif analysis == "application":
     variables = np.zeros((npassed, (nlayers * 4) + (3)), dtype=np.float32)
     for i, (part, road) in enumerate(izip(out_particles, out_roads)):
       parameters[i] = part.to_parameters()
-      variables[i] = road.to_variables()
-      #variables[i] = road.to_variables(use_sim_tp=True)
+      #variables[i] = road.to_variables()
+      variables[i] = road.to_variables(use_sim_tp=True)
+    remove_zeros = ~variables[:,nlayers*3:nlayers*4].all(axis=1)  # when hits_mask is all 1
     outfile = 'histos_tba.npz'
-    np.savez_compressed(outfile, parameters=parameters, variables=variables)
+    np.savez_compressed(outfile, parameters=parameters[remove_zeros], variables=variables[remove_zeros])
 
 
 # ______________________________________________________________________________
@@ -1164,10 +1211,10 @@ elif analysis == "rates":
       roads = recog.run(evt.hits)
       clean_roads = clean.run(roads)
       variables = np.array([road.to_variables() for road in clean_roads], dtype=np.float32)
-      variables_1, predictions = ptassign.run(variables)
-      emtf2023_tracks = trkprod.run(clean_roads, variables_1, predictions)
+      variables_1, predictions, chi2_vars = ptassign.run(variables)
+      emtf2023_tracks = trkprod.run(clean_roads, variables_1, predictions, chi2_vars)
 
-      if ievt < 100:
+      if ievt < 20 and False:
         print("evt {0} has {1} roads, {2} clean roads, {3} tracks, {4} old tracks".format(ievt, len(roads), len(clean_roads), len(emtf2023_tracks), len(evt.tracks)))
         for ipart, part in enumerate(evt.particles):
           if part.pt > 5.:
@@ -1178,7 +1225,7 @@ elif analysis == "rates":
           #for ihit, myhit in enumerate(myroad.hits):
           #  print(".. .. hit  {0} {1} {2} {3} {4} {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.emtf_bend))
         for itrk, mytrk in enumerate(emtf2023_tracks):
-          print(".. trk {0} {1} {2} {3} {4}".format(itrk, mytrk.id, len(mytrk.hits), mytrk.mode, mytrk.pt))
+          print(".. trk {0} {1} {2} {3} {4} {5} {6}".format(itrk, mytrk.id, len(mytrk.hits), mytrk.mode, mytrk.pt, mytrk.chi2, mytrk.ndof))
           for ihit, myhit in enumerate(mytrk.hits):
             print(".. .. hit  {0} {1} {2} {3} {4} {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.emtf_bend))
         for itrk, mytrk in enumerate(evt.tracks):
@@ -1203,7 +1250,7 @@ elif analysis == "rates":
       hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"
       fill_highest_pt()
 
-      select = lambda trk: True
+      select = lambda trk: trk and (trk.chi2/trk.ndof) <= 8.5
       tracks = emtf2023_tracks
       hname = "highest_emtf2023_absEtaMin0_absEtaMax2.5_qmin12_pt"
       fill_highest_pt()
@@ -1284,8 +1331,8 @@ elif analysis == "effie":
       roads = recog.run(evt.hits)
       clean_roads = clean.run(roads)
       variables = np.array([road.to_variables() for road in clean_roads], dtype=np.float32)
-      variables_1, predictions = ptassign.run(variables)
-      emtf2023_tracks = trkprod.run(clean_roads, variables_1, predictions)
+      variables_1, predictions, chi2_vars = ptassign.run(variables)
+      emtf2023_tracks = trkprod.run(clean_roads, variables_1, predictions, chi2_vars)
 
       if ievt < 20 and False:
         print("evt {0} has {1} roads, {2} clean roads, {3} tracks".format(ievt, len(roads), len(clean_roads), len(emtf2023_tracks)))
@@ -1317,7 +1364,7 @@ elif analysis == "effie":
       hname2 = "emtf_l1ptres_vs_genpt"
       fill_resolution()
 
-      select = lambda trk: trk.pt > 20.
+      select = lambda trk: trk and (trk.chi2/trk.ndof) <= 8.5 and (trk.pt > 20.)
       tracks = emtf2023_tracks
       hname1 = "emtf2023_eff_vs_genpt_l1pt20"
       hname2 = "emtf2023_eff_vs_geneta_l1pt20"
