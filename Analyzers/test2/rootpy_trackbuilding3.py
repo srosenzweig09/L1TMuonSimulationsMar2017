@@ -683,12 +683,12 @@ class PtAssignment(object):
     self.x_copy -= self.x_mean
     self.x_copy /= self.x_std
 
-    ## Remove outlier hits by checking hit thetas
-    #x_theta_tmp = np.abs(self.x_theta) > 4.0
-    #self.x_phi  [x_theta_tmp] = np.nan
-    #self.x_theta[x_theta_tmp] = np.nan
-    #self.x_bend [x_theta_tmp] = np.nan
-    #self.x_mask [x_theta_tmp] = 1.0
+    # Remove outlier hits by checking hit thetas
+    x_theta_tmp = np.abs(self.x_theta) > 4.0
+    self.x_phi  [x_theta_tmp] = np.nan
+    self.x_theta[x_theta_tmp] = np.nan
+    self.x_bend [x_theta_tmp] = np.nan
+    self.x_mask [x_theta_tmp] = 1.0
 
     ## Something wrong with GE2/1?
     #bad_ge21 = 23
@@ -700,7 +700,7 @@ class PtAssignment(object):
     # Add variables: theta_median and mode variables
     self.x_theta_median -= 3  # scaled to [0,1]
     self.x_theta_median /= 83
-    hits_to_station = np.array((5,5,1,1,1,2,2,2,2,3,3,4,4,1,1,2,3,3,3,4,4,4,5,2,1), dtype=np.int32)  # '5' denotes ME1/1
+    hits_to_station = np.array((5,5,1,1,1,2,2,2,2,3,3,4,4,1,1,2,3,3,3,4,4,4,5,2,5), dtype=np.int32)  # '5' denotes ME1/1
     assert(len(hits_to_station) == nlayers)
     self.x_mode_vars = np.zeros((self.nentries, 5), dtype=np.float32)
     self.x_mode_vars[:,0] = np.any(self.x_mask[:,hits_to_station == 5] == 0, axis=1)
