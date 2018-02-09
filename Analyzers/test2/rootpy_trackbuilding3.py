@@ -1,15 +1,16 @@
 import numpy as np
 np.random.seed(2023)
 
+import os, sys, time
 from itertools import izip
-import sys
-import time
 #import concurrent.futures
 from rootpy.plotting import Hist, Hist2D, Graph, Efficiency
 from rootpy.tree import Tree, TreeChain, TreeModel, FloatCol, IntCol, ShortCol
 from rootpy.io import root_open
-from ROOT import gROOT
+from rootpy.memory.keepalive import keepalive
+from ROOT import gROOT, TH1
 gROOT.SetBatch(True)
+TH1.AddDirectory(False)
 
 
 # ______________________________________________________________________________
@@ -17,6 +18,18 @@ gROOT.SetBatch(True)
 
 # Enums
 kDT, kCSC, kRPC, kGEM, kTT = 0, 1, 2, 3, 20
+
+# Globals
+eta_bins = [1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4]
+#pt_bins = [-0.2, -0.190937, -0.180533, -0.169696, -0.158343, -0.143231, -0.123067, -0.0936418, 0.0895398, 0.123191, 0.142493, 0.157556, 0.169953, 0.180755, 0.190829, 0.2]
+pt_bins = [-0.2, -0.18, -0.16, -0.133333, -0.10, -0.05, 0.05, 0.10, 0.133333, 0.16, 0.18, 0.2]
+assert(len(eta_bins) == 6+1)
+assert(len(pt_bins) == 11+1)
+
+nlayers = 25  # 13 (CSC) + 9 (RPC) + 3 (GEM)
+are_csc_layers = np.zeros(nlayers, dtype=np.bool)
+are_csc_layers[:13] = True
+
 
 # Functions
 def delta_phi(lhs, rhs):  # in radians
@@ -80,19 +93,23 @@ def find_sector(phi):  # phi in radians
     sector = 1 + dphi
   return sector
 
+def find_endcap(eta):
+  endcap = +1 if eta >= 0. else -1
+  return endcap
 
-# Globals
-eta_bins = [1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4]
-#pt_bins = [-0.2, -0.190937, -0.180533, -0.169696, -0.158343, -0.143231, -0.123067, -0.0936418, 0.0895398, 0.123191, 0.142493, 0.157556, 0.169953, 0.180755, 0.190829, 0.2]
-pt_bins = [-0.2, -0.18, -0.16, -0.133333, -0.10, -0.05, 0.05, 0.10, 0.133333, 0.16, 0.18, 0.2]
-assert(len(eta_bins) == 6+1)
-assert(len(pt_bins) == 11+1)
+def find_endsec(endcap, sector):
+  endsec = (sector - 1) if endcap == 1 else (sector - 1 + 6)
+  return endsec
 
-nlayers = 25  # 13 (CSC) + 9 (RPC) + 3 (GEM)
-are_csc_layers = np.zeros(nlayers, dtype=np.bool)
-are_csc_layers[:13] = True
+def find_pt_bin(pt):
+  ipt = np.digitize((pt,), pt_bins[1:])[0]  # skip lowest edge
+  ipt = np.clip(ipt, 0, len(pt_bins)-2)
+  return ipt
 
-safe_ipt = lambda x: np.clip(x, 0, len(pt_bins)-2)
+def find_eta_bin(eta):
+  ieta = np.digitize((abs(part.eta),), eta_bins[1:])[0]  # skip lowest edge
+  ieta = np.clip(ieta, 0, len(eta_bins)-2)
+  return ieta
 
 
 # More functions
@@ -172,7 +189,7 @@ def emtf_layer(hit):
 # Decide EMTF hit bend
 class EMTFBend(object):
   def __init__(self):
-    self.lut = (5, -5, 4, -4, 3, -3, 2, -2, 1, -1, 0)
+    self.lut = np.array([5, -5, 4, -4, 3, -3, 2, -2, 1, -1, 0], dtype=np.int32)
 
   def get(self, hit):
     if hit.type == kCSC:
@@ -188,7 +205,7 @@ def emtf_bend(hit):
 # Decide EMTF road quality (by pT)
 class EMTFRoadQuality(object):
   def __init__(self):
-    self.best_ipt = np.digitize([0.], pt_bins[1:])[0]  # skip lowest edge
+    self.best_ipt = find_pt_bin(0.)
 
   def get(self, ipt):
     return self.best_ipt - abs(ipt - self.best_ipt)
@@ -265,9 +282,8 @@ class EMTFPGunWeight(object):
     self.lut = c
 
   def get(self, part):
-    ipt = np.digitize([part.invpt], pt_bins[1:])[0]  # skip lowest edge
-    ieta = np.digitize([abs(part.eta)], eta_bins[1:])[0]  # skip lowest edge
-    ipt = safe_ipt(ipt)
+    ipt = find_pt_bin(part.invpt)
+    ieta = find_eta_bin(part.eta)
     index = (ipt, ieta)
     return self.lut[index]
 
@@ -275,7 +291,7 @@ anemtfpgunweight = EMTFPGunWeight()
 def emtf_pgun_weight(part):
   return anemtfpgunweight.get(part)
 
-
+# Extrapolate from paramter space to EMTF space
 class EMTFExtrapolation(object):
   def __init__(self):
     self.theta_bins = (14, 0.5, 1.9)
@@ -302,7 +318,8 @@ class EMTFExtrapolation(object):
         self.loaded = True
     index = (self.find_theta_bin(part), self.find_pt_bin(part))
     c = self.lut[index]
-    exphi = part.phi + c * (part.invpt * np.sinh(1.8) / np.sinh(abs(part.eta)))
+    dphi = c * (part.invpt * np.sinh(1.8) / np.sinh(abs(part.eta)))
+    exphi = part.phi + dphi  # in radians
     return exphi
 
 anemtfextrapolation = EMTFExtrapolation()
@@ -362,24 +379,24 @@ class Road(object):
     self.mode = mode
     self.quality = quality
     self.sort_code = sort_code
+    self.iphi_corr = 0.
 
-  def to_variables(self, use_sim_tp=False):
+  def to_variables(self):
     amap = {}
-    #np.random.shuffle(self.hits)  # pick a random hit for now
+    np.random.shuffle(self.hits)  # randomize the order
     for hit in self.hits:
       hit_lay = hit.emtf_layer
-      if (not use_sim_tp) or (use_sim_tp and hit.sim_tp == True):
-        if hit_lay not in amap:
-          amap[hit_lay] = hit
+      if hit_lay not in amap:
+        amap[hit_lay] = hit
     #
-    if not use_sim_tp:
-      tmp_thetas =[v.emtf_theta for k, v in amap.iteritems()]
-      tmp_theta =  np.median(tmp_thetas, overwrite_input=True)
-      for hit in self.hits:
-        hit_lay = hit.emtf_layer
-        hit_check = amap[hit_lay]
-        if abs(hit.emtf_theta - tmp_theta) < abs(hit_check.emtf_theta - tmp_theta):
-          amap[hit_lay] = hit
+    # Pick closest to median theta
+    tmp_thetas =[v.emtf_theta for k, v in amap.iteritems()]
+    tmp_theta =  np.median(tmp_thetas, overwrite_input=True)
+    for hit in self.hits:
+      hit_lay = hit.emtf_layer
+      hit_check = amap[hit_lay]
+      if abs(hit.emtf_theta - tmp_theta) < abs(hit_check.emtf_theta - tmp_theta):
+        amap[hit_lay] = hit
     #
     hits_phi = np.zeros(nlayers, dtype=np.float32) + np.nan
     hits_theta = np.zeros(nlayers, dtype=np.float32) + np.nan
@@ -389,10 +406,10 @@ class Road(object):
       hits_phi[lay] = hit.emtf_phi
       hits_theta[lay] = hit.emtf_theta
       hits_bend[lay] = hit.emtf_bend
-      hits_mask[lay] = False
+      hits_mask[lay] = 0.0
     #
     (endcap, sector, ipt, ieta, iphi) = self.id
-    road_info = [ipt, ieta, iphi]
+    road_info = [ipt, ieta, iphi, self.iphi_corr]
     variables = np.hstack((hits_phi, hits_theta, hits_bend, hits_mask, road_info))
     return variables
 
@@ -409,12 +426,25 @@ class Track(object):
     self.chi2 = chi2
     self.ndof = ndof
 
+def particles_to_parameters(particles):
+  parameters = np.zeros((len(particles), 3), dtype=np.float32)
+  for i, part in enumerate(particles):
+    parameters[i] = part.to_parameters()
+  return parameters
+
+def roads_to_variables(roads):
+  variables = np.zeros((len(roads), (nlayers * 4) + 4), dtype=np.float32)
+  for i, road in enumerate(roads):
+    variables[i] = road.to_variables()
+  return variables
+
+
+# Pattern recognition module
 class PatternRecognition(object):
   def __init__(self, bank):
     self.bank = bank
 
   def _apply_patterns(self, endcap, sector, ipt_range, ieta_range, iphi_range, sector_hits):
-    amap = {}
 
     # Retrieve patterns with (ipt, ieta, lay, pattern)
     ipt_slice = slice(ipt_range[0], ipt_range[-1]+1, None)
@@ -424,6 +454,8 @@ class PatternRecognition(object):
     pattern_iphi = np.arange(iphi_range[0], iphi_range[-1]+1, dtype=np.int32)
 
     # Loop over hits
+    amap = {}  # road_id -> list of 'myhit'
+
     for ihit, hit in enumerate(sector_hits):
       # Make hit coordinates
       #hit_x = hit.emtf_phi - (pattern_iphi * 32 - 16)  # multiply by 'quadstrip' unit (4 * 8)
@@ -439,7 +471,7 @@ class PatternRecognition(object):
       hit_sim_tp = (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)
       myhit = Hit(hit_id, hit.bx, hit_lay, hit.emtf_phi, hit.emtf_theta, emtf_bend(hit), hit_sim_tp)
 
-      # Get results
+      # Associate hits to road ids
       for index, condition in np.ndenumerate(mask):
         if condition:  # good hit
           ipt = ipt_range[index[0]]
@@ -481,10 +513,10 @@ class PatternRecognition(object):
   def run(self, hits, part=None):
     roads = []
 
-    fake_modes = np.zeros(12, dtype=np.int32)
+    fake_modes = np.zeros(12, dtype=np.int32)  # provide early exit
     for ihit, hit in enumerate(hits):
       if hit.bx in (-1,0,+1):
-        hit.endsec = (hit.sector - 1) if hit.endcap == 1 else (hit.sector - 1 + 6)
+        hit.endsec = find_endsec(hit.endcap, hit.sector)
         hit.lay = emtf_layer(hit)
         assert(hit.lay != -99)
         if hit.type == kCSC:  # at least 2 CSC hits
@@ -493,9 +525,9 @@ class PatternRecognition(object):
     # Loop over sector processors
     for endcap in (-1, +1):
       for sector in (1, 2, 3, 4, 5, 6):
-        endsec = (sector - 1) if endcap == 1 else (sector - 1 + 6)
+        endsec = find_endsec(endcap, sector)
         fake_mode = fake_modes[endsec]
-        early_exit = sum([(fake_mode>>3) & 1, (fake_mode>>2) & 1, (fake_mode>>1) & 1, (fake_mode>>0) & 1]) < 2  # at least 2 CSC hits
+        early_exit = np.count_nonzero([fake_mode & (1<<3), fake_mode & (1<<2), fake_mode & (1<<1), fake_mode & (1<<0)]) < 2  # at least 2 CSC hits
         if early_exit:  continue
 
         # Patterns to run
@@ -509,20 +541,25 @@ class PatternRecognition(object):
 
         # Cheat using gen particle info
         if part is not None:
+          if part.ipt != find_pt_bin(0.):  # don't use MC info at the highest pT because of muon showering
+            sector_hits = [hit for hit in hits if hit.bx in (-1,0,+1) and hit.endsec == endsec and hit.sim_tp1 == 0 and hit.sim_tp2 == 0]
           #ipt_range = [x for x in xrange(part.ipt-1, part.ipt+1+1) if 0 <= x < len(pt_bins)-1]
           ipt_range = xrange(0,(len(pt_bins)-1)//2+1) if part.q < 0 else xrange((len(pt_bins)-1)//2, len(pt_bins)-1)
           ieta_range = [x for x in xrange(part.ieta-1, part.ieta+1+1) if 0 <= x < len(eta_bins)-1]
           tmp_phis = [hit.emtf_phi for hit in sector_hits if hit.type == kCSC and hit.station >= 2]
+          if len(tmp_phis) == 0:  continue
           #tmp_phi = np.mean(tmp_phis)
           tmp_phi = np.median(tmp_phis, overwrite_input=True)
           #iphi = int(tmp_phi/32)  # divide by 'quadstrip' unit (4 * 8)
           iphi = int(tmp_phi/16)  # divide by 'doublestrip' unit (2 * 8)
-          iphi_range = xrange(iphi-6, iphi+6+1)
+          iphi_range = xrange(iphi-8, iphi+8+1)
 
-        roads_tmp = self._apply_patterns(endcap, sector, ipt_range, ieta_range, iphi_range, sector_hits)
-        roads += roads_tmp
+        sector_roads = self._apply_patterns(endcap, sector, ipt_range, ieta_range, iphi_range, sector_hits)
+        roads += sector_roads
     return roads
 
+
+# Road cleaning module
 class RoadCleaning(object):
   def __init__(self):
     pass
@@ -578,9 +615,9 @@ class RoadCleaning(object):
         # Intersect: !((x2 < y1) || (x1 > y2)) = (x2 >= y1) and (x1 <= y2)
         for j, road_to_check in enumerate(clean_roads[:i]):
           gj = groupinfo[road_to_check.id]
-          get_endsec = lambda x: x[:2]
-          # Allow +/-2 due to extrapolation-to-ME3 error
-          if (get_endsec(road.id) == get_endsec(road_to_check.id)) and (gi[1] >= gj[0]-2) and (gi[0] <= gj[1]+2):
+          _get_endsec = lambda x: x[:2]
+          # Allow +/-2 due to extrapolation-to-EMTF error
+          if (_get_endsec(road.id) == _get_endsec(road_to_check.id)) and (gi[1] >= gj[0]-2) and (gi[0] <= gj[1]+2):
             keep = False
             break
 
@@ -606,31 +643,27 @@ class RoadCleaning(object):
           keep = False
         if keep:
           break
-      clean_roads.append(road)
-      #
-      get_iphi = lambda x: x[4]
-      g = (get_iphi(group[0]), get_iphi(group[-1]))  # first and last road_id's in the iphi group
-      groupinfo[road_id] = g
 
-    # sort the roads by (mode, quality)
+      _get_iphi = lambda x: x[4]
+      g = (_get_iphi(group[0]), _get_iphi(group[-1]))  # first and last road_id's in the iphi group
+      groupinfo[road_id] = g
+      road.iphi_corr = float(_get_iphi(road.id) - g[0]) / (g[1] - g[0] + 1)
+      clean_roads.append(road)
+
+    # sort the roads + kill the siblings
     sorted_clean_roads = []
     for road in self._sortby(clean_roads, groupinfo):
       sorted_clean_roads.append(road)
     return sorted_clean_roads
 
+
+# pT assignment module
 class PtAssignment(object):
   def __init__(self, kerasfile):
-    (encoder, model, model_weights, bpca) = kerasfile
+    (encoder, model, model_weights) = kerasfile
     with np.load(encoder) as loaded:
       self.x_mean = loaded['x_mean']
       self.x_std  = loaded['x_std']
-
-    with np.load(bpca) as loaded:
-      self.Vt_all = loaded['Vt_all']
-      self.v_k_all = loaded['v_k_all']
-      self.v_n_all = loaded['v_n_all']
-      self.v_mean_all = loaded['v_mean_all']
-      self.v_std_all = loaded['v_std_all']
 
     from keras.models import load_model
     import keras.backend as K
@@ -639,7 +672,6 @@ class PtAssignment(object):
       squared_loss = 0.5*K.square(x)
       absolute_loss = delta * (x - 0.5*delta)
       xx = K.switch(x < delta, squared_loss, absolute_loss)
-      #return K.sum(xx, axis=-1)
       return K.mean(xx, axis=-1)
 
     self.loaded_model = load_model(model, custom_objects={'huber_loss': huber_loss})
@@ -653,7 +685,7 @@ class PtAssignment(object):
       return (x_new, y, z)
 
     assert(len(x.shape) == 2)
-    assert(x.shape[1] == (nlayers * 4) + 3)
+    assert(x.shape[1] == (nlayers * 4) + 4)
 
     self.nentries = x.shape[0]
     self.x_copy = x.copy()
@@ -663,7 +695,7 @@ class PtAssignment(object):
     self.x_theta = self.x_copy[:, nlayers*1:nlayers*2]
     self.x_bend  = self.x_copy[:, nlayers*2:nlayers*3]
     self.x_mask  = self.x_copy[:, nlayers*3:nlayers*4].astype(np.bool)  # this makes a copy
-    self.x_road  = self.x_copy[:, nlayers*4:nlayers*5]  # ipt, ieta, iphi
+    self.x_road  = self.x_copy[:, nlayers*4:nlayers*5]  # ipt, ieta, iphi, iphi_corr
 
     # Subtract median phi from hit phis
     #self.x_phi_median    = self.x_road[:, 2] * 32 - 16  # multiply by 'quadstrip' unit (4 * 8)
@@ -720,37 +752,12 @@ class PtAssignment(object):
     # Predict y
     y = self.loaded_model.predict(x_new)
 
-    # PCA stuff
-    z = self._bpca()
+    # chi2 stuff
+    z = np.array([[0., 1.]] * len(x), dtype=np.float32)  #FIXME
     return (x_new, y, z)
 
-  def _bpca(self):
-    x_copy = np.hstack((self.x_phi, self.x_theta, self.x_bend))
-    x_mask_copy = self.x_mask.copy()
 
-    result = np.zeros((x_copy.shape[0], 3), dtype=np.float32)
-
-    for i in xrange(x_copy.shape[0]):
-      zone = self.x_ieta[i]
-      Vt = self.Vt_all[zone]
-      v_k = self.v_k_all[zone]
-      v_n = self.v_n_all[zone]
-      v_mean = self.v_mean_all[zone]
-      v_std = self.v_std_all[zone]
-
-      x_transformed = np.dot(x_copy[i], Vt.T)
-      x_transformed -= v_mean
-      x_transformed /= v_std
-      x_transformed **= 2
-      x_transformed = x_transformed[v_k:v_n]
-
-      chi2 = np.sum(x_transformed)
-      ndof = np.sum(x_copy[i] != 0.0) - v_k
-      ndof_mask = np.sum(~x_mask_copy[i])
-      result[i] = (chi2, ndof, ndof_mask)
-    return result
-
-
+# Track producer module
 class TrackProducer(object):
   def __init__(self):
     pass
@@ -781,14 +788,13 @@ class TrackProducer(object):
         if x:
           trk_mode |= (1 << (4 - station))
 
-      trk_ipt = np.digitize([mypreds[0]], pt_bins[1:])[0]  # skip lowest edge
-      trk_ipt = safe_ipt(trk_ipt)
+      ipt = find_pt_bin(mypreds[0])
       quality1 = myroad.quality
-      quality2 = emtf_road_quality(trk_ipt)
+      quality2 = emtf_road_quality(ipt)
 
       bx_counter1 = 0  # count hits with BX <= -1
       bx_counter2 = 0  # count hits with BX <= 0
-      for hit in myroad.hits:
+      for hit in myroad.hits:  #FIXME
         if hit.bx <= -1:
           bx_counter1 += 1
         if hit.bx <= 0:
@@ -798,20 +804,22 @@ class TrackProducer(object):
       if emtf_is_singlemu(trk_mode) and quality2 <= (quality1+1) and trk_bx_zero:
         (endcap, sector, ipt, ieta, iphi) = myroad.id
         trk_id = (endcap, sector)
-        trk_pt = np.abs(1.0/mypreds[0])
+        trk_pt = mypreds[0]
+        if trk_pt != 0.0:
+          trk_pt = np.abs(1.0/trk_pt)
         trk_q  = np.sign(mypreds[0])
         trk = Track(trk_id, myroad.hits, trk_mode, trk_pt, trk_q, iphi, x_theta_median, mychi2[0], mychi2[1])
         tracks.append(trk)
     return tracks
 
+
 # ______________________________________________________________________________
 # Book histograms
 histograms = {}
-histogram2Ds = {}
 
 # Efficiency
-eff_pt_bins = [0., 2., 4., 6., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 35., 40., 45., 50., 60., 80., 120.]
-for k in ["denom", "numer"]:
+eff_pt_bins = (0., 2., 4., 6., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 35., 40., 45., 50., 60., 80., 120.)
+for k in ("denom", "numer"):
   hname = "eff_vs_genpt_%s" % k
   histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
   histograms[hname].Sumw2()
@@ -824,86 +832,112 @@ for k in ["denom", "numer"]:
   histograms[hname] = Hist(32, -3.2, 3.2, name=hname, title="; gen #phi", type='F')
   histograms[hname].Sumw2()
 
+# Rates
+hname = "nevents"
+histograms[hname] = Hist(5, 0, 5, name=hname, title="; count", type='F')
+for m in ("emtf", "emtf2023"):
+  hname = "highest_%s_absEtaMin0_absEtaMax2.5_qmin12_pt" % m
+  histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
+
+# Effie
+for m in ("emtf", "emtf2023"):
+  for k in ("denom", "numer"):
+    hname = "%s_eff_vs_genpt_l1pt20_%s" % (m,k)
+    histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
+    hname = "%s_eff_vs_geneta_l1pt20_%s" % (m,k)
+    histograms[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
+
+  hname = "%s_l1pt_vs_genpt" % m
+  histograms[hname] = Hist2D(100, -0.3, 0.3, 300, -0.3, 0.3, name=hname, title="; gen 1/p_{T} [1/GeV]; 1/p_{T} [1/GeV]", type='F')
+  hname = "%s_l1ptres_vs_genpt" % m
+  histograms[hname] = Hist2D(100, -0.3, 0.3, 300, -2, 2, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
+
 
 # ______________________________________________________________________________
-# Open file
-infile = 'ntuple_SingleMuon_Toy_5GeV_add.3.root'
-#infile_r = root_open(infile)
-#tree = infile_r.ntupler.tree
-tree = TreeChain('ntupler/tree', [infile])
-print('[INFO] Opening file: %s' % infile)
-
-# Define collection
-tree.define_collection(name='hits', prefix='vh_', size='vh_size')
-tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
-tree.define_collection(name='particles', prefix='vp_', size='vp_size')
+# Settings
 
 # Get number of events
 #maxEvents = -1
 #maxEvents = 2000000
-maxEvents = 10000
-print('[INFO] Using max events: %i' % maxEvents)
+maxEvents = 1000
+
+# Condor or not
+use_condor = ("CONDOR_EXEC" in os.environ)
 
 # Analysis mode
+#analysis = "verbose"
 #analysis = "training"
 #analysis = "application"
 #analysis = "rates"
 analysis = "effie"
-print('[INFO] Using analysis mode: %s' % analysis)
+if use_condor:
+  analysis = sys.argv[1]
+
+# Job
+jobid = 0
+if use_condor:
+  jobid = int(sys.argv[2])
+
+print('[INFO] Using cmssw         : %s' % os.environ['CMSSW_VERSION'])
+print('[INFO] Using condor        : %i' % use_condor)
+print('[INFO] Using max events    : %i' % maxEvents)
+print('[INFO] Using analysis mode : %s' % analysis)
+print('[INFO] Using job id        : %s' % jobid)
 
 # Other stuff
-bankfile = 'histos_tb.8.npz'
+bankfile = 'histos_tb.9.npz'
 
-kerasfile = ['encoder.8.npz', 'model.8.h5', 'model_weights.8.h5', 'bpca.8.npz']
+kerasfile = ['encoder.9.npz', 'model.9.h5', 'model_weights.9.h5']
 
-#pufiles = ['root://cmsxrootd.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU140/ParticleGuns/CRAB3/180116_214607/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(100)]
-#pufiles = ['root://cmsxrootd.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
-pufiles = ['root://cmsio2.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
+infile_r = None  # input file handle
+
+def load_pgun():
+  global infile_r
+  infile = 'ntuple_SingleMuon_Toy_5GeV_add.3.root'
+  if use_condor:
+    infile = 'root://cmsio2.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/SingleMuon_Toy_5GeV/'+infile
+  infile_r = root_open(infile)
+  tree = infile_r.ntupler.tree
+  #tree = TreeChain('ntupler/tree', [infile])
+  print('[INFO] Opening file: %s' % infile)
+
+  # Define collection
+  tree.define_collection(name='hits', prefix='vh_', size='vh_size')
+  tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
+  tree.define_collection(name='particles', prefix='vp_', size='vp_size')
+  return tree
+
+def load_minbias(j):
+  global infile_r
+  #pufiles = ['root://cmsxrootd.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
+  pufiles = ['root://cmsio2.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
+  infile = pufiles[j]
+  infile_r = root_open(infile)
+  tree = infile_r.ntupler.tree
+  print('[INFO] Opening file: %s' % infile)
+
+  # Define collection
+  tree.define_collection(name='hits', prefix='vh_', size='vh_size')
+  tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
+  tree.define_collection(name='particles', prefix='vp_', size='vp_size')
+  return tree
+
+def unload_tree():
+  global infile_r
+  infile_r.close()
 
 
 # ______________________________________________________________________________
-# Begin job
+# Analysis: verbose
+if analysis == "verbose":
+  tree = load_pgun()
 
-# Analysis: training
-if analysis == "training":
+  # Loop over events
+  for ievt, evt in enumerate(tree):
+    if maxEvents != -1 and ievt == maxEvents:
+      break
 
-  # 3-dimensional arrays of lists
-  # [ipt][ieta][lay]
-  patterns_phi = [[[[] for k in xrange(nlayers)] for j in xrange(len(eta_bins)-1)] for i in xrange(len(pt_bins)-1)]
-  patterns_theta = [[[[] for k in xrange(nlayers)] for j in xrange(len(eta_bins)-1)] for i in xrange(len(pt_bins)-1)]
-  e = EMTFExtrapolation()
-  patterns_exphi = [[[] for j in xrange(e.pt_bins[0])] for i in xrange(e.theta_bins[0])]
-
-# Analysis: application
-elif analysis == "application":
-
-  # Workers
-  bank = PatternBank(bankfile)
-  recog = PatternRecognition(bank)
-  clean = RoadCleaning()
-  out_particles = []
-  out_roads = []
-  npassed, ntotal = 0, 0
-
-# Analysis: rates, effie
-elif analysis == "rates" or analysis == "effie":
-  pass
-
-
-# ______________________________________________________________________________
-# Loop over events
-
-for ievt, evt in enumerate(tree):
-  if maxEvents != -1 and ievt == maxEvents:
-    break
-
-  # ____________________________________________________________________________
-  # Verbose
-
-  verbose = False
-
-  if verbose:
-    if (ievt % 1 == 0):  print("Processing event: {0}".format(ievt))
+    print("Processing event: {0}".format(ievt))
 
     # Hits
     for ihit, hit in enumerate(evt.hits):
@@ -914,45 +948,70 @@ for ievt, evt in enumerate(tree):
     # Gen particles
     for ipart, part in enumerate(evt.particles):
       print(".. part {0} {1} {2} {3} {4} {5}".format(ipart, part.pt, part.phi, part.eta, part.theta, part.q))
-  else:
-    if (ievt % 1000 == 0):  print("Processing event: {0}".format(ievt))
 
+  # End loop over events
+  unload_tree()
+
+
+
+
+# ______________________________________________________________________________
+# Analysis: training
+elif analysis == "training":
+  tree = load_pgun()
+
+  # 3-dimensional arrays of lists
+  # [ipt][ieta][lay]
+  patterns_phi = [[[[] for k in xrange(nlayers)] for j in xrange(len(eta_bins)-1)] for i in xrange(len(pt_bins)-1)]
+  patterns_theta = [[[[] for k in xrange(nlayers)] for j in xrange(len(eta_bins)-1)] for i in xrange(len(pt_bins)-1)]
+
+  # 2-dimensional arrays of lists
+  # [itheta][ipt]
+  e = EMTFExtrapolation()
+  patterns_exphi = [[[] for j in xrange(e.pt_bins[0])] for i in xrange(e.theta_bins[0])]
 
   # ____________________________________________________________________________
-  # Analysis: training
+  # Loop over events
+  for ievt, evt in enumerate(tree):
+    if maxEvents != -1 and ievt == maxEvents:
+      break
 
-  if analysis == "training":
+    if (ievt % 1000 == 0):  print("Processing event: {0}".format(ievt))
 
     part = evt.particles[0]  # particle gun
     part.invpt = np.true_divide(part.q, part.pt)
     #part.exphi = extrapolate_to_emtf(part.phi, part.invpt, part.eta)
     part.exphi = emtf_extrapolation(part)
     part.sector = find_sector(part.exphi)
-    part.endcap = 1 if part.eta >= 0. else -1
+    part.endcap = find_endcap(part.eta)
     part.emtf_phi = calc_phi_loc_int(np.rad2deg(part.exphi), part.sector)
     part.emtf_theta = calc_theta_int(calc_theta_deg_from_eta(part.eta), part.endcap)
 
     smear = True
     if smear:
-      # CLCT spatial resolution (halfstrip) = (w/2)/sqrt(12)
-      pitch = 2.3271e-3  # in radians
-      sigma = (pitch/2)/np.sqrt(12)
-      sigma *= 2  # this is an arbitrary scale factor
+      # Use 'doublestrip' resolution
+      sigma = 16/np.sqrt(12)
+      sigma *= 0.5  # this is an arbitrary scale factor
       smear = sigma * np.random.normal()
       part.emtf_phi_nosmear = part.emtf_phi
-      part.emtf_phi = calc_phi_loc_int(np.rad2deg(part.exphi + smear), part.sector)
+      part.emtf_phi = part.emtf_phi + smear
+    #if smear:
+    #  # CLCT spatial resolution (halfstrip) = (w/2)/sqrt(12)
+    #  pitch = 2.3271e-3  # in radians
+    #  sigma = (pitch/2)/np.sqrt(12)
+    #  sigma *= 2  # this is an arbitrary scale factor
+    #  smear = sigma * np.random.normal()
+    #  part.emtf_phi_nosmear = part.emtf_phi
+    #  part.emtf_phi = calc_phi_loc_int(np.rad2deg(part.exphi + smear), part.sector)
 
     if ievt < 20:
       print("evt {0} has {1} particles and {2} hits".format(ievt, len(evt.particles), len(evt.hits)))
-      print(".. part invpt: {0} pt: {1} eta: {2} phi: {3} exphi: {4} se: {5} ph: {6} th: {7}".format(part.invpt, part.pt, part.eta, part.phi, part.exphi, part.sector, part.emtf_phi, part.emtf_theta))
+      print(".. part invpt: {0} pt: {1} eta: {2} phi: {3} exphi: {4} sec: {5} ph: {6} th: {7}".format(part.invpt, part.pt, part.eta, part.phi, part.exphi, part.sector, part.emtf_phi, part.emtf_theta))
 
-    part.ipt = np.digitize([part.invpt], pt_bins[1:])[0]  # skip lowest edge
-    part.ieta = np.digitize([abs(part.eta)], eta_bins[1:])[0]  # skip lowest edge
-    part.ipt = safe_ipt(part.ipt)
-
+    part.ipt = find_pt_bin(part.invpt)
+    part.ieta = find_eta_bin(part.eta)
     the_patterns_phi = patterns_phi[part.ipt][part.ieta]
     the_patterns_theta = patterns_theta[0][part.ieta]  # no binning in pt
-
     e = EMTFExtrapolation()
     the_patterns_exphi = patterns_exphi[e.find_theta_bin(part)][e.find_pt_bin(part)]
 
@@ -963,59 +1022,178 @@ for ievt, evt in enumerate(tree):
       lay = emtf_layer(hit)
       assert(lay != -99)
       if ievt < 20:
-        print(".. hit {0} type: {1} st: {2} ri: {3} fr: {4} lay: {5} se: {6} ph: {7} th: {8} tp: {9}".format(ihit, hit.type, hit.station, hit.ring, hit.fr, lay, hit.sector, hit.emtf_phi, hit.emtf_theta, hit.sim_tp1))
+        print(".. hit {0} type: {1} st: {2} ri: {3} fr: {4} lay: {5} sec: {6} ph: {7} th: {8}".format(ihit, hit.type, hit.station, hit.ring, hit.fr, lay, hit.sector, hit.emtf_phi, hit.emtf_theta))
 
-      if hit.sector == part.sector and hit.bx == 0 and hit.sim_tp1 == 0 and hit.sim_tp2 == 0:
+      if hit.endcap == part.endcap and hit.sector == part.sector and hit.sim_tp1 == 0 and hit.sim_tp2 == 0:
         the_patterns_phi[lay].append(hit.emtf_phi - part.emtf_phi)
         #the_patterns_theta[lay].append(hit.emtf_theta - part.emtf_theta)
         the_patterns_theta[lay].append(hit.emtf_theta)
 
-        if hit.type == kCSC and hit.station == 3:  # extrapolate to ME3
+        if hit.type == kCSC and hit.station == 3:  # extrapolation to EMTF using ME3
           dphi = delta_phi(np.deg2rad(hit.sim_phi), part.phi)
           dphi /= (part.invpt * np.sinh(1.8) / np.sinh(abs(part.eta)))
           the_patterns_exphi.append(dphi)
 
+  # End loop over events
+  unload_tree()
 
   # ____________________________________________________________________________
-  # Analysis: application
+  # Plot histograms
+  print('[INFO] Creating file: histos_tb.root')
+  with root_open('histos_tb.root', 'recreate') as f:
+    for i in xrange(len(pt_bins)-1):
+      for j in xrange(len(eta_bins)-1):
+        for k in xrange(nlayers):
+          hname = "patterns_phi_%i_%i_%i" % (i,j,k)
+          h1a = Hist(201, -402, 402, name=hname, title=hname, type='F')
+          for x in patterns_phi[i][j][k]:  h1a.fill(x)
+          h1a.Write()
 
-  elif analysis == "application":
+          hname = "patterns_theta_%i_%i_%i" % (i,j,k)
+          h1b = Hist(81, -40.5, 40.5, name=hname, title=hname, type='F')
+          for x in patterns_theta[i][j][k]:  h1b.fill(x)
+          h1b.Write()
+
+  # ____________________________________________________________________________
+  # Save objects
+  print('[INFO] Creating file: histos_tb.npz')
+  if True:
+    patterns_phi_tmp = patterns_phi
+    patterns_theta_tmp = patterns_theta
+    patterns_phi = np.zeros((len(pt_bins)-1, len(eta_bins)-1, nlayers, 3), dtype=np.int32)
+    patterns_theta = np.zeros((len(pt_bins)-1, len(eta_bins)-1, nlayers, 3), dtype=np.int32)
+    #
+    for i in xrange(len(pt_bins)-1):
+      for j in xrange(len(eta_bins)-1):
+        for k in xrange(nlayers):
+          patterns_phi_tmp_ijk = patterns_phi_tmp[i][j][k]
+          if len(patterns_phi_tmp_ijk) > 1000:
+            x = np.percentile(patterns_phi_tmp_ijk, [5, 50, 95], overwrite_input=True)
+            if k == 22 or k == 23 or k == 24:  # keep more GEMs
+              x = np.percentile(patterns_phi_tmp_ijk, [3.5, 50, 96.5], overwrite_input=True)
+            x = [int(round(xx)) for xx in x]
+            if (x[2] - x[0]) < 32:
+              old_x = x[:]
+              while (x[2] - x[0]) < 32:  # make sure the range is larger than twice the 'doublestrip' unit
+                x[0] -= 1
+                x[2] += 1
+              print(".. phi (%i,%i,%i) expanded from [%i,%i] to [%i,%i]" % (i,j,k,old_x[0],old_x[2],x[0],x[2]))
+            patterns_phi[i,j,k] = x
+
+          #patterns_theta_tmp_ijk = patterns_theta_tmp[i][j][k]
+          patterns_theta_tmp_ijk = patterns_theta_tmp[0][j][k]  # no binning in pt
+          if len(patterns_theta_tmp_ijk) > 1000:
+            x = np.percentile(patterns_theta_tmp_ijk, [2, 50, 98], overwrite_input=True)
+            x = [int(round(xx)) for xx in x]
+            patterns_theta[i,j,k] = x
+
+    # Mask layers by (ieta, lay)
+    valid_layers = [
+      (0,2), (0,3), (0,4), (0,7), (0,8), (0,10), (0,12), (0,13), (0,14), (0,15), (0,18), (0,21),
+      (1,2), (1,3), (1,7), (1,8), (1,10), (1,12), (1,13), (1,14), (1,15), (1,17), (1,18), (1,20), (1,21), (1,22),
+      (2,0), (2,1), (2,5), (2,6), (2,9), (2,10), (2,11), (2,12), (2,17), (2,20), (2,22), (2,23),
+      (3,0), (3,1), (3,5), (3,6), (3,9), (3,11), (3,16), (3,19), (3,20), (3,22), (3,23),
+      (4,0), (4,1), (4,5), (4,6), (4,9), (4,11), (4,16), (4,19), (4,22), (4,23),
+      (5,0), (5,1), (5,5), (5,6), (5,9), (5,11), (5,16), (5,19), (5,23),
+    ]
+    mask = np.ones_like(patterns_phi, dtype=np.bool)
+    for valid_layer in valid_layers:
+      mask[:,valid_layer[0],valid_layer[1],:] = False
+    patterns_phi[mask] = 0
+    patterns_theta[mask] = 0
+
+    # extrapolation to EMTF using ME3
+    overwrite_extrapolation = False
+    smooth_extrapolation = True
+    if overwrite_extrapolation:
+      patterns_exphi_tmp = patterns_exphi
+      patterns_exphi_tmp = np.asarray(patterns_exphi_tmp)
+      patterns_exphi = np.zeros_like(patterns_exphi_tmp, dtype=np.float32)
+      for index, x in np.ndenumerate(patterns_exphi_tmp):
+        if x:
+          patterns_exphi[index] = np.median(x, overwrite_input=True)
+      if smooth_extrapolation:
+        from scipy.interpolate import Rbf
+        patterns_exphi_tmp = patterns_exphi
+        patterns_exphi = np.zeros_like(patterns_exphi_tmp, dtype=np.float32)
+        e = EMTFExtrapolation()
+        x = [e.pt_bins[1] + (i+0.5)/e.pt_bins[0]*(e.pt_bins[2] - e.pt_bins[1]) for i in xrange(e.pt_bins[0])]
+        for index in np.ndindex(e.theta_bins[0]):
+          assert(len(x) == len(patterns_exphi_tmp[index]))
+          rbf = Rbf(x, patterns_exphi_tmp[index], smooth = 0.3, function='multiquadric')
+          patterns_exphi[index] = rbf(x)
+    else:
+      with np.load(bankfile) as data:
+        patterns_exphi = data['patterns_exphi']
+
+    outfile = 'histos_tb.npz'
+    np.savez_compressed(outfile, patterns_phi=patterns_phi, patterns_theta=patterns_theta, patterns_exphi=patterns_exphi)
+
+
+
+
+# ______________________________________________________________________________
+# Analysis: application
+elif analysis == "application":
+  tree = load_pgun()
+
+  # Workers
+  bank = PatternBank(bankfile)
+  recog = PatternRecognition(bank)
+  clean = RoadCleaning()
+  out_particles = []
+  out_roads = []
+  npassed, ntotal = 0, 0
+
+  # ____________________________________________________________________________
+  # Loop over events
+  for ievt, evt in enumerate(tree):
+    if maxEvents != -1 and ievt == maxEvents:
+      break
+
+    if (ievt % 1000 == 0):  print("Processing event: {0}".format(ievt))
 
     #roads = recog.run(evt.hits)
 
     # Cheat using gen particle info
     part = evt.particles[0]  # particle gun
     part.invpt = np.true_divide(part.q, part.pt)
-    part.ipt = np.digitize([part.invpt], pt_bins[1:])[0]  # skip lowest edge
-    part.ieta = np.digitize([abs(part.eta)], eta_bins[1:])[0]  # skip lowest edge
-    part.ipt = safe_ipt(part.ipt)
+    part.ipt = find_pt_bin(part.invpt)
+    part.ieta = find_eta_bin(part.eta)
 
     roads = recog.run(evt.hits, part)
     clean_roads = clean.run(roads)
 
     if len(clean_roads) > 0:
-      mypart = Particle(
-        pt = part.pt,
-        eta = part.eta,
-        phi = part.phi,
-        q = part.q,
-      )
+      mypart = Particle(part.pt, part.eta, part.phi, part.q)
       out_particles.append(mypart)
       out_roads.append(clean_roads[0])
 
     if ievt < 20:
       print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
-      print(".. part invpt: {0} pt: {1} eta: {2} phi: {3} ipt: {4} ieta: {5}".format(part.invpt, part.pt, part.eta, part.phi, part.ipt, part.ieta))
+      print(".. part invpt: {0} pt: {1} eta: {2} phi: {3}".format(part.invpt, part.pt, part.eta, part.phi))
+      part.exphi = emtf_extrapolation(part)
+      part.sector = find_sector(part.exphi)
+      part.endcap = find_endcap(part.eta)
+      part.emtf_phi = calc_phi_loc_int(np.rad2deg(part.exphi), part.sector)
+      part.emtf_theta = calc_theta_int(calc_theta_deg_from_eta(part.eta), part.endcap)
+      part_road_id = (part.endcap, part.sector, part.ipt, part.ieta, part.emtf_phi/16)
+      part_nhits = sum([1 for hit in evt.hits if hit.endcap == part.endcap and hit.sector == part.sector and hit.sim_tp1 == 0 and hit.sim_tp2 == 0])
+      print(".. part road id: {0} nhits: {1} exphi: {2} emtf_phi: {3}".format(part_road_id, part_nhits, part.exphi, part.emtf_phi))
+      #for ihit, hit in enumerate(evt.hits):
+      #  if hit.endcap == part.endcap and hit.sector == part.sector and hit.sim_tp1 == 0 and hit.sim_tp2 == 0:
+      #    hit_id = (hit.type, hit.station, hit.ring, hit.fr)
+      #    hit_sim_tp = (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)
+      #    print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}".format(ihit, hit_id, emtf_layer(hit), hit.emtf_phi, hit.emtf_theta, hit.bx, hit_sim_tp))
       for iroad, myroad in enumerate(roads):
-        print(".. road {0} {1} {2} {3} {4} {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
+        print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
       for iroad, myroad in enumerate(clean_roads):
-        print(".. croad {0} {1} {2} {3} {4} {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
+        print(".. croad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
         for ihit, myhit in enumerate(myroad.hits):
-          print(".. .. hit  {0} {1} {2} {3} {4} {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.emtf_bend))
+          print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.bx, myhit.sim_tp))
 
     # Quick efficiency
     trigger = len(clean_roads) > 0
-
     hname = "eff_vs_genpt_denom"
     histograms[hname].fill(part.pt)
     if trigger:
@@ -1035,121 +1213,15 @@ for ievt, evt in enumerate(tree):
         hname = "eff_vs_genphi_numer"
         histograms[hname].fill(part.phi)
 
-    # Keep statistics
+    # Quick statistics
     ntotal += 1
     if trigger:
       npassed += 1
 
+  # End loop over events
+  unload_tree()
 
   # ____________________________________________________________________________
-  # Analysis: rates, effie
-
-  elif analysis == "rates" or analysis == "effie":
-    break
-
-
-  continue  # end loop over events
-
-#infile_r.close()
-
-
-# ______________________________________________________________________________
-# End job
-
-# Analysis: training
-if analysis == "training":
-
-  # Plot histograms
-  print('[INFO] Creating file: histos_tb.root')
-  with root_open('histos_tb.root', 'recreate') as f:
-    for i in xrange(len(pt_bins)-1):
-      for j in xrange(len(eta_bins)-1):
-        for k in xrange(nlayers):
-          hname = "patterns_phi_%i_%i_%i" % (i,j,k)
-          h1a = Hist(201, -402, 402, name=hname, title=hname, type='F')
-          for x in patterns_phi[i][j][k]:  h1a.fill(x)
-          h1a.Write()
-
-          hname = "patterns_theta_%i_%i_%i" % (i,j,k)
-          h1b = Hist(81, -40.5, 40.5, name=hname, title=hname, type='F')
-          for x in patterns_theta[i][j][k]:  h1b.fill(x)
-          h1b.Write()
-
-  # Save objects
-  print('[INFO] Creating file: histos_tb.npz')
-  if True:
-    patterns_phi_tmp = patterns_phi
-    patterns_theta_tmp = patterns_theta
-    patterns_phi = np.zeros((len(pt_bins)-1, len(eta_bins)-1, nlayers, 3), dtype=np.int32)
-    patterns_theta = np.zeros((len(pt_bins)-1, len(eta_bins)-1, nlayers, 3), dtype=np.int32)
-    #
-    for i in xrange(len(pt_bins)-1):
-      for j in xrange(len(eta_bins)-1):
-        for k in xrange(nlayers):
-          patterns_phi_tmp_ijk = patterns_phi_tmp[i][j][k]
-          if len(patterns_phi_tmp_ijk) > 1000:
-            patterns_phi_tmp_ijk.sort()
-            x = np.percentile(patterns_phi_tmp_ijk, [5, 50, 95])
-            if k == 22 or k == 23 or k == 24:  # keep more GEMs
-              x = np.percentile(patterns_phi_tmp_ijk, [3.5, 50, 96.5])
-            x = [int(round(xx)) for xx in x]
-            while (x[2] - x[0]) < 32:  # make sure the range is larger than twice the 'doublestrip' unit
-              x[0] -= 1
-              x[2] += 1
-            patterns_phi[i,j,k] = x
-
-          #patterns_theta_tmp_ijk = patterns_theta_tmp[i][j][k]
-          patterns_theta_tmp_ijk = patterns_theta_tmp[0][j][k]  # no binning in pt
-          if len(patterns_theta_tmp_ijk) > 1000:
-            patterns_theta_tmp_ijk.sort()
-            x = np.percentile(patterns_theta_tmp_ijk, [2, 50, 98])
-            x = [int(round(xx)) for xx in x]
-            patterns_theta[i,j,k] = x
-
-    # Mask layers by (ieta, lay)
-    valid_layers = [
-      (0,2), (0,3), (0,4), (0,7), (0,8), (0,10), (0,12), (0,13), (0,14), (0,15), (0,18), (0,21),
-      (1,2), (1,3), (1,7), (1,8), (1,10), (1,12), (1,13), (1,14), (1,15), (1,17), (1,18), (1,20), (1,21), (1,22),
-      (2,0), (2,1), (2,5), (2,6), (2,9), (2,10), (2,11), (2,12), (2,17), (2,20), (2,22), (2,23),
-      (3,0), (3,1), (3,5), (3,6), (3,9), (3,11), (3,16), (3,19), (3,20), (3,22), (3,23),
-      (4,0), (4,1), (4,5), (4,6), (4,9), (4,11), (4,16), (4,19), (4,22), (4,23),
-      (5,0), (5,1), (5,5), (5,6), (5,9), (5,11), (5,16), (5,19), (5,23),
-    ]
-    mask = np.ones_like(patterns_phi, dtype=np.bool)
-    for valid_layer in valid_layers:
-      mask[:,valid_layer[0],valid_layer[1],:] = False
-    patterns_phi[mask] = 0
-    patterns_theta[mask] = 0
-
-    overwrite_extrapolation = False
-    smooth_extrapolation = True
-    if overwrite_extrapolation:
-      e = EMTFExtrapolation()
-      patterns_exphi_tmp = patterns_exphi
-      patterns_exphi_tmp = np.asarray(patterns_exphi_tmp)
-      patterns_exphi = np.zeros(patterns_exphi_tmp.shape, dtype=np.float32)
-      for index, x in np.ndenumerate(patterns_exphi_tmp):
-        if x:
-          patterns_exphi[index] = np.median(x, overwrite_input=True)
-      if smooth_extrapolation:
-        from scipy.interpolate import Rbf
-        patterns_exphi_tmp = patterns_exphi
-        patterns_exphi = np.zeros(patterns_exphi_tmp.shape, dtype=np.float32)
-        x = [e.pt_bins[1] + (i+0.5)/e.pt_bins[0]*(e.pt_bins[2] - e.pt_bins[1]) for i in xrange(e.pt_bins[0])]
-        for index in np.ndindex(patterns_exphi_tmp.shape[:1]):
-          rbf = Rbf(x, patterns_exphi_tmp[index], smooth = 0.3, function='multiquadric')
-          patterns_exphi[index] = rbf(x)
-    else:
-      with np.load(bankfile) as data:
-        patterns_exphi = data['patterns_exphi']
-
-    outfile = 'histos_tb.npz'
-    np.savez_compressed(outfile, patterns_phi=patterns_phi, patterns_theta=patterns_theta, patterns_exphi=patterns_exphi)
-
-
-# Analysis: application
-elif analysis == "application":
-
   # Plot histograms
   print('[INFO] Creating file: histos_tba.root')
   with root_open('histos_tba.root', 'recreate') as f:
@@ -1162,26 +1234,25 @@ elif analysis == "application":
       eff.Write()
     print('[INFO] npassed/ntotal: %i/%i = %f' % (npassed, ntotal, float(npassed)/ntotal))
 
+  # ____________________________________________________________________________
   # Save objects
   print('[INFO] Creating file: histos_tba.npz')
   if True:
     assert(len(out_particles) == npassed)
     assert(len(out_roads) == npassed)
-    parameters = np.zeros((npassed, 3), dtype=np.float32)
-    variables = np.zeros((npassed, (nlayers * 4) + (3)), dtype=np.float32)
-    for i, (part, road) in enumerate(izip(out_particles, out_roads)):
-      parameters[i] = part.to_parameters()
-      #variables[i] = road.to_variables()
-      variables[i] = road.to_variables(use_sim_tp=True)
-    remove_zeros = ~variables[:,nlayers*3:nlayers*4].all(axis=1)  # when hits_mask is all 1
+    parameters = particles_to_parameters(out_particles)
+    variables = roads_to_variables(out_roads)
     outfile = 'histos_tba.npz'
-    np.savez_compressed(outfile, parameters=parameters[remove_zeros], variables=variables[remove_zeros])
+    np.savez_compressed(outfile, parameters=parameters, variables=variables)
+
+
 
 
 # ______________________________________________________________________________
 # Analysis: rates
 
 elif analysis == "rates":
+  tree = load_minbias(jobid)
 
   # Workers
   bank = PatternBank(bankfile)
@@ -1190,118 +1261,76 @@ elif analysis == "rates":
   ptassign = PtAssignment(kerasfile)
   trkprod = TrackProducer()
 
-  def make_rates(infile_j):
-    infile_r = root_open(infile_j)
-    tree = infile_r.ntupler.tree
+  # ____________________________________________________________________________
+  # Loop over events
+  for ievt, evt in enumerate(tree):
 
-    # Define collection
-    tree.define_collection(name='hits', prefix='vh_', size='vh_size')
-    tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
-    tree.define_collection(name='particles', prefix='vp_', size='vp_size')
+    roads = recog.run(evt.hits)
+    clean_roads = clean.run(roads)
+    variables = roads_to_variables(clean_roads)
+    variables_mod, predictions, chi2_vars = ptassign.run(variables)
+    emtf2023_tracks = trkprod.run(clean_roads, variables_mod, predictions, chi2_vars)
 
-    # Outputs
-    out = {}
-    out["nevents"] = []
-    for m in ["emtf", "emtf2023"]:
-      out["highest_%s_absEtaMin0_absEtaMax2.5_qmin12_pt" % m] = []
-
-    # Loop over events
-    for ievt, evt in enumerate(tree):
-
-      roads = recog.run(evt.hits)
-      clean_roads = clean.run(roads)
-      variables = np.array([road.to_variables() for road in clean_roads], dtype=np.float32)
-      variables_1, predictions, chi2_vars = ptassign.run(variables)
-      emtf2023_tracks = trkprod.run(clean_roads, variables_1, predictions, chi2_vars)
-
-      if ievt < 20 and False:
-        print("evt {0} has {1} roads, {2} clean roads, {3} tracks, {4} old tracks".format(ievt, len(roads), len(clean_roads), len(emtf2023_tracks), len(evt.tracks)))
-        for ipart, part in enumerate(evt.particles):
-          if part.pt > 5.:
-            part.invpt = np.true_divide(part.q, part.pt)
-            print(".. part {0} {1} {2} {3} {4}".format(ipart, part.invpt, part.pt, part.eta, part.phi))
-        for iroad, myroad in enumerate(clean_roads):
-          print(".. croad {0} {1} {2} {3} {4} {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
-          #for ihit, myhit in enumerate(myroad.hits):
-          #  print(".. .. hit  {0} {1} {2} {3} {4} {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.emtf_bend))
-        for itrk, mytrk in enumerate(emtf2023_tracks):
-          print(".. trk {0} {1} {2} {3} {4} {5} {6}".format(itrk, mytrk.id, len(mytrk.hits), mytrk.mode, mytrk.pt, mytrk.chi2, mytrk.ndof))
-          for ihit, myhit in enumerate(mytrk.hits):
-            print(".. .. hit  {0} {1} {2} {3} {4} {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.emtf_bend))
-        for itrk, mytrk in enumerate(evt.tracks):
-          print(".. otrk {0} {1} {2}".format(itrk, mytrk.mode, mytrk.pt))
+    if ievt < 20 and False:
+      print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2023_tracks)))
+      for ipart, part in enumerate(evt.particles):
+        if part.pt > 5.:
+          part.invpt = np.true_divide(part.q, part.pt)
+          print(".. part invpt: {0} pt: {1} eta: {2} phi: {3}".format(part.invpt, part.pt, part.eta, part.phi))
+      for iroad, myroad in enumerate(clean_roads):
+        print(".. croad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
+        #for ihit, myhit in enumerate(myroad.hits):
+        #  print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.bx, myhit.sim_tp))
+      for itrk, mytrk in enumerate(emtf2023_tracks):
+        print(".. trk {0} id: {1} nhits: {2} mode: {3} pt: {4} chi2: {5} ndof: {6}".format(itrk, mytrk.id, len(mytrk.hits), mytrk.mode, mytrk.pt, mytrk.chi2, mytrk.ndof))
+        for ihit, myhit in enumerate(mytrk.hits):
+          print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.bx, myhit.sim_tp))
+      for itrk, mytrk in enumerate(evt.tracks):
+        print(".. otrk {0} mode: {1} pt: {2}".format(itrk, mytrk.mode, mytrk.pt))
 
 
-      # Fill histograms
-      out["nevents"].append(1.0)
+    # Fill histograms
+    histograms["nevents"].fill(1.0)
 
-      def fill_highest_pt():
-        highest_pt = -999999.
-        for itrk, trk in enumerate(tracks):
-          if select(trk):
-            if highest_pt < trk.pt:  # using scaled pT
-              highest_pt = trk.pt
-        if highest_pt > 0.:
-          highest_pt = min(100.-1e-3, highest_pt)
-          out[hname].append(highest_pt)
+    def fill_highest_pt():
+      highest_pt = -999999.
+      for itrk, trk in enumerate(tracks):
+        if select(trk):
+          if highest_pt < trk.pt:  # using scaled pT
+            highest_pt = trk.pt
+      if highest_pt > 0.:
+        highest_pt = min(100.-1e-3, highest_pt)
+        histograms[hname].fill(highest_pt)
 
-      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in (11,13,14,15))
-      tracks = evt.tracks
-      hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"
-      fill_highest_pt()
+    select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
+    tracks = evt.tracks
+    hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"
+    fill_highest_pt()
 
-      select = lambda trk: trk and (trk.chi2/trk.ndof) <= 8.5
-      tracks = emtf2023_tracks
-      hname = "highest_emtf2023_absEtaMin0_absEtaMax2.5_qmin12_pt"
-      fill_highest_pt()
+    select = lambda trk: trk and (trk.chi2/trk.ndof) <= 8.5
+    tracks = emtf2023_tracks
+    hname = "highest_emtf2023_absEtaMin0_absEtaMax2.5_qmin12_pt"
+    fill_highest_pt()
 
-      continue  # end loop over events
-
-    #infile_r.close()
-    return out
-
-  def make_rates_endjob(outputs):
-    outputs_copy = []
-    for j, out in enumerate(outputs):
-      print("Retrieving job: {0}".format(j))
-      outputs_copy.append(out)
-
-    print('[INFO] Creating file: histos_tbb.root')
-    with root_open('histos_tbb.root', 'recreate') as f:
-      histograms_1 = {}
-      hname = "nevents"
-      histograms_1[hname] = Hist(5, 0, 5, name=hname, title="; count", type='F')
-      hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"
-      histograms_1[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
-      hname = "highest_emtf2023_absEtaMin0_absEtaMax2.5_qmin12_pt"
-      histograms_1[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
-
-      for k, v in histograms_1.iteritems():
-        for j, out in enumerate(outputs_copy):
-          for x in out[k]:
-            v.fill(x)
-        v.Write()
-    return
+  # End loop over events
+  unload_tree()
 
   # ____________________________________________________________________________
-  # Parallel processing
+  # Plot histograms
+  print('[INFO] Creating file: histos_tbb.root')
+  with root_open('histos_tbb.root', 'recreate') as f:
+    for hname in ["nevents", "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt", "highest_emtf2023_absEtaMin0_absEtaMax2.5_qmin12_pt"]:
+      h = histograms[hname]
+      h.Write()
 
-  #with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-  #  outputs = executor.map(make_rates, pufiles[:4], chunksize=4)
-  #  make_rates_endjob(outputs)
 
-  #outputs = map(make_rates, pufiles[:4])
-  #make_rates_endjob(outputs)
-
-  j = 0
-  out = make_rates(pufiles[j])
-  make_rates_endjob([out])
 
 
 # ______________________________________________________________________________
 # Analysis: effie
 
 elif analysis == "effie":
+  tree = load_pgun()
 
   # Workers
   bank = PatternBank(bankfile)
@@ -1310,125 +1339,96 @@ elif analysis == "effie":
   ptassign = PtAssignment(kerasfile)
   trkprod = TrackProducer()
 
-  def make_effie(evt_range):
-    evt = next(iter(tree))
-
-    # Outputs
-    out = {}
-    for m in ["emtf", "emtf2023"]:
-      out["%s_eff_vs_genpt_l1pt20" % m] = []
-      out["%s_eff_vs_geneta_l1pt20" % m] = []
-      out["%s_l1pt_vs_genpt" % m] = []
-      out["%s_l1ptres_vs_genpt" % m] = []
-
-    # Loop over events
-    for ievt in evt_range:
-      tree.GetEntry(ievt)
-
-      part = evt.particles[0]  # particle gun
-      part.invpt = np.true_divide(part.q, part.pt)
-
-      roads = recog.run(evt.hits)
-      clean_roads = clean.run(roads)
-      variables = np.array([road.to_variables() for road in clean_roads], dtype=np.float32)
-      variables_1, predictions, chi2_vars = ptassign.run(variables)
-      emtf2023_tracks = trkprod.run(clean_roads, variables_1, predictions, chi2_vars)
-
-      if ievt < 20 and False:
-        print("evt {0} has {1} roads, {2} clean roads, {3} tracks".format(ievt, len(roads), len(clean_roads), len(emtf2023_tracks)))
-        for itrk, mytrk in enumerate(emtf2023_tracks):
-          y = np.true_divide(part.q, part.pt)
-          y_pred = np.true_divide(mytrk.q, mytrk.xml_pt)
-          print(".. {0} {1}".format(y, y_pred))
-
-      # Fill histograms
-      def fill_efficiency():
-        trigger = any([select(trk) for trk in tracks])  # using scaled pT
-        out[hname1].append((part.pt, trigger))
-        if part.pt > 20.:
-          out[hname2].append((abs(part.eta), trigger))
-
-      def fill_resolution():
-        if len(tracks) > 0:
-          trk = tracks[0]
-          trk.invpt = np.true_divide(trk.q, trk.xml_pt)  # using unscaled pT
-          out[hname1].append((part.invpt, trk.invpt))
-          out[hname2].append((abs(part.invpt), (abs(trk.invpt) - abs(part.invpt))/abs(part.invpt)))
-
-      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in (11,13,14,15)) and (trk.pt > 20.)
-      tracks = evt.tracks
-      hname1 = "emtf_eff_vs_genpt_l1pt20"
-      hname2 = "emtf_eff_vs_geneta_l1pt20"
-      fill_efficiency()
-      hname1 = "emtf_l1pt_vs_genpt"
-      hname2 = "emtf_l1ptres_vs_genpt"
-      fill_resolution()
-
-      select = lambda trk: trk and (trk.chi2/trk.ndof) <= 8.5 and (trk.pt > 20.)
-      tracks = emtf2023_tracks
-      hname1 = "emtf2023_eff_vs_genpt_l1pt20"
-      hname2 = "emtf2023_eff_vs_geneta_l1pt20"
-      fill_efficiency()
-      hname1 = "emtf2023_l1pt_vs_genpt"
-      hname2 = "emtf2023_l1ptres_vs_genpt"
-      fill_resolution()
-
-      continue  # end loop over events
-
-    return out
-
-  def make_effie_endjob(outputs):
-    outputs_copy = []
-    for j, out in enumerate(outputs):
-      print("Retrieving job: {0}".format(j))
-      outputs_copy.append(out)
-
-    print('[INFO] Creating file: histos_tbc.root')
-    with root_open('histos_tbc.root', 'recreate') as f:
-      histograms_1 = {}
-      for m in ["emtf", "emtf2023"]:
-        for k in ["denom", "numer"]:
-          hname = "%s_eff_vs_genpt_l1pt20_%s" % (m,k)
-          histograms_1[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
-          hname = "%s_eff_vs_geneta_l1pt20_%s" % (m,k)
-          histograms_1[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
-        hname = "%s_l1pt_vs_genpt" % m
-        histograms_1[hname] = Hist2D(100, -0.3, 0.3, 300, -0.3, 0.3, name=hname, title="; gen 1/p_{T} [1/GeV]; 1/p_{T} [1/GeV]", type='F')
-        hname = "%s_l1ptres_vs_genpt" % m
-        histograms_1[hname] = Hist2D(100, -0.3, 0.3, 300, -2, 2, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
-
-      for hname in ["emtf_eff_vs_genpt_l1pt20", "emtf_eff_vs_geneta_l1pt20", "emtf2023_eff_vs_genpt_l1pt20", "emtf2023_eff_vs_geneta_l1pt20"]:
-        denom = histograms_1[hname + "_denom"]
-        numer = histograms_1[hname + "_numer"]
-        for j, out in enumerate(outputs_copy):
-          for x, trigger in out[hname]:
-            denom.fill(x)
-            if trigger:
-              numer.fill(x)
-        denom.Write()
-        numer.Write()
-        eff = Efficiency(numer, denom, name=hname)
-        eff.SetStatisticOption(0)  # kFCP
-        eff.SetConfidenceLevel(0.682689492137)  # one sigma
-        eff.Write()
-
-      for hname in ["emtf_l1pt_vs_genpt", "emtf_l1ptres_vs_genpt", "emtf2023_l1pt_vs_genpt", "emtf2023_l1ptres_vs_genpt"]:
-        h = histograms_1[hname]
-        for j, out in enumerate(outputs_copy):
-          for x, y in out[hname]:
-            h.fill(x, y)
-        h.Write()
-    return
-
+  # Event range
+  evt = next(iter(tree))
+  n = 10000
+  evt_range = xrange(jobid*n, (jobid+1)*n)
 
   # ____________________________________________________________________________
-  # Parallel processing
+  # Loop over events
+  for ievt in evt_range:
+    tree.GetEntry(ievt)
 
-  #with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-  #  outputs = executor.map(make_effie, [range(j*10, (j+1)*10) for j in xrange(4)], chunksize=4)
-  #  make_effie_endjob(outputs)
+    part = evt.particles[0]  # particle gun
+    part.invpt = np.true_divide(part.q, part.pt)
 
-  j = 0
-  out = make_effie(xrange(j*10000, (j+1)*10000))
-  make_effie_endjob([out])
+    roads = recog.run(evt.hits)
+    clean_roads = clean.run(roads)
+    variables = roads_to_variables(clean_roads)
+    variables_mod, predictions, chi2_vars = ptassign.run(variables)
+    emtf2023_tracks = trkprod.run(clean_roads, variables_mod, predictions, chi2_vars)
+
+    if ievt < 20 and False:
+      print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2023_tracks)))
+      for itrk, mytrk in enumerate(emtf2023_tracks):
+        y = np.true_divide(part.q, part.pt)
+        y_pred = np.true_divide(mytrk.q, mytrk.xml_pt)
+        print(".. {0} {1}".format(y, y_pred))
+
+    # Fill histograms
+    def fill_efficiency():
+      trigger = any([select(trk) for trk in tracks])  # using scaled pT
+      denom = histograms[hname1 + "_denom"]
+      numer = histograms[hname1 + "_numer"]
+      denom.fill(part.pt)
+      if trigger:
+        numer.fill(part.pt)
+
+      if part.pt > 20.:
+        denom = histograms[hname2 + "_denom"]
+        numer = histograms[hname2 + "_numer"]
+        denom.fill(abs(part.eta))
+        if trigger:
+          numer.fill(abs(part.eta))
+
+    def fill_resolution():
+      if len(tracks) > 0:
+        trk = tracks[0]
+        trk.invpt = np.true_divide(trk.q, trk.xml_pt)  # using unscaled pT
+        histograms[hname1].fill(part.invpt, trk.invpt)
+        histograms[hname2].fill(abs(part.invpt), (abs(trk.invpt) - abs(part.invpt))/abs(part.invpt))
+
+    select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in (11,13,14,15)) and (trk.pt > 20.)
+    tracks = evt.tracks
+    hname1 = "emtf_eff_vs_genpt_l1pt20"
+    hname2 = "emtf_eff_vs_geneta_l1pt20"
+    fill_efficiency()
+    hname1 = "emtf_l1pt_vs_genpt"
+    hname2 = "emtf_l1ptres_vs_genpt"
+    fill_resolution()
+
+    select = lambda trk: trk and (trk.chi2/trk.ndof) <= 8.5 and (trk.pt > 20.)
+    tracks = emtf2023_tracks
+    hname1 = "emtf2023_eff_vs_genpt_l1pt20"
+    hname2 = "emtf2023_eff_vs_geneta_l1pt20"
+    fill_efficiency()
+    hname1 = "emtf2023_l1pt_vs_genpt"
+    hname2 = "emtf2023_l1ptres_vs_genpt"
+    fill_resolution()
+
+  # End loop over events
+  unload_tree()
+
+  # ____________________________________________________________________________
+  # Plot histograms
+  print('[INFO] Creating file: histos_tbc.root')
+  with root_open('histos_tbc.root', 'recreate') as f:
+    for hname in ["emtf_eff_vs_genpt_l1pt20", "emtf_eff_vs_geneta_l1pt20", "emtf2023_eff_vs_genpt_l1pt20", "emtf2023_eff_vs_geneta_l1pt20"]:
+      denom = histograms[hname + "_denom"]
+      numer = histograms[hname + "_numer"]
+      eff = Efficiency(numer, denom, name=hname)
+      eff.SetStatisticOption(0)  # kFCP
+      eff.SetConfidenceLevel(0.682689492137)  # one sigma
+      eff.Write()
+    for hname in ["emtf_l1pt_vs_genpt", "emtf_l1ptres_vs_genpt", "emtf2023_l1pt_vs_genpt", "emtf2023_l1ptres_vs_genpt"]:
+      h = histograms[hname]
+      h.Write()
+
+
+
+
+# ______________________________________________________________________________
+# Analysis: mixing
+
+
 
