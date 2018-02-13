@@ -299,15 +299,15 @@ class EMTFExtrapolation(object):
     self.loaded = False
 
   def _find_bin(self, x, bins):
-    x = np.clip(x, bins[1], bins[2])
+    x = np.clip(x, bins[1], bins[2]-1e-9)
     binx = (x - bins[1]) / (bins[2] - bins[1]) * bins[0]
     return int(binx)
 
-  def find_theta_bin(self, part):
+  def _find_theta_bin(self, part):
     x = np.sinh(1.8) / np.sinh(abs(part.eta))
     return self._find_bin(x, self.theta_bins)
 
-  def find_pt_bin(self, part):
+  def _find_pt_bin(self, part):
     x = part.invpt
     return self._find_bin(x, self.pt_bins)
 
@@ -316,7 +316,7 @@ class EMTFExtrapolation(object):
       with np.load(bankfile) as data:
         self.lut = data['patterns_exphi']
         self.loaded = True
-    index = (self.find_theta_bin(part), self.find_pt_bin(part))
+    index = (self._find_theta_bin(part), self._find_pt_bin(part))
     c = self.lut[index]
     dphi = c * (part.invpt * np.sinh(1.8) / np.sinh(abs(part.eta)))
     exphi = part.phi + dphi  # in radians
@@ -338,7 +338,7 @@ class Particle(object):
     self.q = q
 
   def to_parameters(self):
-    parameters = np.array((np.true_divide(part.q, part.pt), part.phi, part.eta), dtype=np.float32)
+    parameters = np.array((np.true_divide(self.q, self.pt), self.phi, self.eta), dtype=np.float32)
     return parameters
 
 class Pattern(object):
@@ -552,7 +552,7 @@ class PatternRecognition(object):
           tmp_phi = np.median(tmp_phis, overwrite_input=True)
           #iphi = int(tmp_phi/32)  # divide by 'quadstrip' unit (4 * 8)
           iphi = int(tmp_phi/16)  # divide by 'doublestrip' unit (2 * 8)
-          iphi_range = xrange(iphi-8, iphi+8+1)
+          iphi_range = xrange(max(0,iphi-12), min(4928/16,iphi+12+1))
 
         sector_roads = self._apply_patterns(endcap, sector, ipt_range, ieta_range, iphi_range, sector_hits)
         roads += sector_roads
@@ -660,10 +660,12 @@ class RoadCleaning(object):
 # pT assignment module
 class PtAssignment(object):
   def __init__(self, kerasfile):
-    (encoder, model, model_weights) = kerasfile
-    with np.load(encoder) as loaded:
-      self.x_mean = loaded['x_mean']
-      self.x_std  = loaded['x_std']
+    (chsqfile, model, model_weights) = kerasfile
+    #with np.load(encoder) as loaded:
+    #  self.x_mean = loaded['x_mean']
+    #  self.x_std  = loaded['x_std']
+    with np.load(chsqfile) as loaded:
+      self.x_cov = loaded['cov']
 
     from keras.models import load_model
     import keras.backend as K
@@ -712,8 +714,10 @@ class PtAssignment(object):
     self.x_ieta  = self.x_road[:, 1].astype(np.int32)
 
     # Standard scales
-    self.x_copy -= self.x_mean
-    self.x_copy /= self.x_std
+    adjust_scale = 2
+    if adjust_scale == 2:  # use covariance
+      nvariables_to_scale = self.x_cov.size
+      self.x_copy[:, :nvariables_to_scale] *= self.x_cov
 
     # Remove outlier hits by checking hit thetas
     x_theta_tmp = np.abs(self.x_theta) > 4.0
@@ -868,8 +872,8 @@ use_condor = ("CONDOR_EXEC" in os.environ)
 #analysis = "verbose"
 #analysis = "training"
 #analysis = "application"
-#analysis = "rates"
-analysis = "effie"
+analysis = "rates"
+#analysis = "effie"
 if use_condor:
   analysis = sys.argv[1]
 
@@ -885,9 +889,9 @@ print('[INFO] Using analysis mode : %s' % analysis)
 print('[INFO] Using job id        : %s' % jobid)
 
 # Other stuff
-bankfile = 'histos_tb.9.npz'
+bankfile = 'histos_tb.10.npz'
 
-kerasfile = ['encoder.9.npz', 'model.9.h5', 'model_weights.9.h5']
+kerasfile = ['chsq.10.npz', 'model.10.h5', 'model_weights.10.h5']
 
 infile_r = None  # input file handle
 
@@ -1013,7 +1017,7 @@ elif analysis == "training":
     the_patterns_phi = patterns_phi[part.ipt][part.ieta]
     the_patterns_theta = patterns_theta[0][part.ieta]  # no binning in pt
     e = EMTFExtrapolation()
-    the_patterns_exphi = patterns_exphi[e.find_theta_bin(part)][e.find_pt_bin(part)]
+    the_patterns_exphi = patterns_exphi[e._find_theta_bin(part)][e._find_pt_bin(part)]
 
     #pgun_weight = emtf_pgun_weight(part)
 
@@ -1090,8 +1094,8 @@ elif analysis == "training":
     # Mask layers by (ieta, lay)
     valid_layers = [
       (0,2), (0,3), (0,4), (0,7), (0,8), (0,10), (0,12), (0,13), (0,14), (0,15), (0,18), (0,21),
-      (1,2), (1,3), (1,7), (1,8), (1,10), (1,12), (1,13), (1,14), (1,15), (1,17), (1,18), (1,20), (1,21), (1,22),
-      (2,0), (2,1), (2,5), (2,6), (2,9), (2,10), (2,11), (2,12), (2,17), (2,20), (2,22), (2,23),
+      (1,2), (1,3), (1,7), (1,8), (1,10), (1,12), (1,13), (1,14), (1,15), (1,17), (1,20), (1,21), (1,22),
+      (2,0), (2,1), (2,5), (2,6), (2,9), (2,10), (2,12), (2,17), (2,20), (2,22), (2,23),
       (3,0), (3,1), (3,5), (3,6), (3,9), (3,11), (3,16), (3,19), (3,20), (3,22), (3,23),
       (4,0), (4,1), (4,5), (4,6), (4,9), (4,11), (4,16), (4,19), (4,22), (4,23),
       (5,0), (5,1), (5,5), (5,6), (5,9), (5,11), (5,16), (5,19), (5,23),
@@ -1260,16 +1264,27 @@ elif analysis == "rates":
   clean = RoadCleaning()
   ptassign = PtAssignment(kerasfile)
   trkprod = TrackProducer()
+  out_variables = []
+  out_predictions = []
+
+  # Event range
+  n = -1
 
   # ____________________________________________________________________________
   # Loop over events
   for ievt, evt in enumerate(tree):
+    if n != -1 and ievt == n:
+      break
 
     roads = recog.run(evt.hits)
     clean_roads = clean.run(roads)
     variables = roads_to_variables(clean_roads)
     variables_mod, predictions, chi2_vars = ptassign.run(variables)
     emtf2023_tracks = trkprod.run(clean_roads, variables_mod, predictions, chi2_vars)
+
+    if len(clean_roads) > 0:
+      out_variables.append(variables)
+      out_predictions.append(predictions)
 
     if ievt < 20 and False:
       print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2023_tracks)))
@@ -1323,6 +1338,15 @@ elif analysis == "rates":
       h = histograms[hname]
       h.Write()
 
+  # ____________________________________________________________________________
+  # Save objects
+  print('[INFO] Creating file: histos_tbb.npz')
+  if True:
+    variables = np.vstack(out_variables)
+    predictions = np.vstack(out_predictions)
+    outfile = 'histos_tbb.npz'
+    np.savez_compressed(outfile, variables=variables, predictions=predictions)
+
 
 
 
@@ -1342,7 +1366,8 @@ elif analysis == "effie":
   # Event range
   evt = next(iter(tree))
   n = 10000
-  evt_range = xrange(jobid*n, (jobid+1)*n)
+  n_skip = 2000000
+  evt_range = xrange(n_skip+jobid*n, n_skip+(jobid+1)*n)
 
   # ____________________________________________________________________________
   # Loop over events
@@ -1419,6 +1444,8 @@ elif analysis == "effie":
       eff = Efficiency(numer, denom, name=hname)
       eff.SetStatisticOption(0)  # kFCP
       eff.SetConfidenceLevel(0.682689492137)  # one sigma
+      denom.Write()
+      numer.Write()
       eff.Write()
     for hname in ["emtf_l1pt_vs_genpt", "emtf_l1ptres_vs_genpt", "emtf2023_l1pt_vs_genpt", "emtf2023_l1ptres_vs_genpt"]:
       h = histograms[hname]
