@@ -553,7 +553,8 @@ class PatternRecognition(object):
           tmp_phi = np.median(tmp_phis, overwrite_input=True)
           #iphi = int(tmp_phi/32)  # divide by 'quadstrip' unit (4 * 8)
           iphi = int(tmp_phi/16)  # divide by 'doublestrip' unit (2 * 8)
-          iphi_range = xrange(max(0,iphi-12), min(4928/16,iphi+12+1))
+          #iphi_range = xrange(max(0,iphi-12), min(4928/16,iphi+12+1))
+          iphi_range = xrange(max(0,iphi-36), min(4928/16,iphi+36+1))
 
         sector_roads = self._apply_patterns(endcap, sector, ipt_range, ieta_range, iphi_range, sector_hits)
         roads += sector_roads
@@ -870,9 +871,9 @@ for m in ("emtf", "emtf2023"):
 # Settings
 
 # Get number of events
-#maxEvents = -1
+maxEvents = -1
 #maxEvents = 2000000
-maxEvents = 1000
+#maxEvents = 1000
 
 # Condor or not
 use_condor = ("CONDOR_EXEC" in os.environ)
@@ -880,8 +881,8 @@ use_condor = ("CONDOR_EXEC" in os.environ)
 # Analysis mode
 #analysis = "verbose"
 #analysis = "training"
-#analysis = "application"
-analysis = "rates"
+analysis = "application"
+#analysis = "rates"
 #analysis = "effie"
 if use_condor:
   analysis = sys.argv[1]
@@ -906,9 +907,9 @@ infile_r = None  # input file handle
 
 def load_pgun():
   global infile_r
-  infile = 'ntuple_SingleMuon_Toy_5GeV_add.3.root'
+  infile = 'ntuple_SingleMuon_Toy_2GeV_add.3.root'
   if use_condor:
-    infile = 'root://cmsio2.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/SingleMuon_Toy_5GeV/'+infile
+    infile = 'root://cmsio2.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/SingleMuon_Toy_2GeV/'+infile
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
   #tree = TreeChain('ntupler/tree', [infile])
@@ -1052,8 +1053,8 @@ elif analysis == "training":
 
   # ____________________________________________________________________________
   # Plot histograms
-  print('[INFO] Creating file: histos_tb.root')
-  with root_open('histos_tb.root', 'recreate') as f:
+  print('[INFO] Creating file: histos_tb_2GeV.root')
+  with root_open('histos_tb_2GeV.root', 'recreate') as f:
     for i in xrange(len(pt_bins)-1):
       for j in xrange(len(eta_bins)-1):
         for k in xrange(nlayers):
@@ -1069,7 +1070,7 @@ elif analysis == "training":
 
   # ____________________________________________________________________________
   # Save objects
-  print('[INFO] Creating file: histos_tb.npz')
+  print('[INFO] Creating file: histos_tb_2GeV.npz')
   if True:
     patterns_phi_tmp = patterns_phi
     patterns_theta_tmp = patterns_theta
@@ -1139,7 +1140,7 @@ elif analysis == "training":
       with np.load(bankfile) as data:
         patterns_exphi = data['patterns_exphi']
 
-    outfile = 'histos_tb.npz'
+    outfile = 'histos_tb_2GeV.npz'
     np.savez_compressed(outfile, patterns_phi=patterns_phi, patterns_theta=patterns_theta, patterns_exphi=patterns_exphi)
 
 
@@ -1236,8 +1237,8 @@ elif analysis == "application":
 
   # ____________________________________________________________________________
   # Plot histograms
-  print('[INFO] Creating file: histos_tba.root')
-  with root_open('histos_tba.root', 'recreate') as f:
+  print('[INFO] Creating file: histos_tba_2GeV.root')
+  with root_open('histos_tba_2GeV.root', 'recreate') as f:
     for hname in ["eff_vs_genpt", "eff_vs_geneta", "eff_vs_genphi"]:
       denom = histograms[hname + "_denom"]
       numer = histograms[hname + "_numer"]
@@ -1249,13 +1250,13 @@ elif analysis == "application":
 
   # ____________________________________________________________________________
   # Save objects
-  print('[INFO] Creating file: histos_tba.npz')
+  print('[INFO] Creating file: histos_tba_2GeV.npz')
   if True:
     assert(len(out_particles) == npassed)
     assert(len(out_roads) == npassed)
     parameters = particles_to_parameters(out_particles)
     variables = roads_to_variables(out_roads)
-    outfile = 'histos_tba.npz'
+    outfile = 'histos_tba_2GeV.npz'
     np.savez_compressed(outfile, parameters=parameters, variables=variables)
 
 
@@ -1341,19 +1342,19 @@ elif analysis == "rates":
 
   # ____________________________________________________________________________
   # Plot histograms
-  print('[INFO] Creating file: histos_tbb.root')
-  with root_open('histos_tbb.root', 'recreate') as f:
+  print('[INFO] Creating file: histos_tbb_2GeV.root')
+  with root_open('histos_tbb_2GeV.root', 'recreate') as f:
     for hname in ["nevents", "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt", "highest_emtf2023_absEtaMin0_absEtaMax2.5_qmin12_pt"]:
       h = histograms[hname]
       h.Write()
 
   # ____________________________________________________________________________
   # Save objects
-  print('[INFO] Creating file: histos_tbb.npz')
+  print('[INFO] Creating file: histos_tbb_2GeV.npz')
   if True:
     variables = np.vstack(out_variables)
     predictions = np.vstack(out_predictions)
-    outfile = 'histos_tbb.npz'
+    outfile = 'histos_tbb_2GeV.npz'
     np.savez_compressed(outfile, variables=variables, predictions=predictions)
 
 
@@ -1445,8 +1446,8 @@ elif analysis == "effie":
 
   # ____________________________________________________________________________
   # Plot histograms
-  print('[INFO] Creating file: histos_tbc.root')
-  with root_open('histos_tbc.root', 'recreate') as f:
+  print('[INFO] Creating file: histos_tbc_2GeV.root')
+  with root_open('histos_tbc_2GeV.root', 'recreate') as f:
     for hname in ["emtf_eff_vs_genpt_l1pt20", "emtf_eff_vs_geneta_l1pt20", "emtf2023_eff_vs_genpt_l1pt20", "emtf2023_eff_vs_geneta_l1pt20"]:
       denom = histograms[hname + "_denom"]
       numer = histograms[hname + "_numer"]
