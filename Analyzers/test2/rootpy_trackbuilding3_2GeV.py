@@ -415,17 +415,17 @@ class Road(object):
     return variables
 
 class Track(object):
-  def __init__(self, _id, hits, mode, pt, q, emtf_phi, emtf_theta, chi2, ndof):
+  def __init__(self, _id, hits, mode, pt, q, emtf_phi, emtf_theta, ndof, chi2):
     self.id = _id  # (endcap, sector)
     self.hits = hits
     self.mode = mode
     self.xml_pt = pt
-    self.pt = pt * (1.0 + 0.22 * 1.28155)  # erf(1.28155/sqrt(2)) = 0.8 [90% upper limit from -1 to -1]
+    self.pt = pt * (1.0 + 0.24 * 1.28155)  # erf(1.28155/sqrt(2)) = 0.8 [90% upper limit from -1 to -1]
     self.q = q
     self.emtf_phi = emtf_phi
     self.emtf_theta = emtf_theta
-    self.chi2 = chi2
     self.ndof = ndof
+    self.chi2 = chi2
 
 def particles_to_parameters(particles):
   parameters = np.zeros((len(particles), 3), dtype=np.float32)
@@ -668,6 +668,10 @@ class PtAssignment(object):
     #  self.x_std  = loaded['x_std']
     with np.load(chsqfile) as loaded:
       self.x_cov = loaded['cov']
+      self.theta_bins = (6, 0.0, 1.0)
+      self.pt_bins = (40, -0.2, 0.2)
+      self.chsq_offset = loaded['chsq_offset_1']
+      self.chsq_scale = loaded['chsq_scale_1']
 
 
     # Keras library
@@ -766,9 +770,48 @@ class PtAssignment(object):
     # Predict y
     y = self.loaded_model.predict(x_new)
 
-    # chi2 stuff
-    z = np.array([[0., 1.]] * len(x), dtype=np.float32)  #FIXME
+    # Compute chi2
+    z = self._chsq(x_new, y)
     return (x_new, y, z)
+
+  def _find_bin(self, x, bins):
+    x = np.clip(x, bins[1], bins[2]-1e-8)
+    binx = (x - bins[1]) / (bins[2] - bins[1]) * bins[0]
+    return int(binx)
+
+  def _find_theta_bin(self, theta):
+    return self._find_bin(theta, self.theta_bins)
+
+  def _find_pt_bin(self, pt):
+    return self._find_bin(pt, self.pt_bins)
+
+  def _chsq(self, x, y):
+    out = np.zeros((x.shape[0],2), dtype=np.float32)
+
+    i = 0
+    for x_i, x_mask_i, y_i, theta_i in izip(x, self.x_mask, y, self.x_theta_median):
+      # Select variables
+      nvariables = (nlayers * 3)
+      x_i = x_i[:nvariables]
+      y_i = np.clip(y_i, self.pt_bins[1], self.pt_bins[2])
+
+      # Get the constants
+      itheta = self._find_theta_bin(theta_i)
+      ipt = self._find_pt_bin(y_i)
+      offset = self.chsq_offset[itheta,ipt]
+      scale = self.chsq_scale[itheta,ipt]
+
+      # Calculate
+      valid = ~x_mask_i
+      x_i -= offset
+      x_i *= scale
+      x_i = x_i[np.tile(valid,3)]  # 3 variables per hit
+      x_i **= 2
+      chi2 = x_i.sum()
+      ndof = valid.sum()  # num of hits
+      out[i] = (ndof,chi2)
+      i += 1
+    return out
 
 
 # Track producer module
@@ -823,8 +866,21 @@ class TrackProducer(object):
           trk_pt = np.abs(1.0/trk_pt)
         trk_q  = np.sign(mypreds[0])
         trk = Track(trk_id, myroad.hits, trk_mode, trk_pt, trk_q, iphi, x_theta_median, mychi2[0], mychi2[1])
-        tracks.append(trk)
+        if self._simple_trigger(trk):
+          tracks.append(trk)
     return tracks
+
+  def _simple_trigger(self, trk):
+    ndof, chi2 = trk.ndof, trk.chi2
+    assert(np.isfinite(chi2))
+    if 0 <= ndof < 5:
+      return chi2 < 15.
+    elif ndof < 7:
+      return chi2 < 25.
+    elif ndof < 9:
+      return chi2 < 30.
+    else:
+      return chi2 < 80.
 
 
 # ______________________________________________________________________________
@@ -901,7 +957,7 @@ print('[INFO] Using job id        : %s' % jobid)
 # Other stuff
 bankfile = 'histos_tb.10.npz'
 
-kerasfile = ['chsq.10.npz', 'model.10.h5', 'model_weights.10.h5']
+kerasfile = ['chsq_2GeV.10.npz', 'model_2GeV.10.h5', 'model_weights_2GeV.10.h5']
 
 infile_r = None  # input file handle
 
@@ -1296,7 +1352,9 @@ elif analysis == "rates":
       out_variables.append(variables)
       out_predictions.append(predictions)
 
-    if ievt < 20 and False:
+    found_high_pt_tracks = any(map(lambda trk: trk.pt > 20., emtf2023_tracks))
+
+    if found_high_pt_tracks:
       print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2023_tracks)))
       for ipart, part in enumerate(evt.particles):
         if part.pt > 5.:
@@ -1307,7 +1365,7 @@ elif analysis == "rates":
         #for ihit, myhit in enumerate(myroad.hits):
         #  print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.bx, myhit.sim_tp))
       for itrk, mytrk in enumerate(emtf2023_tracks):
-        print(".. trk {0} id: {1} nhits: {2} mode: {3} pt: {4} chi2: {5} ndof: {6}".format(itrk, mytrk.id, len(mytrk.hits), mytrk.mode, mytrk.pt, mytrk.chi2, mytrk.ndof))
+        print(".. trk {0} id: {1} nhits: {2} mode: {3} pt: {4} ndof: {5} chi2: {6}".format(itrk, mytrk.id, len(mytrk.hits), mytrk.mode, mytrk.pt, mytrk.ndof, mytrk.chi2))
         for ihit, myhit in enumerate(mytrk.hits):
           print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.bx, myhit.sim_tp))
       for itrk, mytrk in enumerate(evt.tracks):
@@ -1332,7 +1390,7 @@ elif analysis == "rates":
     hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"
     fill_highest_pt()
 
-    select = lambda trk: trk and (trk.chi2/trk.ndof) <= 8.5
+    select = lambda trk: trk
     tracks = emtf2023_tracks
     hname = "highest_emtf2023_absEtaMin0_absEtaMax2.5_qmin12_pt"
     fill_highest_pt()
@@ -1432,7 +1490,7 @@ elif analysis == "effie":
     hname2 = "emtf_l1ptres_vs_genpt"
     fill_resolution()
 
-    select = lambda trk: trk and (trk.chi2/trk.ndof) <= 8.5 and (trk.pt > 20.)
+    select = lambda trk: trk and (trk.pt > 20.)
     tracks = emtf2023_tracks
     hname1 = "emtf2023_eff_vs_genpt_l1pt20"
     hname2 = "emtf2023_eff_vs_geneta_l1pt20"
