@@ -16,8 +16,8 @@ cmsenv
 
 # L1TriggerSep2016 using branch 'phase2-develop'
 git clone -b phase2-develop git@github.com:jiafulow/L1TriggerSep2016.git L1Trigger
-# DataFormatsSep2016 using branch 'l1t-integration-CMSSW_9_2_0'
-git clone -b l1t-integration-CMSSW_9_2_0 git@github.com:jiafulow/DataFormatsSep2016.git DataFormats
+# DataFormatsSep2016 using branch 'l1t-integration-CMSSW_9_4_0'
+git clone -b l1t-integration-CMSSW_9_4_0 git@github.com:jiafulow/DataFormatsSep2016.git DataFormats
 # This repository
 git clone git@github.com:jiafulow/L1TMuonSimulationsMar2017 L1TMuonSimulations
 # Compile
