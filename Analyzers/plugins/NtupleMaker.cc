@@ -136,6 +136,7 @@ private:
   std::unique_ptr<std::vector<float  > >  vt_eta;
   std::unique_ptr<std::vector<float  > >  vt_theta;
   std::unique_ptr<std::vector<int16_t> >  vt_q;  // charge
+  std::unique_ptr<std::vector<uint64_t> > vt_address;
   //
   std::unique_ptr<std::vector<int16_t> >  vt_mode;
   std::unique_ptr<std::vector<int16_t> >  vt_endcap;
@@ -467,12 +468,15 @@ void NtupleMaker::process() {
     const auto& hit_refs = get_hit_refs(trk, emuHits_);
     assert(hit_refs.size() == 4);
 
+    const l1t::EMTFPtLUT& ptlut_data = trk.PtLUT();
+
     vt_pt         ->push_back(trk.Pt());
     vt_xml_pt     ->push_back(trk.Pt_XML());
     vt_phi        ->push_back(trk.Phi_glob());
     vt_eta        ->push_back(trk.Eta());
     vt_theta      ->push_back(trk.Theta());
     vt_q          ->push_back(trk.Charge());
+    vt_address    ->push_back(ptlut_data.address);
     //
     vt_mode       ->push_back(trk.Mode());
     vt_endcap     ->push_back(trk.Endcap());
@@ -569,6 +573,7 @@ void NtupleMaker::process() {
   vt_eta        ->clear();
   vt_theta      ->clear();
   vt_q          ->clear();
+  vt_address    ->clear();
   //
   vt_mode       ->clear();
   vt_endcap     ->clear();
@@ -653,6 +658,7 @@ void NtupleMaker::makeTree() {
   vt_eta        .reset(new std::vector<float  >());
   vt_theta      .reset(new std::vector<float  >());
   vt_q          .reset(new std::vector<int16_t>());
+  vt_address    .reset(new std::vector<uint64_t>());
   //
   vt_mode       .reset(new std::vector<int16_t>());
   vt_endcap     .reset(new std::vector<int16_t>());
@@ -721,6 +727,7 @@ void NtupleMaker::makeTree() {
   tree->Branch("vt_eta"       , &(*vt_eta       ));
   tree->Branch("vt_theta"     , &(*vt_theta     ));
   tree->Branch("vt_q"         , &(*vt_q         ));
+  tree->Branch("vt_address"   , &(*vt_address   ));
   //
   tree->Branch("vt_mode"      , &(*vt_mode      ));
   tree->Branch("vt_endcap"    , &(*vt_endcap    ));
