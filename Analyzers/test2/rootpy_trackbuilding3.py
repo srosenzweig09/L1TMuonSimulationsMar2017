@@ -667,7 +667,7 @@ class PtAssignment(object):
     #  self.x_std  = loaded['x_std']
     with np.load(chsqfile) as loaded:
       self.x_cov = loaded['cov']
-      self.theta_bins = (6, 0.0, 1.0)
+      self.theta_bins = (10, 0.0, 1.0)
       self.pt_bins = (40, -0.2, 0.2)
       self.chsq_offset = loaded['chsq_offset_1']
       self.chsq_scale = loaded['chsq_scale_1']
@@ -719,7 +719,8 @@ class PtAssignment(object):
     self.x_phi          -= self.x_phi_median
 
     # Subtract median theta from hit thetas
-    self.x_theta_median  = np.nanmedian(self.x_theta, axis=1)
+    self.x_theta_median  = np.nanmedian(self.x_theta[:,:13], axis=1)  # CSC only
+    self.x_theta_median[np.isnan(self.x_theta_median)] = np.nanmedian(self.x_theta[np.isnan(self.x_theta_median)], axis=1)  # use all
     self.x_theta_median  = self.x_theta_median[:, np.newaxis]
     self.x_theta        -= self.x_theta_median
 
@@ -792,22 +793,33 @@ class PtAssignment(object):
       # Select variables
       nvariables = (nlayers * 3)
       x_i = x_i[:nvariables]
-      y_i = np.clip(y_i, self.pt_bins[1], self.pt_bins[2])
 
       # Get the constants
       itheta = self._find_theta_bin(theta_i)
-      ipt = self._find_pt_bin(y_i)
+      ipt = self._find_pt_bin(np.clip(y_i, self.pt_bins[1], self.pt_bins[2]))
       offset = self.chsq_offset[itheta,ipt]
       scale = self.chsq_scale[itheta,ipt]
+      delta = 1.345
 
       # Calculate
       valid = ~x_mask_i
+      valid = np.tile(valid,3)
+      valid[nlayers*1:nlayers*2] = False  # do not use thetas
       x_i -= offset
       x_i *= scale
-      x_i = x_i[np.tile(valid,3)]  # 3 variables per hit
-      x_i **= 2
+
+      rpc_penalty = True
+      if rpc_penalty:
+        rpc_vars = np.zeros(nlayers, dtype=np.bool)
+        rpc_vars[13:22] = True
+        x_i[np.tile(rpc_vars,3)] *= 2
+
+      x_i = x_i[valid]
+      #x_i **= 2
+      x_i = np.abs(x_i)
+      x_i = np.where(x_i < delta, 0.5*np.square(x_i), delta * (x_i - 0.5*delta))
       chi2 = x_i.sum()
-      ndof = valid.sum()  # num of hits
+      ndof = (x_mask_i == False).sum()  # num of hits
       out[i] = (ndof,chi2)
       i += 1
     return out
@@ -872,14 +884,20 @@ class TrackProducer(object):
   def _simple_trigger(self, trk):
     ndof, chi2 = trk.ndof, trk.chi2
     assert(np.isfinite(chi2))
-    if 0 <= ndof < 5:
-      return chi2 < 15.
-    elif ndof < 7:
+    if 0 <= ndof <= 3:
+      return chi2 < 12.28219128
+    elif ndof == 4:
+      return chi2 < 12.82688751
+    elif ndof == 5:
+      return chi2 < 18.
+    elif ndof == 6:
+      return chi2 < 20.
+    elif ndof == 7:
       return chi2 < 25.
-    elif ndof < 9:
+    elif ndof == 8:
       return chi2 < 30.
     else:
-      return chi2 < 80.
+      return chi2 < 75.
 
 
 # ______________________________________________________________________________
@@ -1347,11 +1365,11 @@ elif analysis == "rates":
     variables_mod, predictions, chi2_vars = ptassign.run(variables)
     emtf2023_tracks = trkprod.run(clean_roads, variables_mod, predictions, chi2_vars)
 
-    if len(clean_roads) > 0:
+    found_high_pt_tracks = any(map(lambda trk: trk.pt > 20., emtf2023_tracks))
+
+    if found_high_pt_tracks:
       out_variables.append(variables)
       out_predictions.append(predictions)
-
-    found_high_pt_tracks = any(map(lambda trk: trk.pt > 20., emtf2023_tracks))
 
     if found_high_pt_tracks:
       print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2023_tracks)))
@@ -1368,7 +1386,7 @@ elif analysis == "rates":
         for ihit, myhit in enumerate(mytrk.hits):
           print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.bx, myhit.sim_tp))
       for itrk, mytrk in enumerate(evt.tracks):
-        print(".. otrk {0} mode: {1} pt: {2}".format(itrk, mytrk.mode, mytrk.pt))
+        print(".. otrk {0} id: {1} mode: {2} pt: {3}".format(itrk, (mytrk.endcap, mytrk.sector), mytrk.mode, mytrk.pt))
 
 
     # Fill histograms
