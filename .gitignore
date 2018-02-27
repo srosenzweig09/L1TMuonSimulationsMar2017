@@ -13,6 +13,7 @@ AutoDict_*
 *.npy
 *.npz
 *.h5
+*.json
 .ipynb_checkpoints
 
 # Other
