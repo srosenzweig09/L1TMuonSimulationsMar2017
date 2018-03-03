@@ -7,7 +7,7 @@ from itertools import izip
 from rootpy.plotting import Hist, Hist2D, Graph, Efficiency
 from rootpy.tree import Tree, TreeChain, TreeModel, FloatCol, IntCol, ShortCol
 from rootpy.io import root_open
-from rootpy.memory.keepalive import keepalive
+#from rootpy.memory.keepalive import keepalive
 from ROOT import gROOT, TH1
 gROOT.SetBatch(True)
 TH1.AddDirectory(False)
@@ -20,16 +20,12 @@ TH1.AddDirectory(False)
 kDT, kCSC, kRPC, kGEM, kTT = 0, 1, 2, 3, 20
 
 # Globals
-#eta_bins = [1.2, 1.4, 1.6, 1.8, 2.0, 2.15, 2.4]  #FIXME
-eta_bins = [1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4]
-#pt_bins = [-0.2, -0.190937, -0.180533, -0.169696, -0.158343, -0.143231, -0.123067, -0.0936418, 0.0895398, 0.123191, 0.142493, 0.157556, 0.169953, 0.180755, 0.190829, 0.2]
-pt_bins = [-0.2, -0.18, -0.16, -0.133333, -0.10, -0.05, 0.05, 0.10, 0.133333, 0.16, 0.18, 0.2]
-assert(len(eta_bins) == 6+1)
-assert(len(pt_bins) == 11+1)
+eta_bins = (1.2, 1.4, 1.6, 1.8, 2.0, 2.16, 2.4)
+pt_bins = (-0.50, -0.45, -0.40, -0.35, -0.30, -0.25, -0.20, -0.15, -0.10, -0.05, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50)
+nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
 
-nlayers = 25  # 13 (CSC) + 9 (RPC) + 3 (GEM)
-are_csc_layers = np.zeros(nlayers, dtype=np.bool)
-are_csc_layers[:13] = True
+assert(len(eta_bins) == 6+1)
+assert(len(pt_bins) == 19+1)
 
 
 # Functions
@@ -132,55 +128,32 @@ def weighted_percentile(data, percents, weights=None):
 # Decide EMTF hit layer number
 class EMTFLayer(object):
   def __init__(self):
-    self.lut = np.zeros((4,5,5,2), dtype=np.int32) - 99
-    indices = [
-      # CSC
-      (1,1,1,1),  # ME1/1f
-      (1,1,1,0),  # ME1/1r
-      (1,1,2,1),  # ME1/2f
-      (1,1,2,0),  # ME1/2r
-      (1,1,3,0),  # ME1/3
-      (1,2,1,1),  # ME2/1f
-      (1,2,1,0),  # ME2/1r
-      (1,2,2,1),  # ME2/2f
-      (1,2,2,0),  # ME2/2r
-      (1,3,1,0),  # ME3/1
-      (1,3,2,0),  # ME3/2
-      (1,4,1,0),  # ME4/1
-      (1,4,2,0),  # ME4/2
-      # RPC
-      (2,1,2,1),  # RE1/2f
-      (2,1,2,0),  # RE1/2r
-      (2,2,2,0),  # RE2/2
-      (2,3,1,0),  # RE3/1
-      (2,3,2,0),  # RE3/2
-      (2,3,3,0),  # RE3/3
-      (2,4,1,0),  # RE4/1
-      (2,4,2,0),  # RE4/2
-      (2,4,3,0),  # RE4/3
-      # GEM and ME0
-      (3,1,1,0),  # GE1/1
-      (3,2,1,0),  # GE2/1
-      (3,1,4,0),  # ME0
-    ]
-    assert(len(indices) == nlayers)
-    for i, index in enumerate(indices):
-      self.lut[index] = i
+    lut = np.zeros((4,5,5), dtype=np.int32) - 99
+    lut[1,1,4] = 0  # ME1/1a
+    lut[1,1,1] = 0  # ME1/1b
+    lut[1,1,2] = 1  # ME1/2
+    lut[1,1,3] = 1  # ME1/3
+    lut[1,2,1] = 2  # ME2/1
+    lut[1,2,2] = 2  # ME2/2
+    lut[1,3,1] = 3  # ME3/1
+    lut[1,3,2] = 3  # ME3/2
+    lut[1,4,1] = 4  # ME4/1
+    lut[1,4,2] = 4  # ME4/2
+    lut[2,1,2] = 5  # RE1/2
+    lut[2,2,2] = 6  # RE2/2
+    lut[2,3,1] = 7  # RE3/1
+    lut[2,3,2] = 7  # RE3/2
+    lut[2,3,3] = 7  # RE3/3
+    lut[2,4,1] = 8  # RE4/1
+    lut[2,4,2] = 8  # RE4/2
+    lut[2,4,3] = 8  # RE4/3
+    lut[3,1,1] = 9  # GE1/1
+    lut[3,2,1] = 10 # GE2/1
+    lut[3,1,4] = 11 # ME0
+    self.lut = lut
 
   def get(self, hit):
-    if hit.type == kCSC and hit.station == 1 and hit.ring == 4:  # special case: ME1/1a
-      hit_ring = 1
-    else:
-      hit_ring = hit.ring
-    if hit.type == kCSC and hit.station == 1:  # special case: ME1/*
-      hit_fr = int(hit.fr)
-    elif hit.type == kCSC and hit.station == 2:  # special case: ME2/*
-      hit_fr = int(hit.fr)
-    elif hit.type == kRPC and hit.station == 1:  # special case: RE1/*
-      hit_fr = int(hit.fr)
-    else:
-      hit_fr = 0
-    index = (hit.type, hit.station, hit_ring, hit_fr)
+    index = (hit.type, hit.station, hit.ring)
     return self.lut[index]
 
 anemtflayer = EMTFLayer()
@@ -235,7 +208,7 @@ class EMTFRoadSortCode(object):
     def mlayer_code(hits, qual):
       # 11     10     9      8      7    6      5    4    3      2..0
       # GE1/1, ME1/1, ME1/2, GE2/1, ME2, RE1&2, ME3, ME4, RE3&4, qual
-      hits_to_mlayer = (10,10,9,9,9,7,7,7,7,5,5,4,4,6,6,6,3,3,3,3,3,3,11,8,11)
+      hits_to_mlayer = (10,9,7,5,4,6,6,3,3,11,8,11)
       code = 0
       for hit in hits:
         hit_lay = hit.emtf_layer
@@ -264,39 +237,11 @@ def emtf_is_doublemu(mode):
 def emtf_is_muopen(mode):
   return mode in anemtfroadmode.muopen
 
-# Decide EMTF pgun event weight
-class EMTFPGunWeight(object):
-  def __init__(self):
-    a = pt_bins
-    b = eta_bins
-    na = len(a)
-    nb = len(b)
-    c = np.zeros((na+1,nb+1), dtype=np.float32)
-    for i, _ in np.ndenumerate(c):
-      ia = i[0]
-      ib = i[1]
-      if ia == 0 or ib == 0 or ia == na or ib == nb:  continue
-      xa = (a[ia] - a[ia-1]) / (a[-1] - a[0])
-      xb = (b[ib] - b[ib-1]) / (b[-1] - b[0])
-      c[i] = (xa * xb)  # weight
-      c[i] = 1.0/c[i]  # 1/weight
-    self.lut = c
-
-  def get(self, part):
-    ipt = find_pt_bin(part.invpt)
-    ieta = find_eta_bin(part.eta)
-    index = (ipt, ieta)
-    return self.lut[index]
-
-anemtfpgunweight = EMTFPGunWeight()
-def emtf_pgun_weight(part):
-  return anemtfpgunweight.get(part)
-
 # Extrapolate from paramter space to EMTF space
 class EMTFExtrapolation(object):
   def __init__(self):
     self.theta_bins = (14, 0.5, 1.9)
-    self.pt_bins = (100, -0.2, 0.2)
+    self.pt_bins = (200, -0.5, 0.5)
     self.loaded = False
 
   def _find_bin(self, x, bins):
@@ -373,6 +318,12 @@ class Hit(object):
     self.emtf_bend = emtf_bend
     self.sim_tp = sim_tp
 
+  def get_ring(self):
+    return self.id[2]
+
+  def get_fr(self):
+    return self.id[3]
+
 class Road(object):
   def __init__(self, _id, hits, mode, quality, sort_code):
     self.id = _id  # (endcap, sector, ipt, ieta, iphi)
@@ -402,16 +353,20 @@ class Road(object):
     hits_phi = np.zeros(nlayers, dtype=np.float32) + np.nan
     hits_theta = np.zeros(nlayers, dtype=np.float32) + np.nan
     hits_bend = np.zeros(nlayers, dtype=np.float32) + np.nan
+    hits_ring = np.zeros(nlayers, dtype=np.float32) + np.nan
+    hits_fr = np.zeros(nlayers, dtype=np.float32) + np.nan
     hits_mask = np.zeros(nlayers, dtype=np.float32) + 1.0
     for lay, hit in amap.iteritems():
       hits_phi[lay] = hit.emtf_phi
       hits_theta[lay] = hit.emtf_theta
       hits_bend[lay] = hit.emtf_bend
+      hits_ring[lay] = hit.get_ring()
+      hits_fr[lay] = hit.get_fr()
       hits_mask[lay] = 0.0
     #
     (endcap, sector, ipt, ieta, iphi) = self.id
     road_info = [ipt, ieta, iphi, self.iphi_corr]
-    variables = np.hstack((hits_phi, hits_theta, hits_bend, hits_mask, road_info))
+    variables = np.hstack((hits_phi, hits_theta, hits_bend, hits_ring, hits_fr, hits_mask, road_info))
     return variables
 
 class Track(object):
@@ -434,7 +389,7 @@ def particles_to_parameters(particles):
   return parameters
 
 def roads_to_variables(roads):
-  variables = np.zeros((len(roads), (nlayers * 4) + 4), dtype=np.float32)
+  variables = np.zeros((len(roads), (nlayers * 6) + 4), dtype=np.float32)
   for i, road in enumerate(roads):
     variables[i] = road.to_variables()
   return variables
@@ -954,9 +909,9 @@ use_condor = ("CONDOR_EXEC" in os.environ)
 
 # Analysis mode
 #analysis = "verbose"
-#analysis = "training"
+analysis = "training"
 #analysis = "application"
-analysis = "rates"
+#analysis = "rates"
 #analysis = "effie"
 if use_condor:
   analysis = sys.argv[1]
@@ -973,15 +928,15 @@ print('[INFO] Using analysis mode : %s' % analysis)
 print('[INFO] Using job id        : %s' % jobid)
 
 # Other stuff
-bankfile = 'histos_tb.11.npz'
+bankfile = 'histos_tb.12.npz'
 
-kerasfile = ['chsq_2GeV.11.npz', 'model_2GeV.11.h5', 'model_weights_2GeV.11.h5']
+kerasfile = ['chsq.12.npz', 'model.12.h5', 'model_weights.12.h5']
 
 infile_r = None  # input file handle
 
 def load_pgun():
   global infile_r
-  infile = 'ntuple_SingleMuon_Toy_2GeV_add.3.root'
+  infile = 'ntuple_SingleMuon_Toy_2GeV_add.4.root'
   if use_condor:
     infile = 'root://cmsio2.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/SingleMuon_Toy_2GeV/'+infile
   infile_r = root_open(infile)
@@ -1050,13 +1005,18 @@ elif analysis == "training":
 
   # 3-dimensional arrays of lists
   # [ipt][ieta][lay]
-  patterns_phi = [[[[] for k in xrange(nlayers)] for j in xrange(len(eta_bins)-1)] for i in xrange(len(pt_bins)-1)]
-  patterns_theta = [[[[] for k in xrange(nlayers)] for j in xrange(len(eta_bins)-1)] for i in xrange(len(pt_bins)-1)]
+  patterns_phi = np.empty((len(pt_bins)-1, len(eta_bins)-1, nlayers), dtype=np.object)
+  patterns_theta = np.empty((len(pt_bins)-1, len(eta_bins)-1, nlayers), dtype=np.object)
+  for ind in np.ndindex(patterns_phi.shape):
+    patterns_phi[ind] = []
+    patterns_theta[ind] = []
 
   # 2-dimensional arrays of lists
   # [itheta][ipt]
   e = EMTFExtrapolation()
-  patterns_exphi = [[[] for j in xrange(e.pt_bins[0])] for i in xrange(e.theta_bins[0])]
+  patterns_exphi = np.empty((e.theta_bins[0], e.pt_bins[0]), dtype=np.object)
+  for ind in np.ndindex(patterns_exphi.shape):
+    patterns_exphi[ind] = []
 
   # ____________________________________________________________________________
   # Loop over events
@@ -1098,10 +1058,10 @@ elif analysis == "training":
 
     part.ipt = find_pt_bin(part.invpt)
     part.ieta = find_eta_bin(part.eta)
-    the_patterns_phi = patterns_phi[part.ipt][part.ieta]
-    the_patterns_theta = patterns_theta[0][part.ieta]  # no binning in pt
+    the_patterns_phi = patterns_phi[part.ipt,part.ieta]
+    the_patterns_theta = patterns_theta[0,part.ieta]  # no binning in pt
     e = EMTFExtrapolation()
-    the_patterns_exphi = patterns_exphi[e._find_theta_bin(part)][e._find_pt_bin(part)]
+    the_patterns_exphi = patterns_exphi[e._find_theta_bin(part),e._find_pt_bin(part)]
 
     #pgun_weight = emtf_pgun_weight(part)
 
@@ -1114,7 +1074,6 @@ elif analysis == "training":
 
       if hit.endcap == part.endcap and hit.sector == part.sector and hit.sim_tp1 == 0 and hit.sim_tp2 == 0:
         the_patterns_phi[lay].append(hit.emtf_phi - part.emtf_phi)
-        #the_patterns_theta[lay].append(hit.emtf_theta - part.emtf_theta)
         the_patterns_theta[lay].append(hit.emtf_theta)
 
         if hit.type == kCSC and hit.station == 3:  # extrapolation to EMTF using ME3
@@ -1127,24 +1086,24 @@ elif analysis == "training":
 
   # ____________________________________________________________________________
   # Plot histograms
-  print('[INFO] Creating file: histos_tb_2GeV.root')
-  with root_open('histos_tb_2GeV.root', 'recreate') as f:
+  print('[INFO] Creating file: histos_tb.root')
+  with root_open('histos_tb.root', 'recreate') as f:
     for i in xrange(len(pt_bins)-1):
       for j in xrange(len(eta_bins)-1):
         for k in xrange(nlayers):
           hname = "patterns_phi_%i_%i_%i" % (i,j,k)
           h1a = Hist(201, -402, 402, name=hname, title=hname, type='F')
-          for x in patterns_phi[i][j][k]:  h1a.fill(x)
+          for x in patterns_phi[i,j,k]:  h1a.fill(x)
           h1a.Write()
 
           hname = "patterns_theta_%i_%i_%i" % (i,j,k)
           h1b = Hist(81, -40.5, 40.5, name=hname, title=hname, type='F')
-          for x in patterns_theta[i][j][k]:  h1b.fill(x)
+          for x in patterns_theta[i,j,k]:  h1b.fill(x)
           h1b.Write()
 
   # ____________________________________________________________________________
   # Save objects
-  print('[INFO] Creating file: histos_tb_2GeV.npz')
+  print('[INFO] Creating file: histos_tb.npz')
   if True:
     patterns_phi_tmp = patterns_phi
     patterns_theta_tmp = patterns_theta
@@ -1154,11 +1113,12 @@ elif analysis == "training":
     for i in xrange(len(pt_bins)-1):
       for j in xrange(len(eta_bins)-1):
         for k in xrange(nlayers):
-          patterns_phi_tmp_ijk = patterns_phi_tmp[i][j][k]
+          patterns_phi_tmp_ijk = patterns_phi_tmp[i,j,k]
           if len(patterns_phi_tmp_ijk) > 1000:
-            x = np.percentile(patterns_phi_tmp_ijk, [5, 50, 95], overwrite_input=True)
-            if k == 22 or k == 23 or k == 24:  # keep more GEMs
+            if k == 9 or k == 10 or k == 11:  # keep more GEMs
               x = np.percentile(patterns_phi_tmp_ijk, [3.5, 50, 96.5], overwrite_input=True)
+            else:
+              x = np.percentile(patterns_phi_tmp_ijk, [5, 50, 95], overwrite_input=True)
             x = [int(round(xx)) for xx in x]
             if (x[2] - x[0]) < 32:
               old_x = x[:]
@@ -1168,8 +1128,8 @@ elif analysis == "training":
               print(".. phi (%i,%i,%i) expanded from [%i,%i] to [%i,%i]" % (i,j,k,old_x[0],old_x[2],x[0],x[2]))
             patterns_phi[i,j,k] = x
 
-          #patterns_theta_tmp_ijk = patterns_theta_tmp[i][j][k]
-          patterns_theta_tmp_ijk = patterns_theta_tmp[0][j][k]  # no binning in pt
+          #patterns_theta_tmp_ijk = patterns_theta_tmp[i,j,k]
+          patterns_theta_tmp_ijk = patterns_theta_tmp[0,j,k]  # no binning in pt
           if len(patterns_theta_tmp_ijk) > 1000:
             x = np.percentile(patterns_theta_tmp_ijk, [2, 50, 98], overwrite_input=True)
             x = [int(round(xx)) for xx in x]
@@ -1177,12 +1137,12 @@ elif analysis == "training":
 
     # Mask layers by (ieta, lay)
     valid_layers = [
-      (0,2), (0,3), (0,4), (0,7), (0,8), (0,10), (0,12), (0,13), (0,14), (0,15), (0,18), (0,21),
-      (1,2), (1,3), (1,7), (1,8), (1,10), (1,12), (1,13), (1,14), (1,15), (1,17), (1,20), (1,21), (1,22),
-      (2,0), (2,1), (2,5), (2,6), (2,9), (2,10), (2,12), (2,17), (2,20), (2,22), (2,23),
-      (3,0), (3,1), (3,5), (3,6), (3,9), (3,11), (3,16), (3,19), (3,20), (3,22), (3,23),
-      (4,0), (4,1), (4,5), (4,6), (4,9), (4,11), (4,16), (4,19), (4,22), (4,23), (4,24),
-      (5,0), (5,1), (5,5), (5,6), (5,9), (5,11), (5,16), (5,19), (5,23), (5,24),
+      (0,1), (0,2), (0,3), (0,4), (0,5), (0,6), (0,7), (0,8),
+      (1,1), (1,2), (1,3), (1,4), (1,5), (1,6), (1,7), (1,8),
+      (2,0), (2,2), (2,3), (2,4), (2,7), (2,8), (2,9), (2,10),
+      (3,0), (3,2), (3,3), (3,4), (3,7), (3,8), (3,9), (3,10),
+      (4,0), (4,2), (4,3), (4,4), (4,7), (4,8), (4,9), (4,10), (4,11),
+      (5,0), (5,2), (5,3), (5,4), (5,7), (5,8), (5,10), (5,11),
     ]
     mask = np.ones_like(patterns_phi, dtype=np.bool)
     for valid_layer in valid_layers:
@@ -1191,12 +1151,11 @@ elif analysis == "training":
     patterns_theta[mask] = 0
 
     # extrapolation to EMTF using ME3
-    overwrite_extrapolation = False
+    overwrite_extrapolation = True
     smooth_extrapolation = True
     if overwrite_extrapolation:
       patterns_exphi_tmp = patterns_exphi
-      patterns_exphi_tmp = np.asarray(patterns_exphi_tmp)
-      patterns_exphi = np.zeros_like(patterns_exphi_tmp, dtype=np.float32)
+      patterns_exphi = np.zeros(patterns_exphi_tmp.shape, dtype=np.float32)
       for index, x in np.ndenumerate(patterns_exphi_tmp):
         if x:
           patterns_exphi[index] = np.median(x, overwrite_input=True)
@@ -1214,7 +1173,7 @@ elif analysis == "training":
       with np.load(bankfile) as data:
         patterns_exphi = data['patterns_exphi']
 
-    outfile = 'histos_tb_2GeV.npz'
+    outfile = 'histos_tb.npz'
     np.savez_compressed(outfile, patterns_phi=patterns_phi, patterns_theta=patterns_theta, patterns_exphi=patterns_exphi)
 
 
@@ -1311,8 +1270,8 @@ elif analysis == "application":
 
   # ____________________________________________________________________________
   # Plot histograms
-  print('[INFO] Creating file: histos_tba_2GeV.root')
-  with root_open('histos_tba_2GeV.root', 'recreate') as f:
+  print('[INFO] Creating file: histos_tba.root')
+  with root_open('histos_tba.root', 'recreate') as f:
     for hname in ["eff_vs_genpt", "eff_vs_geneta", "eff_vs_genphi"]:
       denom = histograms[hname + "_denom"]
       numer = histograms[hname + "_numer"]
@@ -1324,13 +1283,13 @@ elif analysis == "application":
 
   # ____________________________________________________________________________
   # Save objects
-  print('[INFO] Creating file: histos_tba_2GeV.npz')
+  print('[INFO] Creating file: histos_tba.npz')
   if True:
     assert(len(out_particles) == npassed)
     assert(len(out_roads) == npassed)
     parameters = particles_to_parameters(out_particles)
     variables = roads_to_variables(out_roads)
-    outfile = 'histos_tba_2GeV.npz'
+    outfile = 'histos_tba.npz'
     np.savez_compressed(outfile, parameters=parameters, variables=variables)
 
 
@@ -1418,19 +1377,19 @@ elif analysis == "rates":
 
   # ____________________________________________________________________________
   # Plot histograms
-  print('[INFO] Creating file: histos_tbb_2GeV.root')
-  with root_open('histos_tbb_2GeV.root', 'recreate') as f:
+  print('[INFO] Creating file: histos_tbb.root')
+  with root_open('histos_tbb.root', 'recreate') as f:
     for hname in ["nevents", "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt", "highest_emtf2023_absEtaMin0_absEtaMax2.5_qmin12_pt"]:
       h = histograms[hname]
       h.Write()
 
   # ____________________________________________________________________________
   # Save objects
-  print('[INFO] Creating file: histos_tbb_2GeV.npz')
+  print('[INFO] Creating file: histos_tbb.npz')
   if True:
     variables = np.vstack(out_variables)
     predictions = np.vstack(out_predictions)
-    outfile = 'histos_tbb_2GeV.npz'
+    outfile = 'histos_tbb.npz'
     np.savez_compressed(outfile, variables=variables, predictions=predictions)
 
 
@@ -1522,8 +1481,8 @@ elif analysis == "effie":
 
   # ____________________________________________________________________________
   # Plot histograms
-  print('[INFO] Creating file: histos_tbc_2GeV.root')
-  with root_open('histos_tbc_2GeV.root', 'recreate') as f:
+  print('[INFO] Creating file: histos_tbc.root')
+  with root_open('histos_tbc.root', 'recreate') as f:
     for hname in ["emtf_eff_vs_genpt_l1pt20", "emtf_eff_vs_geneta_l1pt20", "emtf2023_eff_vs_genpt_l1pt20", "emtf2023_eff_vs_geneta_l1pt20"]:
       denom = histograms[hname + "_denom"]
       numer = histograms[hname + "_numer"]
