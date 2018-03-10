@@ -21,11 +21,11 @@ kDT, kCSC, kRPC, kGEM, kTT = 0, 1, 2, 3, 20
 
 # Globals
 eta_bins = (1.2, 1.4, 1.6, 1.8, 2.0, 2.16, 2.4)
-pt_bins = (-0.50, -0.45, -0.40, -0.35, -0.30, -0.25, -0.20, -0.15, -0.10, -0.05, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50)
+pt_bins = (-0.50, -0.333333, -0.25, -0.20, -0.15, -0.10, -0.05, 0.05, 0.10, 0.15, 0.20, 0.25, 0.333333, 0.50)
 nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
 
 assert(len(eta_bins) == 6+1)
-assert(len(pt_bins) == 19+1)
+assert(len(pt_bins) == 13+1)
 
 
 # Functions
@@ -168,9 +168,11 @@ class EMTFBend(object):
   def get(self, hit):
     if hit.type == kCSC:
       clct = int(hit.pattern)
+      bend = self.lut[clct]
+      bend *= hit.endcap
     else:
-      clct = 10
-    return self.lut[clct]
+      bend = 0
+    return bend
 
 anemtfbend = EMTFBend()
 def emtf_bend(hit):
@@ -365,7 +367,7 @@ class Road(object):
       hits_mask[lay] = 0.0
     #
     (endcap, sector, ipt, ieta, iphi) = self.id
-    road_info = [ipt, ieta, iphi, self.iphi_corr]
+    road_info = (ipt, ieta, iphi, self.iphi_corr)
     variables = np.hstack((hits_phi, hits_theta, hits_bend, hits_ring, hits_fr, hits_mask, road_info))
     return variables
 
@@ -861,7 +863,7 @@ class TrackProducer(object):
 histograms = {}
 
 # Efficiency
-eff_pt_bins = (0., 2., 4., 6., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 35., 40., 45., 50., 60., 80., 120.)
+eff_pt_bins = (0., 0.5, 1., 2., 3., 4., 5., 6., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 35., 40., 45., 50., 60., 80., 120.)
 for k in ("denom", "numer"):
   hname = "eff_vs_genpt_%s" % k
   histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
@@ -901,7 +903,7 @@ for m in ("emtf", "emtf2023"):
 
 # Get number of events
 #maxEvents = -1
-#maxEvents = 2000000
+#maxEvents = 4000000
 maxEvents = 1000
 
 # Condor or not
@@ -909,10 +911,11 @@ use_condor = ("CONDOR_EXEC" in os.environ)
 
 # Analysis mode
 #analysis = "verbose"
-analysis = "training"
-#analysis = "application"
+#analysis = "training"
+analysis = "application"
 #analysis = "rates"
 #analysis = "effie"
+#analysis = "mixing"
 if use_condor:
   analysis = sys.argv[1]
 
@@ -950,7 +953,27 @@ def load_pgun():
   tree.define_collection(name='particles', prefix='vp_', size='vp_size')
   return tree
 
-def load_minbias(j):
+def load_pgun_batch(j):
+  global infile_r
+  infile_r = root_open('pippo.root', 'w')
+
+  #jj = np.split(np.arange(2000), 200)[j]
+  jj = np.split(np.arange(1000), 200)[j]  # 50% events for training
+  infiles = []
+  for j in jj:
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/SingleMuon_Toy_2GeV/ParticleGuns/CRAB3/180124_173319/%04i/ntuple_SingleMuon_Toy_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/SingleMuon_Toy2_2GeV/ParticleGuns/CRAB3/180227_130909/%04i/ntuple_SingleMuon_Toy_%i.root' % ((j+1)/1000, (j+1)))
+
+  tree = TreeChain('ntupler/tree', infiles)
+  print('[INFO] Opening file: %s' % ' '.join(infiles))
+
+  # Define collection
+  tree.define_collection(name='hits', prefix='vh_', size='vh_size')
+  tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
+  tree.define_collection(name='particles', prefix='vp_', size='vp_size')
+  return tree
+
+def load_minbias_batch(j):
   global infile_r
   #pufiles = ['root://cmsxrootd.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
   pufiles = ['root://cmsio2.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
@@ -1131,7 +1154,7 @@ elif analysis == "training":
           #patterns_theta_tmp_ijk = patterns_theta_tmp[i,j,k]
           patterns_theta_tmp_ijk = patterns_theta_tmp[0,j,k]  # no binning in pt
           if len(patterns_theta_tmp_ijk) > 1000:
-            x = np.percentile(patterns_theta_tmp_ijk, [2, 50, 98], overwrite_input=True)
+            x = np.percentile(patterns_theta_tmp_ijk, [2.5, 50, 97.5], overwrite_input=True)
             x = [int(round(xx)) for xx in x]
             patterns_theta[i,j,k] = x
 
@@ -1182,7 +1205,7 @@ elif analysis == "training":
 # ______________________________________________________________________________
 # Analysis: application
 elif analysis == "application":
-  tree = load_pgun()
+  tree = load_pgun_batch(jobid)
 
   # Workers
   bank = PatternBank(bankfile)
@@ -1192,23 +1215,25 @@ elif analysis == "application":
   out_roads = []
   npassed, ntotal = 0, 0
 
+  # Event range
+  n = -1
+
   # ____________________________________________________________________________
   # Loop over events
   for ievt, evt in enumerate(tree):
-    if maxEvents != -1 and ievt == maxEvents:
+    if n != -1 and ievt == n:
       break
 
-    if (ievt % 1000 == 0):  print("Processing event: {0}".format(ievt))
-
-    #roads = recog.run(evt.hits)
-
-    # Cheat using gen particle info
     part = evt.particles[0]  # particle gun
     part.invpt = np.true_divide(part.q, part.pt)
     part.ipt = find_pt_bin(part.invpt)
     part.ieta = find_eta_bin(part.eta)
 
-    roads = recog.run(evt.hits, part)
+    ## Cheat using gen particle info
+    #roads = recog.run(evt.hits, part)
+    #clean_roads = clean.run(roads)
+
+    roads = recog.run(evt.hits)
     clean_roads = clean.run(roads)
 
     if len(clean_roads) > 0:
@@ -1299,7 +1324,7 @@ elif analysis == "application":
 # Analysis: rates
 
 elif analysis == "rates":
-  tree = load_minbias(jobid)
+  tree = load_minbias_batch(jobid)
 
   # Workers
   bank = PatternBank(bankfile)
@@ -1501,6 +1526,59 @@ elif analysis == "effie":
 
 # ______________________________________________________________________________
 # Analysis: mixing
+elif analysis == "mixing":
+  tree = load_minbias_batch(jobid)
+
+  # Workers
+  bank = PatternBank(bankfile)
+  recog = PatternRecognition(bank)
+  clean = RoadCleaning()
+  out_particles = []
+  out_roads = []
+  npassed, ntotal = 0, 0
+
+  # Event range
+  n = -1
+
+  # ____________________________________________________________________________
+  # Loop over events
+  for ievt, evt in enumerate(tree):
+    if n != -1 and ievt == n:
+      break
+
+    found_high_pt_parts = any(map(lambda part: part.pt > 20., evt.particles))
+
+    if found_high_pt_parts:
+      continue
+
+    roads = recog.run(evt.hits)
+    clean_roads = clean.run(roads)
+
+    if len(clean_roads) > 0:
+      #mypart = Particle(part.pt, part.eta, part.phi, part.q)
+      #out_particles.append(mypart)
+      #out_roads.append(clean_roads[0])
+      out_roads += clean_roads
+
+    if ievt < 20 and False:
+      print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
+      for iroad, myroad in enumerate(sorted(roads, key=lambda x: x.id)):
+        print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
+      for iroad, myroad in enumerate(clean_roads):
+        print(".. croad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
+        for ihit, myhit in enumerate(myroad.hits):
+          print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.bx, myhit.sim_tp))
+
+  # End loop over events
+  unload_tree()
+
+  # ____________________________________________________________________________
+  # Save objects
+  print('[INFO] Creating file: histos_tbd.npz')
+  if True:
+    variables = roads_to_variables(out_roads)
+    outfile = 'histos_tbd.npz'
+    np.savez_compressed(outfile, variables=variables)
 
 
 
