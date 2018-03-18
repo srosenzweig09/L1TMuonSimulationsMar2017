@@ -61,6 +61,17 @@ def calc_phi_loc_int(glob, sector):
   phi_int = int(round(loc))
   return phi_int
 
+def calc_phi_loc_deg(bits):
+  loc = float(bits)/60. - 22.
+  return loc
+
+def calc_phi_glob_deg(loc, sector):
+  # loc in deg, sector [1-6]
+  glob = loc + 15. + (60. * (sector-1))
+  if glob >= 180.:
+    glob -= 360.
+  return glob
+
 def calc_theta_int(theta, endcap):
   # theta in deg, endcap [-1,+1]
   if endcap == -1:
@@ -75,6 +86,18 @@ def calc_theta_rad_from_eta(eta):
 
 def calc_theta_deg_from_eta(eta):
   return np.rad2deg(calc_theta_rad_from_eta(eta))
+
+def calc_theta_deg_from_int(theta_int):
+  theta_deg = float(theta_int) * (45.0-8.5)/128. + 8.5;
+  return theta_deg
+
+def calc_eta_from_theta_deg(theta_deg, endcap):
+  # theta in deg, endcap [-1,+1]
+  theta_rad = np.deg2rad(theta_deg)
+  eta = -1. * np.log(np.tan(theta_rad/2.))
+  if endcap == -1:
+    eta = -eta
+  return eta
 
 def extrapolate_to_emtf(phi, invpt, eta):  # phi in radians
   # 1.204 is the magic constant at eta of 1.9
@@ -373,16 +396,21 @@ class Road(object):
 
 class Track(object):
   def __init__(self, _id, hits, mode, pt, q, emtf_phi, emtf_theta, ndof, chi2):
+    assert(pt > 0.)
     self.id = _id  # (endcap, sector)
     self.hits = hits
     self.mode = mode
     self.xml_pt = pt
-    self.pt = pt * (1.0 + 0.24 * 1.28155)  # erf(1.28155/sqrt(2)) = 0.8 [90% upper limit from -1 to -1]
+    #self.pt = pt * (1.0 + 0.24 * 1.28155)  # erf(1.28155/sqrt(2)) = 0.8 [90% upper limit from -1 to -1]
+    pt_clipped = np.clip(pt, 3., 60.)
+    self.pt = pt * (1.0 + (0.08813 + 0.009504 * pt_clipped) * 1.28155)  # erf(1.28155/sqrt(2)) = 0.8 [90% upper limit from -1 to -1]
     self.q = q
     self.emtf_phi = emtf_phi
     self.emtf_theta = emtf_theta
     self.ndof = ndof
     self.chi2 = chi2
+    self.phi = calc_phi_glob_deg(calc_phi_loc_deg(emtf_phi), _id[1])
+    self.eta = calc_eta_from_theta_deg(calc_theta_deg_from_int(emtf_theta), _id[0])
 
 def particles_to_parameters(particles):
   parameters = np.zeros((len(particles), 3), dtype=np.float32)
@@ -621,18 +649,9 @@ class RoadCleaning(object):
 
 # pT assignment module
 class PtAssignment(object):
-  def __init__(self, kerasfile):
-    (chsqfile, model, model_weights) = kerasfile
-    #with np.load(encoder) as loaded:
-    #  self.x_mean = loaded['x_mean']
-    #  self.x_std  = loaded['x_std']
-    with np.load(chsqfile) as loaded:
-      self.x_cov = loaded['cov']
-      self.theta_bins = (10, 0.0, 1.0)
-      self.pt_bins = (40, -0.2, 0.2)
-      self.chsq_offset = loaded['chsq_offset_1']
-      self.chsq_scale = loaded['chsq_scale_1']
 
+  def __init__(self, kerasfile):
+    (model, model_weights, model_discr, model_discr_weights) = kerasfile
 
     # Keras library
     import os
@@ -642,16 +661,20 @@ class PtAssignment(object):
     import keras.backend as K
     import tensorflow as tf
     #
-    def huber_loss(y_true, y_pred, delta=1.345):
-      x = K.abs(y_true - y_pred)
-      squared_loss = 0.5*K.square(x)
-      absolute_loss = delta * (x - 0.5*delta)
-      #xx = K.switch(x < delta, squared_loss, absolute_loss)
-      xx = tf.where(x < delta, squared_loss, absolute_loss)  # needed for tensorflow
-      return K.mean(xx, axis=-1)
+    from encoder import Encoder, MyLeakyReLU, huber_loss
+
+    def encode(x):
+      nentries = x.shape[0]
+      dummy = np.zeros((nentries, 3), dtype=np.float32)
+      encoder = Encoder(x, dummy, adjust_scale=2)
+      return encoder
+    self.get_encoder = encode
 
     self.loaded_model = load_model(model, custom_objects={'huber_loss': huber_loss})
     self.loaded_model.load_weights(model_weights)
+
+    self.loaded_model_discr = load_model(model_discr, custom_objects={'MyLeakyReLU': MyLeakyReLU})
+    self.loaded_model_discr.load_weights(model_discr_weights)
 
   def run(self, x):
     x_new = np.array([], dtype=np.float32)
@@ -660,131 +683,14 @@ class PtAssignment(object):
     if len(x) == 0:
       return (x_new, y, z)
 
-    assert(len(x.shape) == 2)
-    assert(x.shape[1] == (nlayers * 4) + 4)
+    encoder = self.get_encoder(x)
+    x_new = encoder.get_x()
+    ndof = (encoder.x_mask == False).sum(axis=1)  # num of hits
 
-    self.nentries = x.shape[0]
-    self.x_copy = x.copy()
-
-    # Get views
-    self.x_phi   = self.x_copy[:, nlayers*0:nlayers*1]
-    self.x_theta = self.x_copy[:, nlayers*1:nlayers*2]
-    self.x_bend  = self.x_copy[:, nlayers*2:nlayers*3]
-    self.x_mask  = self.x_copy[:, nlayers*3:nlayers*4].astype(np.bool)  # this makes a copy
-    self.x_road  = self.x_copy[:, nlayers*4:nlayers*5]  # ipt, ieta, iphi, iphi_corr
-
-    # Subtract median phi from hit phis
-    #self.x_phi_median    = self.x_road[:, 2] * 32 - 16  # multiply by 'quadstrip' unit (4 * 8)
-    self.x_phi_median    = self.x_road[:, 2] * 16 - 8  # multiply by 'doublestrip' unit (2 * 8)
-    self.x_phi_median    = self.x_phi_median[:, np.newaxis]
-    self.x_phi          -= self.x_phi_median
-
-    # Subtract median theta from hit thetas
-    self.x_theta_median  = np.nanmedian(self.x_theta[:,:13], axis=1)  # CSC only
-    self.x_theta_median[np.isnan(self.x_theta_median)] = np.nanmedian(self.x_theta[np.isnan(self.x_theta_median)], axis=1)  # use all
-    self.x_theta_median  = self.x_theta_median[:, np.newaxis]
-    self.x_theta        -= self.x_theta_median
-
-    # Zones
-    self.x_ieta  = self.x_road[:, 1].astype(np.int32)
-
-    # Standard scales
-    adjust_scale = 2
-    if adjust_scale == 2:  # use covariance
-      nvariables_to_scale = self.x_cov.size
-      self.x_copy[:, :nvariables_to_scale] *= self.x_cov
-
-    # Remove outlier hits by checking hit thetas
-    x_theta_tmp = np.abs(self.x_theta) > 1.0
-    self.x_phi  [x_theta_tmp] = np.nan
-    self.x_theta[x_theta_tmp] = np.nan
-    self.x_bend [x_theta_tmp] = np.nan
-    self.x_mask [x_theta_tmp] = 1.0
-
-    # Remove all RPC hits
-    bad_rpcs = np.array((0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0), dtype=np.bool)
-    assert(len(bad_rpcs) == nlayers)
-    self.x_phi  [:, bad_rpcs] = np.nan
-    self.x_theta[:, bad_rpcs] = np.nan
-    self.x_bend [:, bad_rpcs] = np.nan
-    self.x_mask [:, bad_rpcs] = 1.0
-
-    # Add variables: theta_median and mode variables
-    self.x_theta_median -= 3.  # scaled to [0,1]
-    self.x_theta_median /= 83.
-    hits_to_station = np.array((5,5,1,1,1,2,2,2,2,3,3,4,4,1,1,2,3,3,3,4,4,4,5,2,5), dtype=np.int32)  # '5' denotes ME1/1
-    assert(len(hits_to_station) == nlayers)
-    self.x_mode_vars = np.zeros((self.nentries, 5), dtype=np.float32)
-    self.x_mode_vars[:,0] = np.any(self.x_mask[:,hits_to_station == 5] == 0, axis=1)
-    self.x_mode_vars[:,1] = np.any(self.x_mask[:,hits_to_station == 1] == 0, axis=1)
-    self.x_mode_vars[:,2] = np.any(self.x_mask[:,hits_to_station == 2] == 0, axis=1)
-    self.x_mode_vars[:,3] = np.any(self.x_mask[:,hits_to_station == 3] == 0, axis=1)
-    self.x_mode_vars[:,4] = np.any(self.x_mask[:,hits_to_station == 4] == 0, axis=1)
-
-    # Remove NaN
-    #np.nan_to_num(self.x_copy, copy=False)
-    self.x_copy[np.isnan(self.x_copy)] = 0.0
-
-    # Get x
-    #x_new = self.x_phi
-    x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend, self.x_theta_median, self.x_mode_vars))
-
-    # Predict y
     y = self.loaded_model.predict(x_new)
-
-    # Compute chi2
-    z = self._chsq(x_new, y)
+    z = self.loaded_model_discr.predict(x_new)
+    z = np.hstack((ndof[:, np.newaxis], z))
     return (x_new, y, z)
-
-  def _find_bin(self, x, bins):
-    x = np.clip(x, bins[1], bins[2]-1e-8)
-    binx = (x - bins[1]) / (bins[2] - bins[1]) * bins[0]
-    return int(binx)
-
-  def _find_theta_bin(self, theta):
-    return self._find_bin(theta, self.theta_bins)
-
-  def _find_pt_bin(self, pt):
-    return self._find_bin(pt, self.pt_bins)
-
-  def _chsq(self, x, y):
-    out = np.zeros((x.shape[0],2), dtype=np.float32)
-
-    i = 0
-    for x_i, x_mask_i, y_i, theta_i in izip(x, self.x_mask, y, self.x_theta_median):
-      # Select variables
-      nvariables = (nlayers * 3)
-      x_i = x_i[:nvariables]
-
-      # Get the constants
-      itheta = self._find_theta_bin(theta_i)
-      ipt = self._find_pt_bin(np.clip(y_i, self.pt_bins[1], self.pt_bins[2]))
-      offset = self.chsq_offset[itheta,ipt]
-      scale = self.chsq_scale[itheta,ipt]
-      delta = 1.345
-
-      # Calculate
-      valid = ~x_mask_i
-      valid = np.tile(valid,3)
-      #valid[nlayers*1:nlayers*2] = False  # do not use thetas
-      x_i -= offset
-      x_i *= scale
-
-      #rpc_penalty = True
-      #if rpc_penalty:
-      #  rpc_vars = np.zeros(nlayers, dtype=np.bool)
-      #  rpc_vars[13:22] = True
-      #  x_i[np.tile(rpc_vars,3)] *= 2
-
-      x_i = x_i[valid]
-      #x_i **= 2
-      x_i = np.abs(x_i)
-      x_i = np.where(x_i < delta, 0.5*np.square(x_i), delta * (x_i - 0.5*delta))
-      chi2 = x_i.sum()
-      ndof = (x_mask_i == False).sum()  # num of hits
-      out[i] = (ndof,chi2)
-      i += 1
-    return out
 
 
 # Track producer module
@@ -802,12 +708,12 @@ class TrackProducer(object):
     for myroad, myvars, mypreds, mychi2 in izip(clean_roads, variables, predictions, chi2_vars):
       # Unpack variables
       assert(len(myvars.shape) == 1)
-      assert(myvars.shape[0] == (nlayers * 3) + 6)
+      assert(myvars.shape[0] == (nlayers * 5) + 8)
       x_phi          = myvars[nlayers*0:nlayers*1]
       x_theta        = myvars[nlayers*1:nlayers*2]
       x_bend         = myvars[nlayers*2:nlayers*3]
-      x_theta_median = myvars[nlayers*3]
-      x_mode_vars    = myvars[nlayers*3+1:nlayers*3+6]
+      x_theta_median = (myvars[nlayers*5+2] * 83 + 3).astype(np.int32)  # remove scaling
+      x_mode_vars    = myvars[nlayers*5+3:nlayers*5+8].astype(np.bool)  # convert to booleans
 
       trk_mode = 0
       for i, x in enumerate(x_mode_vars):
@@ -837,25 +743,32 @@ class TrackProducer(object):
         trk_pt = mypreds[0]
         if trk_pt != 0.0:
           trk_pt = np.abs(1.0/trk_pt)
-        trk_q  = np.sign(mypreds[0])
+        trk_q = np.sign(mypreds[0])
         trk = Track(trk_id, myroad.hits, trk_mode, trk_pt, trk_q, iphi, x_theta_median, mychi2[0], mychi2[1])
         if self._simple_trigger(trk):
           tracks.append(trk)
     return tracks
 
   def _simple_trigger(self, trk):
-    ndof, chi2 = trk.ndof, trk.chi2
+    xml_pt, ndof, chi2 = trk.xml_pt, trk.ndof, trk.chi2
     assert(np.isfinite(chi2))
-    if 0 <= ndof <= 3:
-      return chi2 < 7.5
-    elif ndof == 4:
-      return chi2 < 10.
-    elif ndof == 5:
-      return chi2 < 18.7
-    elif ndof == 6:
-      return chi2 < 21.5
+    #if 0 <= ndof <= 3:
+    #  return chi2 < 7.5
+    #elif ndof == 4:
+    #  return chi2 < 10.
+    #elif ndof == 5:
+    #  return chi2 < 18.7
+    #elif ndof == 6:
+    #  return chi2 < 21.5
+    #else:
+    #  return chi2 < 35.
+    if xml_pt > 14.:
+      if ndof <= 3:
+        return chi2 > 0.5
+      else:
+        return chi2 > 0.5393
     else:
-      return chi2 < 35.
+      return True
 
 
 # ______________________________________________________________________________
@@ -884,18 +797,23 @@ for m in ("emtf", "emtf2023"):
   hname = "highest_%s_absEtaMin0_absEtaMax2.5_qmin12_pt" % m
   histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
 
+  for l in xrange(14,22+1):
+    hname = "%s_ptmin%i_qmin12_eta" % (m,l)
+    histograms[hname] = Hist(10, 1.55, 2.55, name=hname, title="; |#eta|; entries", type='F')
+
 # Effie
 for m in ("emtf", "emtf2023"):
-  for k in ("denom", "numer"):
-    hname = "%s_eff_vs_genpt_l1pt20_%s" % (m,k)
-    histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
-    hname = "%s_eff_vs_geneta_l1pt20_%s" % (m,k)
-    histograms[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
+  for l in (0, 10, 20, 30, 40, 50):
+    for k in ("denom", "numer"):
+      hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
+      histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
+      hname = "%s_eff_vs_geneta_l1pt%i_%s" % (m,l,k)
+      histograms[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > %i GeV}" % (l), type='F')
 
   hname = "%s_l1pt_vs_genpt" % m
-  histograms[hname] = Hist2D(100, -0.3, 0.3, 300, -0.3, 0.3, name=hname, title="; gen 1/p_{T} [1/GeV]; 1/p_{T} [1/GeV]", type='F')
+  histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -0.5, 0.5, name=hname, title="; gen 1/p_{T} [1/GeV]; 1/p_{T} [1/GeV]", type='F')
   hname = "%s_l1ptres_vs_genpt" % m
-  histograms[hname] = Hist2D(100, -0.3, 0.3, 300, -2, 2, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
+  histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -2, 2, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
 
 
 # ______________________________________________________________________________
@@ -904,7 +822,7 @@ for m in ("emtf", "emtf2023"):
 # Get number of events
 #maxEvents = -1
 #maxEvents = 4000000
-maxEvents = 1000
+maxEvents = 10
 
 # Condor or not
 use_condor = ("CONDOR_EXEC" in os.environ)
@@ -912,8 +830,8 @@ use_condor = ("CONDOR_EXEC" in os.environ)
 # Analysis mode
 #analysis = "verbose"
 #analysis = "training"
-analysis = "application"
-#analysis = "rates"
+#analysis = "application"
+analysis = "rates"
 #analysis = "effie"
 #analysis = "mixing"
 if use_condor:
@@ -933,7 +851,7 @@ print('[INFO] Using job id        : %s' % jobid)
 # Other stuff
 bankfile = 'histos_tb.12.npz'
 
-kerasfile = ['chsq.12.npz', 'model.12.h5', 'model_weights.12.h5']
+kerasfile = ['model.12.h5', 'model_weights.12.h5', 'model_discr.12.h5', 'model_discr_weights.12.h5']
 
 infile_r = None  # input file handle
 
@@ -941,7 +859,7 @@ def load_pgun():
   global infile_r
   infile = 'ntuple_SingleMuon_Toy_2GeV_add.4.root'
   if use_condor:
-    infile = 'root://cmsio2.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/SingleMuon_Toy_2GeV/'+infile
+    infile = 'root://cmsio3.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/SingleMuon_Toy_2GeV/'+infile
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
   #tree = TreeChain('ntupler/tree', [infile])
@@ -975,8 +893,8 @@ def load_pgun_batch(j):
 
 def load_minbias_batch(j):
   global infile_r
-  #pufiles = ['root://cmsxrootd.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
-  pufiles = ['root://cmsio2.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
+  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
+  #pufiles = ['root://cmsio3.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
   infile = pufiles[j]
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
@@ -1387,15 +1305,36 @@ elif analysis == "rates":
         highest_pt = min(100.-1e-3, highest_pt)
         histograms[hname].fill(highest_pt)
 
+    def fill_eta():
+      h = histograms[hname]
+      eta_bins = [False] * (10+2)
+      for itrk, trk in enumerate(tracks):
+        if select(trk):
+          b = h.FindFixBin(abs(trk.eta))
+          eta_bins[b] = True
+      for b in xrange(len(eta_bins)):
+        if eta_bins[b]:
+          h.fill(h.GetBinCenter(b))
+
     select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
     tracks = evt.tracks
+    #
     hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"
     fill_highest_pt()
+    for l in xrange(14,22+1):
+      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.bx == 0) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l))
+      hname = "emtf_ptmin%i_qmin12_eta" % (l)
+      fill_eta()
 
     select = lambda trk: trk
     tracks = emtf2023_tracks
+    #
     hname = "highest_emtf2023_absEtaMin0_absEtaMax2.5_qmin12_pt"
     fill_highest_pt()
+    for l in xrange(14,22+1):
+      select = lambda trk: trk and (trk.pt > float(l))
+      hname = "emtf2023_ptmin%i_qmin12_eta" % (l)
+      fill_eta()
 
   # End loop over events
   unload_tree()
@@ -1404,18 +1343,27 @@ elif analysis == "rates":
   # Plot histograms
   print('[INFO] Creating file: histos_tbb.root')
   with root_open('histos_tbb.root', 'recreate') as f:
-    for hname in ["nevents", "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt", "highest_emtf2023_absEtaMin0_absEtaMax2.5_qmin12_pt"]:
+    hnames = []
+    hname = "nevents"
+    hnames.append("nevents")
+    for m in ("emtf", "emtf2023"):
+      hname = "highest_%s_absEtaMin0_absEtaMax2.5_qmin12_pt" % m
+      hnames.append(hname)
+      for l in xrange(14,22+1):
+        hname = "%s_ptmin%i_qmin12_eta" % (m,l)
+        hnames.append(hname)
+    for hname in hnames:
       h = histograms[hname]
       h.Write()
 
   # ____________________________________________________________________________
   # Save objects
-  print('[INFO] Creating file: histos_tbb.npz')
-  if True:
-    variables = np.vstack(out_variables)
-    predictions = np.vstack(out_predictions)
-    outfile = 'histos_tbb.npz'
-    np.savez_compressed(outfile, variables=variables, predictions=predictions)
+  #print('[INFO] Creating file: histos_tbb.npz')
+  #if True:
+  #  variables = np.vstack(out_variables)
+  #  predictions = np.vstack(out_predictions)
+  #  outfile = 'histos_tbb.npz'
+  #  np.savez_compressed(outfile, variables=variables, predictions=predictions)
 
 
 
@@ -1461,20 +1409,21 @@ elif analysis == "effie":
         print(".. {0} {1}".format(y, y_pred))
 
     # Fill histograms
-    def fill_efficiency():
+    def fill_efficiency_pt():
       trigger = any([select(trk) for trk in tracks])  # using scaled pT
-      denom = histograms[hname1 + "_denom"]
-      numer = histograms[hname1 + "_numer"]
+      denom = histograms[hname + "_denom"]
+      numer = histograms[hname + "_numer"]
       denom.fill(part.pt)
       if trigger:
         numer.fill(part.pt)
 
-      if part.pt > 20.:
-        denom = histograms[hname2 + "_denom"]
-        numer = histograms[hname2 + "_numer"]
-        denom.fill(abs(part.eta))
-        if trigger:
-          numer.fill(abs(part.eta))
+    def fill_efficiency_eta():
+      trigger = any([select(trk) for trk in tracks])  # using scaled pT
+      denom = histograms[hname + "_denom"]
+      numer = histograms[hname + "_numer"]
+      denom.fill(abs(part.eta))
+      if trigger:
+        numer.fill(abs(part.eta))
 
     def fill_resolution():
       if len(tracks) > 0:
@@ -1483,23 +1432,32 @@ elif analysis == "effie":
         histograms[hname1].fill(part.invpt, trk.invpt)
         histograms[hname2].fill(abs(part.invpt), (abs(trk.invpt) - abs(part.invpt))/abs(part.invpt))
 
-    select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in (11,13,14,15)) and (trk.pt > 20.)
-    tracks = evt.tracks
-    hname1 = "emtf_eff_vs_genpt_l1pt20"
-    hname2 = "emtf_eff_vs_geneta_l1pt20"
-    fill_efficiency()
-    hname1 = "emtf_l1pt_vs_genpt"
-    hname2 = "emtf_l1ptres_vs_genpt"
-    fill_resolution()
+    for l in (0, 10, 20, 30, 40, 50):
+      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l))
+      tracks = evt.tracks
+      #
+      hname = "emtf_eff_vs_genpt_l1pt%i" % (l)
+      fill_efficiency_pt()
+      if part.pt > float(l):
+        hname = "emtf_eff_vs_geneta_l1pt%i" % (l)
+        fill_efficiency_eta()
+      if l == 20:
+        hname1 = "emtf_l1pt_vs_genpt"
+        hname2 = "emtf_l1ptres_vs_genpt"
+        fill_resolution()
 
-    select = lambda trk: trk and (trk.pt > 20.)
-    tracks = emtf2023_tracks
-    hname1 = "emtf2023_eff_vs_genpt_l1pt20"
-    hname2 = "emtf2023_eff_vs_geneta_l1pt20"
-    fill_efficiency()
-    hname1 = "emtf2023_l1pt_vs_genpt"
-    hname2 = "emtf2023_l1ptres_vs_genpt"
-    fill_resolution()
+      select = lambda trk: trk and (trk.pt > float(l))
+      tracks = emtf2023_tracks
+      #
+      hname = "emtf2023_eff_vs_genpt_l1pt%i" % (l)
+      fill_efficiency_pt()
+      if part.pt > float(l):
+        hname = "emtf2023_eff_vs_geneta_l1pt%i" % (l)
+        fill_efficiency_eta()
+      if l == 20:
+        hname1 = "emtf2023_l1pt_vs_genpt"
+        hname2 = "emtf2023_l1ptres_vs_genpt"
+        fill_resolution()
 
   # End loop over events
   unload_tree()
@@ -1508,16 +1466,19 @@ elif analysis == "effie":
   # Plot histograms
   print('[INFO] Creating file: histos_tbc.root')
   with root_open('histos_tbc.root', 'recreate') as f:
-    for hname in ["emtf_eff_vs_genpt_l1pt20", "emtf_eff_vs_geneta_l1pt20", "emtf2023_eff_vs_genpt_l1pt20", "emtf2023_eff_vs_geneta_l1pt20"]:
-      denom = histograms[hname + "_denom"]
-      numer = histograms[hname + "_numer"]
-      eff = Efficiency(numer, denom, name=hname)
-      eff.SetStatisticOption(0)  # kFCP
-      eff.SetConfidenceLevel(0.682689492137)  # one sigma
-      denom.Write()
-      numer.Write()
-      eff.Write()
-    for hname in ["emtf_l1pt_vs_genpt", "emtf_l1ptres_vs_genpt", "emtf2023_l1pt_vs_genpt", "emtf2023_l1ptres_vs_genpt"]:
+    hnames = []
+    for m in ("emtf", "emtf2023"):
+      for l in (0, 10, 20, 30, 40, 50):
+        for k in ("denom", "numer"):
+          hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
+          hnames.append(hname)
+          hname = "%s_eff_vs_geneta_l1pt%i_%s" % (m,l,k)
+          hnames.append(hname)
+      hname = "%s_l1pt_vs_genpt" % m
+      hnames.append(hname)
+      hname = "%s_l1ptres_vs_genpt" % m
+      hnames.append(hname)
+    for hname in hnames:
       h = histograms[hname]
       h.Write()
 
@@ -1546,7 +1507,7 @@ elif analysis == "mixing":
     if n != -1 and ievt == n:
       break
 
-    found_high_pt_parts = any(map(lambda part: part.pt > 20., evt.particles))
+    found_high_pt_parts = any(map(lambda part: part.pt > 14., evt.particles))
 
     if found_high_pt_parts:
       continue
