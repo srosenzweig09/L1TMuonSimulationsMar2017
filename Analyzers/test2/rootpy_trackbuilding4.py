@@ -796,6 +796,12 @@ histograms[hname] = Hist(5, 0, 5, name=hname, title="; count", type='F')
 for m in ("emtf", "emtf2023"):
   hname = "highest_%s_absEtaMin0_absEtaMax2.5_qmin12_pt" % m
   histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
+  hname = "highest_%s_absEtaMin1.2_absEtaMax1.65_qmin12_pt" % m
+  histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
+  hname = "highest_%s_absEtaMin1.65_absEtaMax2.15_qmin12_pt" % m
+  histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
+  hname = "highest_%s_absEtaMin2.15_absEtaMax2.5_qmin12_pt" % m
+  histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
 
   for l in xrange(14,22+1):
     hname = "%s_ptmin%i_qmin12_eta" % (m,l)
@@ -803,7 +809,7 @@ for m in ("emtf", "emtf2023"):
 
 # Effie
 for m in ("emtf", "emtf2023"):
-  for l in (0, 10, 20, 30, 40, 50):
+  for l in (0, 10, 15, 20, 30, 40, 50):
     for k in ("denom", "numer"):
       hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
       histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
@@ -1316,23 +1322,41 @@ elif analysis == "rates":
         if eta_bins[b]:
           h.fill(h.GetBinCenter(b))
 
-    select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
     tracks = evt.tracks
     #
+    select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
     hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"
+    fill_highest_pt()
+    select = lambda trk: trk and (1.2 <= abs(trk.eta) < 1.65) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
+    hname = "highest_emtf_absEtaMin1.2_absEtaMax1.65_qmin12_pt"
+    fill_highest_pt()
+    select = lambda trk: trk and (1.65 <= abs(trk.eta) < 2.15) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
+    hname = "highest_emtf_absEtaMin1.65_absEtaMax2.15_qmin12_pt"
+    fill_highest_pt()
+    select = lambda trk: trk and (2.15 <= abs(trk.eta) <= 2.5) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
+    hname = "highest_emtf_absEtaMin2.15_absEtaMax2.5_qmin12_pt"
     fill_highest_pt()
     for l in xrange(14,22+1):
       select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.bx == 0) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l))
       hname = "emtf_ptmin%i_qmin12_eta" % (l)
       fill_eta()
 
-    select = lambda trk: trk
     tracks = emtf2023_tracks
     #
+    select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5)
     hname = "highest_emtf2023_absEtaMin0_absEtaMax2.5_qmin12_pt"
     fill_highest_pt()
+    select = lambda trk: trk and (1.2 <= abs(trk.eta) < 1.65)
+    hname = "highest_emtf2023_absEtaMin1.2_absEtaMax1.65_qmin12_pt"
+    fill_highest_pt()
+    select = lambda trk: trk and (1.65 <= abs(trk.eta) < 2.15)
+    hname = "highest_emtf2023_absEtaMin1.65_absEtaMax2.15_qmin12_pt"
+    fill_highest_pt()
+    select = lambda trk: trk and (2.15 <= abs(trk.eta) <= 2.5)
+    hname = "highest_emtf2023_absEtaMin2.15_absEtaMax2.5_qmin12_pt"
+    fill_highest_pt()
     for l in xrange(14,22+1):
-      select = lambda trk: trk and (trk.pt > float(l))
+      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.pt > float(l))
       hname = "emtf2023_ptmin%i_qmin12_eta" % (l)
       fill_eta()
 
@@ -1348,6 +1372,12 @@ elif analysis == "rates":
     hnames.append("nevents")
     for m in ("emtf", "emtf2023"):
       hname = "highest_%s_absEtaMin0_absEtaMax2.5_qmin12_pt" % m
+      hnames.append(hname)
+      hname = "highest_%s_absEtaMin1.2_absEtaMax1.65_qmin12_pt" % m
+      hnames.append(hname)
+      hname = "highest_%s_absEtaMin1.65_absEtaMax2.15_qmin12_pt" % m
+      hnames.append(hname)
+      hname = "highest_%s_absEtaMin2.15_absEtaMax2.5_qmin12_pt" % m
       hnames.append(hname)
       for l in xrange(14,22+1):
         hname = "%s_ptmin%i_qmin12_eta" % (m,l)
@@ -1432,13 +1462,13 @@ elif analysis == "effie":
         histograms[hname1].fill(part.invpt, trk.invpt)
         histograms[hname2].fill(abs(part.invpt), (abs(trk.invpt) - abs(part.invpt))/abs(part.invpt))
 
-    for l in (0, 10, 20, 30, 40, 50):
+    for l in (0, 10, 15, 20, 30, 40, 50):
       select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l))
       tracks = evt.tracks
       #
       hname = "emtf_eff_vs_genpt_l1pt%i" % (l)
       fill_efficiency_pt()
-      if part.pt > float(l):
+      if part.pt > 20.:
         hname = "emtf_eff_vs_geneta_l1pt%i" % (l)
         fill_efficiency_eta()
       if l == 20:
@@ -1446,12 +1476,12 @@ elif analysis == "effie":
         hname2 = "emtf_l1ptres_vs_genpt"
         fill_resolution()
 
-      select = lambda trk: trk and (trk.pt > float(l))
+      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.pt > float(l))
       tracks = emtf2023_tracks
       #
       hname = "emtf2023_eff_vs_genpt_l1pt%i" % (l)
       fill_efficiency_pt()
-      if part.pt > float(l):
+      if part.pt > 20.:
         hname = "emtf2023_eff_vs_geneta_l1pt%i" % (l)
         fill_efficiency_eta()
       if l == 20:
@@ -1468,7 +1498,7 @@ elif analysis == "effie":
   with root_open('histos_tbc.root', 'recreate') as f:
     hnames = []
     for m in ("emtf", "emtf2023"):
-      for l in (0, 10, 20, 30, 40, 50):
+      for l in (0, 10, 15, 20, 30, 40, 50):
         for k in ("denom", "numer"):
           hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
           hnames.append(hname)
