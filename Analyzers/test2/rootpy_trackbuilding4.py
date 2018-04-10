@@ -593,6 +593,19 @@ class RoadCleaning(object):
           return
 
   def _sortby(self, clean_roads, groupinfo):
+    def select_bx_zero(road):
+      bx_counter1 = 0  # count hits with BX <= -1
+      bx_counter2 = 0  # count hits with BX <= 0
+      for hit in road.hits:  #FIXME
+        if hit.bx <= -1:
+          bx_counter1 += 1
+        if hit.bx <= 0:
+          bx_counter2 += 1
+      trk_bx_zero = (bx_counter1 < 2 and bx_counter2 >= 2)
+      return trk_bx_zero
+
+    clean_roads = filter(select_bx_zero, clean_roads)
+
     if clean_roads:
       clean_roads.sort(key=lambda road: road.sort_code, reverse=True)
 
@@ -716,28 +729,19 @@ class TrackProducer(object):
       x_mode_vars    = myvars[nlayers*5+3:nlayers*5+8].astype(np.bool)  # convert to booleans
 
       trk_mode = 0
-      for i, x in enumerate(x_mode_vars):
+      for i, x_mode_var in enumerate(x_mode_vars):
         if i == 0:
           station = 1
         else:
           station = i
-        if x:
+        if x_mode_var:
           trk_mode |= (1 << (4 - station))
 
       ipt = find_pt_bin(mypreds[0])
       quality1 = myroad.quality
       quality2 = emtf_road_quality(ipt)
 
-      bx_counter1 = 0  # count hits with BX <= -1
-      bx_counter2 = 0  # count hits with BX <= 0
-      for hit in myroad.hits:  #FIXME
-        if hit.bx <= -1:
-          bx_counter1 += 1
-        if hit.bx <= 0:
-          bx_counter2 += 1
-      trk_bx_zero = (bx_counter1 < 2 and bx_counter2 >= 2)
-
-      if emtf_is_singlemu(trk_mode) and quality2 <= (quality1+1) and trk_bx_zero:
+      if emtf_is_singlemu(trk_mode) and quality2 <= (quality1+1):
         (endcap, sector, ipt, ieta, iphi) = myroad.id
         trk_id = (endcap, sector)
         trk_pt = mypreds[0]
@@ -783,11 +787,11 @@ for k in ("denom", "numer"):
   histograms[hname].Sumw2()
 
   hname = "eff_vs_geneta_%s" % k
-  histograms[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta|", type='F')
+  histograms[hname] = Hist(70, 1.1, 2.5, name=hname, title="; gen |#eta|", type='F')
   histograms[hname].Sumw2()
 
   hname = "eff_vs_genphi_%s" % k
-  histograms[hname] = Hist(32, -3.2, 3.2, name=hname, title="; gen #phi", type='F')
+  histograms[hname] = Hist(64, -3.2, 3.2, name=hname, title="; gen #phi", type='F')
   histograms[hname].Sumw2()
 
 # Rates
@@ -814,7 +818,7 @@ for m in ("emtf", "emtf2023"):
       hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
       histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
       hname = "%s_eff_vs_geneta_l1pt%i_%s" % (m,l,k)
-      histograms[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > %i GeV}" % (l), type='F')
+      histograms[hname] = Hist(70, 1.1, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > %i GeV}" % (l), type='F')
 
   hname = "%s_l1pt_vs_genpt" % m
   histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -0.5, 0.5, name=hname, title="; gen 1/p_{T} [1/GeV]; 1/p_{T} [1/GeV]", type='F')
@@ -828,7 +832,7 @@ for m in ("emtf", "emtf2023"):
 # Get number of events
 #maxEvents = -1
 #maxEvents = 4000000
-maxEvents = 10
+maxEvents = 1000
 
 # Condor or not
 use_condor = ("CONDOR_EXEC" in os.environ)
@@ -837,9 +841,9 @@ use_condor = ("CONDOR_EXEC" in os.environ)
 #analysis = "verbose"
 #analysis = "training"
 #analysis = "application"
-analysis = "rates"
+#analysis = "rates"
 #analysis = "effie"
-#analysis = "mixing"
+analysis = "mixing"
 if use_condor:
   analysis = sys.argv[1]
 
@@ -1524,6 +1528,8 @@ elif analysis == "mixing":
   bank = PatternBank(bankfile)
   recog = PatternRecognition(bank)
   clean = RoadCleaning()
+  #ptassign = PtAssignment(kerasfile)
+  #trkprod = TrackProducer()
   out_particles = []
   out_roads = []
   npassed, ntotal = 0, 0
@@ -1537,18 +1543,42 @@ elif analysis == "mixing":
     if n != -1 and ievt == n:
       break
 
-    found_high_pt_parts = any(map(lambda part: part.pt > 14., evt.particles))
-
-    if found_high_pt_parts:
-      continue
-
     roads = recog.run(evt.hits)
     clean_roads = clean.run(roads)
+    #variables = roads_to_variables(clean_roads)
+    #variables_mod, predictions, chi2_vars = ptassign.run(variables)
+    #emtf2023_tracks = trkprod.run(clean_roads, variables_mod, predictions, chi2_vars)
+
+    def find_highest_part_pt():
+      highest_pt = -999999.
+      for ipart, part in enumerate(evt.particles):
+        if select(part):
+          if highest_pt < part.pt:
+            highest_pt = part.pt
+      if highest_pt > 0.:
+        highest_pt = min(100.-1e-3, highest_pt)
+        return highest_pt
+
+    select = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
+    highest_part_pt = find_highest_part_pt()
+
+    def find_highest_track_pt():
+      highest_pt = -999999.
+      for itrk, trk in enumerate(evt.tracks):
+        if select(trk):
+          if highest_pt < trk.pt:  # using scaled pT
+            highest_pt = trk.pt
+      if highest_pt > 0.:
+        highest_pt = min(100.-1e-3, highest_pt)
+        return highest_pt
+
+    select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
+    highest_track_pt = find_highest_track_pt()
+
 
     if len(clean_roads) > 0:
-      #mypart = Particle(part.pt, part.eta, part.phi, part.q)
-      #out_particles.append(mypart)
-      #out_roads.append(clean_roads[0])
+      part = (jobid, ievt, highest_part_pt, highest_track_pt)
+      out_particles += [part for _ in xrange(len(clean_roads))]
       out_roads += clean_roads
 
     if ievt < 20 and False:
@@ -1567,9 +1597,11 @@ elif analysis == "mixing":
   # Save objects
   print('[INFO] Creating file: histos_tbd.npz')
   if True:
+    assert(len(out_roads) == len(out_particles))
     variables = roads_to_variables(out_roads)
+    aux = np.array(out_particles, dtype=np.float32)
     outfile = 'histos_tbd.npz'
-    np.savez_compressed(outfile, variables=variables)
+    np.savez_compressed(outfile, variables=variables, aux=aux)
 
 
 
