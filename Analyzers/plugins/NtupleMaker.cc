@@ -400,6 +400,8 @@ void NtupleMaker::process() {
           (conv_hit_i.Strip_low()  == conv_hit_j.Strip_low()) && // For RPC clusters
           (conv_hit_i.Strip_hi()   == conv_hit_j.Strip_hi()) &&  // For RPC clusters
           (conv_hit_i.Roll()       == conv_hit_j.Roll()) &&
+          (conv_hit_i.Endcap()     == conv_hit_j.Endcap()) && // Needed for the ntupler
+          (conv_hit_i.Sector()     == conv_hit_j.Sector()) && // Needed for the ntupler
           true
         ) {
           int istation = (conv_hit_i.Station() - 1);
