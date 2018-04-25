@@ -142,7 +142,7 @@ class Encoder(object):
 from keras.engine import Layer
 from keras import backend as K
 
-class MyLeakyReLU(Layer):
+class NewLeakyReLU(Layer):
     """Leaky version of a Rectified Linear Unit.
     It allows a small gradient when the unit is not active:
     `f(x) = alpha * x for x < 0`,
@@ -160,7 +160,7 @@ class MyLeakyReLU(Layer):
     """
 
     def __init__(self, alpha=0.3, **kwargs):
-        super(MyLeakyReLU, self).__init__(**kwargs)
+        super(NewLeakyReLU, self).__init__(**kwargs)
         self.supports_masking = True
         if isinstance(alpha, dict):
             self.alpha = K.cast_to_floatx(alpha['value'])
@@ -172,7 +172,7 @@ class MyLeakyReLU(Layer):
 
     def get_config(self):
         config = {'alpha': float(self.alpha)}
-        base_config = super(MyLeakyReLU, self).get_config()
+        base_config = super(NewLeakyReLU, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
     def compute_output_shape(self, input_shape):
@@ -203,3 +203,17 @@ def masked_huber_loss(y_true, y_pred, delta=1.345):
   mask = K.equal(y_true, mask_value)
   mask = 1.0 - K.cast(mask, K.floatx())
   return K.sum(xx * mask, axis=-1) / K.sum(mask)
+
+
+# ______________________________________________________________________________
+# Learning rate decay by epoch number
+from keras.callbacks import LearningRateScheduler
+
+def lr_schedule(epoch):
+  if (epoch % 10) == 0:
+    lr = K.get_value(model.optimizer.lr)
+    K.set_value(model.optimizer.lr, lr*0.95)
+    print("lr changed to {}".format(lr*0.95))
+  return K.get_value(model.optimizer.lr)
+
+lr_decay = LearningRateScheduler(lr_schedule)
