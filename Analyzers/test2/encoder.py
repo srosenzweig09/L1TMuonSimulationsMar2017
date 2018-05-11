@@ -1,5 +1,8 @@
 import numpy as np
+
 nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
+
+nvariables = (nlayers * 5) + 8
 
 class Encoder(object):
 
@@ -26,37 +29,41 @@ class Encoder(object):
       self.y_pt    = self.y_copy[:, 0]  # q/pT
       self.y_phi   = self.y_copy[:, 1]
       self.y_eta   = self.y_copy[:, 2]
-
+      
       # Make event weight
       #self.w       = np.ones(self.y_pt.shape, dtype=np.float32)
       self.w       = np.abs(self.y_pt)/0.2 + 1.0
-
+      
       # Straightness & zone
       self.x_straightness = self.x_road[:, 0][:, np.newaxis]
       self.x_zone         = self.x_road[:, 1][:, np.newaxis]
-
+      
       # Subtract median phi from hit phis
       #self.x_phi_median    = self.x_road[:, 2] * 32 - 16  # multiply by 'quadstrip' unit (4 * 8)
       self.x_phi_median    = self.x_road[:, 2] * 16 - 8  # multiply by 'doublestrip' unit (2 * 8)
       self.x_phi_median    = self.x_phi_median[:, np.newaxis]
       self.x_phi          -= self.x_phi_median
-
+      
       # Subtract median theta from hit thetas
       self.x_theta_median  = np.nanmedian(self.x_theta[:,:5], axis=1)  # CSC only
       self.x_theta_median[np.isnan(self.x_theta_median)] = np.nanmedian(self.x_theta[np.isnan(self.x_theta_median)], axis=1)  # use all
       self.x_theta_median  = self.x_theta_median[:, np.newaxis]
       self.x_theta        -= self.x_theta_median
-
+      
       # Standard scales
+      # + Remove outlier hits by checking hit thetas
       if adjust_scale == 0:  # do not adjust
-        pass
+        x_theta_tmp = np.abs(self.x_theta) > 10000.0
       elif adjust_scale == 1:  # use mean and std
         self.x_mean  = np.nanmean(self.x_copy, axis=0)
         self.x_std   = np.nanstd(self.x_copy, axis=0)
         self.x_std   = self._handle_zero_in_scale(self.x_std)
         self.x_copy -= self.x_mean
         self.x_copy /= self.x_std
+        x_theta_tmp = np.abs(self.x_theta) > 1.0
       elif adjust_scale == 2:  # adjust by hand
+        theta_cuts    = np.array((6., 6., 6., 6., 6., 12., 12., 12., 12., 9., 9., 9.), dtype=np.float32)
+        x_theta_tmp   = np.abs(self.x_theta) > theta_cuts
         self.x_phi   *= 0.000991  # GE1/1 dphi linear correlation with q/pT
         self.x_theta *= (1/12.)   # 12 integer theta units
         self.x_bend  *= 0.188082  # ME1/2 bend linear correlation with q/pT
@@ -64,32 +71,50 @@ class Encoder(object):
         x_ring_tmp    = (x_ring_tmp == 1) | (x_ring_tmp == 4)
         self.x_ring[x_ring_tmp] = 0  # ring 1,4 -> 0
         self.x_ring[~x_ring_tmp] = 1 # ring 2,3 -> 1
-        #self.x_fr     = self.x_fr
-
+        x_fr_tmp      = self.x_fr.astype(np.int32)
+        x_fr_tmp      = (x_fr_tmp == 0)
+        self.x_fr[x_fr_tmp] = 0
+        self.x_fr[~x_fr_tmp] = 1
+      elif adjust_scale == 3:  # adjust by hand #2
+        theta_cuts    = np.array((6., 6., 6., 6., 6., 10., 10., 10., 10., 8., 8., 8.), dtype=np.float32)
+        x_theta_tmp   = np.abs(self.x_theta) > theta_cuts
+        x_ring_tmp    = self.x_ring.astype(np.int32)
+        x_ring_tmp    = (x_ring_tmp == 1) | (x_ring_tmp == 4)
+        self.x_ring[x_ring_tmp] = 0  # ring 1,4 -> 0
+        self.x_ring[~x_ring_tmp] = 1 # ring 2,3 -> 1
+        x_fr_tmp      = self.x_fr.astype(np.int32)
+        x_fr_tmp      = (x_fr_tmp == 0)
+        self.x_fr[x_fr_tmp] = 0
+        self.x_fr[~x_fr_tmp] = 1
+        s = [ 0.00528005,  0.01100854, -0.01955833, -0.01326062, -0.00839341,
+              0.01209313, -0.02546741, -0.011541  , -0.00734255,  0.00393156,
+             -0.02459449,  1.        ,  0.55500895,  0.50743203,  1.4219028 ,
+              1.35162982,  0.93576706,  0.19965793,  0.29495697,  0.35250728,
+              0.38013349,  0.50885451,  0.66930139,  1.        ,  0.81924683,
+              0.47289819,  1.67281557,  1.1339659 ,  1.13266964,  1.        ,
+              1.        ,  1.        ,  1.        ,  1.        ,  1.        ,
+              1.        ,  1.        ,  1.        ,  1.        ,  1.        ,
+              1.        ,  1.        ,  1.        ,  1.        ,  1.        ,
+              1.        ,  1.        ,  1.        ,  1.        ,  1.        ,
+              1.        ,  1.        ,  1.        ,  1.        ,  1.        ,
+              1.        ,  1.        ,  1.        ,  1.        ,  1.        ,
+              1.        ,  1.        ,  1.        ,  1.        ,  1.        ,
+              1.        ,  1.        ,  1.        ,  1.        ,  1.        ,
+              1.        ,  1.        ,  1.        ,  1.        ,  1.        ,  1.        ]
+        self.x_copy *= s
+      
       # Remove outlier hits by checking hit thetas
-      if adjust_scale == 0:  # do not adjust
-        x_theta_tmp = np.abs(self.x_theta) > 10000.0
-      elif adjust_scale == 1:  # use mean and std
-        x_theta_tmp = np.abs(self.x_theta) > 1.0
-      elif adjust_scale == 2:  # adjust by hand
-        theta_cuts    = np.array((6., 6., 6., 6., 6., 12., 12., 12., 12., 9., 9., 9.), dtype=np.float32)
-        theta_cuts   *= (1/12.)   # 12 integer theta units
-        assert(len(theta_cuts) == nlayers)
-        x_theta_tmp = np.abs(self.x_theta) > theta_cuts
       self.x_phi  [x_theta_tmp] = np.nan
       self.x_theta[x_theta_tmp] = np.nan
       self.x_bend [x_theta_tmp] = np.nan
       self.x_ring [x_theta_tmp] = np.nan
       self.x_fr   [x_theta_tmp] = np.nan
       self.x_mask [x_theta_tmp] = 1.0
-
+      
       # Add variables: straightness, zone, theta_median and mode variables
-      self.x_straightness -= 6.  # scaled to [-1,1]
-      self.x_straightness /= 6.
-      self.x_zone         -= 0.  # scaled to [0,1]
-      self.x_zone         /= 5.
-      self.x_theta_median -= 3.  # scaled to [0,1]
-      self.x_theta_median /= 83.
+      self.x_straightness = np.abs(self.x_straightness - 6.) / 6.  # scaled to [0,1]
+      self.x_zone         = (self.x_zone - 0.) / 5.  # scaled to [0,1]
+      self.x_theta_median = (self.x_theta_median - 3.) / 83.  # scaled to [0,1]
       hits_to_station = np.array((5,1,2,3,4,1,2,3,4,5,2,5), dtype=np.int32)  # '5' denotes ME1/1
       assert(len(hits_to_station) == nlayers)
       self.x_mode_vars = np.zeros((self.nentries, 5), dtype=np.bool)
@@ -98,7 +123,7 @@ class Encoder(object):
       self.x_mode_vars[:,2] = np.any(self.x_mask[:,hits_to_station == 2] == 0, axis=1)
       self.x_mode_vars[:,3] = np.any(self.x_mask[:,hits_to_station == 3] == 0, axis=1)
       self.x_mode_vars[:,4] = np.any(self.x_mask[:,hits_to_station == 4] == 0, axis=1)
-
+      
       # Remove NaN
       #np.nan_to_num(self.x_copy, copy=False)
       self.x_copy[np.isnan(self.x_copy)] = 0.0
@@ -134,53 +159,24 @@ class Encoder(object):
     self.x_std = loaded['x_std']
 
 
-# LeakyReLU with fix
-# https://github.com/keras-team/keras/pull/7784
 
-from keras.engine import Layer
-from keras import backend as K
-
-class MyLeakyReLU(Layer):
-    """Leaky version of a Rectified Linear Unit.
-    It allows a small gradient when the unit is not active:
-    `f(x) = alpha * x for x < 0`,
-    `f(x) = x for x >= 0`.
-    # Input shape
-        Arbitrary. Use the keyword argument `input_shape`
-        (tuple of integers, does not include the samples axis)
-        when using this layer as the first layer in a model.
-    # Output shape
-        Same shape as the input.
-    # Arguments
-        alpha: float >= 0. Negative slope coefficient.
-    # References
-        - [Rectifier Nonlinearities Improve Neural Network Acoustic Models](https://web.stanford.edu/~awni/papers/relu_hybrid_icml2013_final.pdf)
-    """
-
-    def __init__(self, alpha=0.3, **kwargs):
-        super(MyLeakyReLU, self).__init__(**kwargs)
-        self.supports_masking = True
-        if isinstance(alpha, dict):
-            self.alpha = K.cast_to_floatx(alpha['value'])
-        else:
-            self.alpha = K.cast_to_floatx(alpha)
-
-    def call(self, inputs):
-        return K.relu(inputs, alpha=self.alpha)
-
-    def get_config(self):
-        config = {'alpha': float(self.alpha)}
-        base_config = super(MyLeakyReLU, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
-
-    def compute_output_shape(self, input_shape):
-        return input_shape
-
-
-# Huber loss
 import tensorflow as tf
 from keras import backend as K
 
+# ______________________________________________________________________________
+# New leaky relu
+def NewLeakyReLU(x, alpha=0., max_value=None):
+  return K.relu(x, alpha=alpha, max_value=max_value)
+
+# ______________________________________________________________________________
+# New tanh
+def NewTanh(x):
+  return K.tanh(x)
+  #return 1.7159 * K.tanh(x * 2./3.)
+  #return K.clip(x, -1., 1.)
+
+# ______________________________________________________________________________
+# Huber loss
 def huber_loss(y_true, y_pred, delta=1.345):
   x = K.abs(y_true - y_pred)
   squared_loss = 0.5*K.square(x)
@@ -189,4 +185,72 @@ def huber_loss(y_true, y_pred, delta=1.345):
   xx = tf.where(x < delta, squared_loss, absolute_loss)  # needed for tensorflow
   return K.mean(xx, axis=-1)
 
+def masked_huber_loss(y_true, y_pred, delta=1.345):
+  x = K.abs(y_true - y_pred)
+  squared_loss = 0.5*K.square(x)
+  absolute_loss = delta * (x - 0.5*delta)
+  #xx = K.switch(x < delta, squared_loss, absolute_loss)
+  xx = tf.where(x < delta, squared_loss, absolute_loss)  # needed for tensorflow
 
+  mask_value = 100.
+  mask = K.not_equal(y_true, mask_value)
+  mask = K.cast(mask, K.floatx())
+  xx *= mask
+  xx /= K.mean(mask)
+  return K.mean(xx, axis=-1)
+
+#def masked_huber_loss(y_true, y_pred, delta=1.345):
+#  mask_value = 100.
+#  mask_alpha = 0.02
+#  mask_target = 0.5 * reg_pt_scale
+#  mask = K.equal(y_true, mask_value)
+#  
+#  #x = K.abs(y_true - y_pred)
+#  x = tf.where(mask, mask_alpha * K.abs(mask_target - K.abs(y_pred)), K.abs(y_true - y_pred))
+#  squared_loss = 0.5*K.square(x)
+#  absolute_loss = delta * (x - 0.5*delta)
+#  #xx = K.switch(x < delta, squared_loss, absolute_loss)
+#  xx = tf.where(x < delta, squared_loss, absolute_loss)  # needed for tensorflow
+#  return K.mean(xx, axis=-1)
+
+
+# ______________________________________________________________________________
+# Binary crossentropy
+def masked_binary_crossentropy(y_true, y_pred, from_logits=False):
+  target, output = y_true, y_pred
+
+  # transform back to logits
+  if not from_logits:
+    output = K.clip(output, K.epsilon(), 1 - K.epsilon())
+    output = K.log(output / (1 - output))
+  
+  xx =  tf.nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
+  #xx =  tf.nn.weighted_cross_entropy_with_logits(targets=target, logits=output, pos_weight=0.5)  # pos_weight < 1 decreases the false positive count
+
+  mask_value = 100.
+  mask = K.not_equal(y_true, mask_value)
+  mask = K.cast(mask, K.floatx())
+  xx *= mask
+  xx /= K.mean(mask)
+  return K.mean(xx, axis=-1)
+
+
+# ______________________________________________________________________________
+# Learning rate decay by epoch number
+from keras.callbacks import LearningRateScheduler
+
+def lr_schedule(epoch):
+  if (epoch % 10) == 0:
+    lr = K.get_value(model.optimizer.lr)
+    K.set_value(model.optimizer.lr, lr*0.95)
+    print("lr changed to {}".format(lr*0.95))
+  return K.get_value(model.optimizer.lr)
+
+lr_decay = LearningRateScheduler(lr_schedule)
+
+
+# ______________________________________________________________________________
+# Custom objects
+from keras.utils.generic_utils import get_custom_objects
+
+get_custom_objects().update({'masked_huber_loss': masked_huber_loss, 'masked_binary_crossentropy': masked_binary_crossentropy, 'NewLeakyReLU': NewLeakyReLU, 'NewTanh': NewTanh})

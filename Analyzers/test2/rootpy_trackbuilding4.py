@@ -395,15 +395,13 @@ class Road(object):
     return variables
 
 class Track(object):
-  def __init__(self, _id, hits, mode, pt, q, emtf_phi, emtf_theta, ndof, chi2):
+  def __init__(self, _id, hits, mode, xml_pt, pt, q, emtf_phi, emtf_theta, ndof, chi2):
     assert(pt > 0.)
     self.id = _id  # (endcap, sector)
     self.hits = hits
     self.mode = mode
-    self.xml_pt = pt
-    #self.pt = pt * (1.0 + 0.24 * 1.28155)  # erf(1.28155/sqrt(2)) = 0.8 [90% upper limit from -1 to -1]
-    pt_clipped = np.clip(pt, 3., 60.)
-    self.pt = pt * (1.0 + (0.08813 + 0.009504 * pt_clipped) * 1.28155)  # erf(1.28155/sqrt(2)) = 0.8 [90% upper limit from -1 to -1]
+    self.xml_pt = xml_pt
+    self.pt = pt
     self.q = q
     self.emtf_phi = emtf_phi
     self.emtf_theta = emtf_theta
@@ -664,30 +662,27 @@ class RoadCleaning(object):
 class PtAssignment(object):
 
   def __init__(self, kerasfile):
-    (model, model_weights, model_discr, model_discr_weights) = kerasfile
+    (model_file, model_weights_file) = kerasfile
 
     # Keras library
     import os
     os.environ['KERAS_BACKEND'] = 'tensorflow'
     #
-    from keras.models import load_model
-    import keras.backend as K
     import tensorflow as tf
+    from keras import backend as K
+    from keras.models import load_model
     #
-    from encoder import Encoder, MyLeakyReLU, huber_loss
+    from encoder import Encoder
 
     def encode(x):
       nentries = x.shape[0]
       dummy = np.zeros((nentries, 3), dtype=np.float32)
-      encoder = Encoder(x, dummy, adjust_scale=2)
+      encoder = Encoder(x, dummy, adjust_scale=3)
       return encoder
     self.get_encoder = encode
 
-    self.loaded_model = load_model(model, custom_objects={'huber_loss': huber_loss})
-    self.loaded_model.load_weights(model_weights)
-
-    self.loaded_model_discr = load_model(model_discr, custom_objects={'MyLeakyReLU': MyLeakyReLU})
-    self.loaded_model_discr.load_weights(model_discr_weights)
+    self.loaded_model = load_model(model_file)
+    self.loaded_model.load_weights(model_weights_file)
 
   def run(self, x):
     x_new = np.array([], dtype=np.float32)
@@ -699,11 +694,14 @@ class PtAssignment(object):
     encoder = self.get_encoder(x)
     x_new = encoder.get_x()
     ndof = (encoder.x_mask == False).sum(axis=1)  # num of hits
+    ndof = ndof[:, np.newaxis]
 
+    reg_pt_scale = 100.
     y = self.loaded_model.predict(x_new)
-    z = self.loaded_model_discr.predict(x_new)
-    z = np.hstack((ndof[:, np.newaxis], z))
-    return (x_new, y, z)
+    y[0] /= reg_pt_scale
+    assert len(y) == 2
+    y_new = np.rollaxis(np.asarray(y),0,3)
+    return (x_new, y_new, ndof)
 
 
 # Track producer module
@@ -711,68 +709,100 @@ class TrackProducer(object):
   def __init__(self):
     pass
 
-  def run(self, clean_roads, variables, predictions, chi2_vars):
+  def run(self, clean_roads, variables, predictions, other_vars):
     assert(len(clean_roads) == len(variables))
     assert(len(clean_roads) == len(predictions))
-    assert(len(clean_roads) == len(chi2_vars))
+    assert(len(clean_roads) == len(other_vars))
 
     tracks = []
 
-    for myroad, myvars, mypreds, mychi2 in izip(clean_roads, variables, predictions, chi2_vars):
+    for myroad, myvars, mypreds, myother in izip(clean_roads, variables, predictions, other_vars):
       # Unpack variables
       assert(len(myvars.shape) == 1)
       assert(myvars.shape[0] == (nlayers * 5) + 8)
-      x_phi          = myvars[nlayers*0:nlayers*1]
-      x_theta        = myvars[nlayers*1:nlayers*2]
-      x_bend         = myvars[nlayers*2:nlayers*3]
-      x_theta_median = (myvars[nlayers*5+2] * 83 + 3).astype(np.int32)  # remove scaling
-      x_mode_vars    = myvars[nlayers*5+3:nlayers*5+8].astype(np.bool)  # convert to booleans
 
-      trk_mode = 0
-      for i, x_mode_var in enumerate(x_mode_vars):
-        if i == 0:
-          station = 1
-        else:
-          station = i
-        if x_mode_var:
-          trk_mode |= (1 << (4 - station))
+      x = myvars
+      ndof = myother
+      y_meas = mypreds[...,0]
+      y_discr = mypreds[...,1]
 
-      ipt = find_pt_bin(mypreds[0])
-      quality1 = myroad.quality
-      quality2 = emtf_road_quality(ipt)
+      trk_xml_pt = np.abs(1.0/y_meas)
+      trk_q = np.sign(y_meas)
 
-      if emtf_is_singlemu(trk_mode) and quality2 <= (quality1+1):
-        (endcap, sector, ipt, ieta, iphi) = myroad.id
-        trk_id = (endcap, sector)
-        trk_pt = mypreds[0]
-        if trk_pt != 0.0:
-          trk_pt = np.abs(1.0/trk_pt)
-        trk_q = np.sign(mypreds[0])
-        trk = Track(trk_id, myroad.hits, trk_mode, trk_pt, trk_q, iphi, x_theta_median, mychi2[0], mychi2[1])
-        if self._simple_trigger(trk):
-          tracks.append(trk)
+      passed = self.pass_trigger(x, ndof, y_meas, y_discr)
+      trk_pt = self.get_trigger_pt(x, y_meas)
+
+      if passed:
+        trk_mode = 0
+        x_mode_vars = np.equal(x[nlayers*5+3:nlayers*5+8], 1)
+        for i, x_mode_var in enumerate(x_mode_vars):
+          if i == 0:
+            station = 1
+          else:
+            station = i
+          if x_mode_var:
+            trk_mode |= (1 << (4 - station))
+
+        trk_emtf_phi = myroad.id[4]
+        trk_emtf_theta = int(x[(nlayers*5) + 2] * 83) + 3
+
+        trk = Track(myroad.id, myroad.hits, trk_mode, trk_xml_pt, trk_pt, trk_q, trk_emtf_phi, trk_emtf_theta, ndof, y_discr)
+        tracks.append(trk)
     return tracks
 
-  def _simple_trigger(self, trk):
-    xml_pt, ndof, chi2 = trk.xml_pt, trk.ndof, trk.chi2
-    assert(np.isfinite(chi2))
-    #if 0 <= ndof <= 3:
-    #  return chi2 < 7.5
-    #elif ndof == 4:
-    #  return chi2 < 10.
-    #elif ndof == 5:
-    #  return chi2 < 18.7
-    #elif ndof == 6:
-    #  return chi2 < 21.5
-    #else:
-    #  return chi2 < 35.
-    if xml_pt > 14.:
-      if ndof <= 3:
-        return chi2 > 0.5
+  def get_trigger_pt(self, x, y_meas):
+    zone = int(x[(nlayers*5) + 1] * 5)
+
+    pt = np.abs(1.0/y_meas)
+    pt_clipped = np.clip(pt, 3., 60.)
+    #pt = pt * (1.0 + (0.081 + 0.009 * pt_clipped) * 1.28155)  # erf(1.28155/sqrt(2)) = 0.8 [90% upper limit from -1 to -1]
+    #pt = pt * (1.0 + (0.080 + 0.0051 * pt_clipped) * 1.28155)  # erf(1.28155/sqrt(2)) = 0.8 [90% upper limit from -1 to -1]
+    #pt = pt * (1.0 + (0.186434680223 + 0.00983759915829 * pt_clipped))
+    #pt = pt * (1.0 + (0.190618728994 + 0.00897454276456 * pt_clipped))
+    #pt = pt * (1.0 + (0.212511480853 + 0.00658309348582 * 0.97 * pt_clipped))
+
+    sf =[[  0.00000000e+00,   2.03658178e-01,   6.89898338e-03],
+         [  1.00000000e+00,   2.03658178e-01,   6.89898338e-03],
+         [  2.00000000e+00,   1.64679393e-01,   3.02800257e-03],
+         [  3.00000000e+00,   1.64679393e-01,   3.02800257e-03],
+         [  4.00000000e+00,   1.90518111e-01,   6.97149290e-03],
+         [  5.00000000e+00,   2.40000000e-01,   1.00000000e-02]]
+
+    a, b = sf[zone][1], sf[zone][2]
+    pt = pt * (1.0 + (a + b * 0.99 * pt_clipped))
+    return pt
+
+  def pass_trigger(self, x, ndof, y_meas, y_discr, discr_pt_cut=14.):
+    trk_mode = 0
+    x_mode_vars = np.equal(x[nlayers*5+3:nlayers*5+8], 1)
+    for i, x_mode_var in enumerate(x_mode_vars):
+      if i == 0:
+        station = 1
       else:
-        return chi2 > 0.5393
+        station = i
+      if x_mode_var:
+        trk_mode |= (1 << (4 - station))
+
+    straightness = int(x[(nlayers*5) + 0] * 6) + 6
+
+    ipt1 = straightness
+    ipt2 = find_pt_bin(y_meas)
+    quality1 = emtf_road_quality(ipt1)
+    quality2 = emtf_road_quality(ipt2)
+
+    if trk_mode in (11,13,14,15) and quality2 <= (quality1+1):
+      if np.abs(1.0/y_meas) > discr_pt_cut:
+        if ndof <= 3:
+          #trigger = (y_discr > 0.8)
+          trigger = (y_discr > 0.995)
+        else:
+          #trigger = (y_discr > 0.5393)
+          trigger = (y_discr > 0.992)
+      else:
+        trigger = (y_discr >= 0.)  # True
     else:
-      return True
+      trigger = (y_discr < 0.)  # False
+    return trigger
 
 
 # ______________________________________________________________________________
@@ -842,8 +872,8 @@ use_condor = ("CONDOR_EXEC" in os.environ)
 #analysis = "training"
 #analysis = "application"
 #analysis = "rates"
-#analysis = "effie"
-analysis = "mixing"
+analysis = "effie"
+#analysis = "mixing"
 if use_condor:
   analysis = sys.argv[1]
 
@@ -859,9 +889,9 @@ print('[INFO] Using analysis mode : %s' % analysis)
 print('[INFO] Using job id        : %s' % jobid)
 
 # Other stuff
-bankfile = 'histos_tb.12.npz'
+bankfile = 'histos_tb.14.npz'
 
-kerasfile = ['model.12.h5', 'model_weights.12.h5', 'model_discr.12.h5', 'model_discr_weights.12.h5']
+kerasfile = ['model.14.h5', 'model_weights.14.h5']
 
 infile_r = None  # input file handle
 
@@ -869,7 +899,7 @@ def load_pgun():
   global infile_r
   infile = 'ntuple_SingleMuon_Toy_2GeV_add.4.root'
   if use_condor:
-    infile = 'root://cmsio3.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/SingleMuon_Toy_2GeV/'+infile
+    infile = 'root://cmsio5.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/SingleMuon_Toy_2GeV/'+infile
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
   #tree = TreeChain('ntupler/tree', [infile])
@@ -904,7 +934,7 @@ def load_pgun_batch(j):
 def load_minbias_batch(j):
   global infile_r
   pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
-  #pufiles = ['root://cmsio3.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
+  #pufiles = ['root://cmsio5.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
   infile = pufiles[j]
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
@@ -1275,8 +1305,8 @@ elif analysis == "rates":
     roads = recog.run(evt.hits)
     clean_roads = clean.run(roads)
     variables = roads_to_variables(clean_roads)
-    variables_mod, predictions, chi2_vars = ptassign.run(variables)
-    emtf2023_tracks = trkprod.run(clean_roads, variables_mod, predictions, chi2_vars)
+    variables_mod, predictions, other_vars = ptassign.run(variables)
+    emtf2023_tracks = trkprod.run(clean_roads, variables_mod, predictions, other_vars)
 
     found_high_pt_tracks = any(map(lambda trk: trk.pt > 20., emtf2023_tracks))
 
@@ -1432,10 +1462,10 @@ elif analysis == "effie":
     roads = recog.run(evt.hits)
     clean_roads = clean.run(roads)
     variables = roads_to_variables(clean_roads)
-    variables_mod, predictions, chi2_vars = ptassign.run(variables)
-    emtf2023_tracks = trkprod.run(clean_roads, variables_mod, predictions, chi2_vars)
+    variables_mod, predictions, other_vars = ptassign.run(variables)
+    emtf2023_tracks = trkprod.run(clean_roads, variables_mod, predictions, other_vars)
 
-    if ievt < 20 and False:
+    if ievt < (n_skip + 20) and False:
       print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2023_tracks)))
       for itrk, mytrk in enumerate(emtf2023_tracks):
         y = np.true_divide(part.q, part.pt)
@@ -1464,7 +1494,7 @@ elif analysis == "effie":
         trk = tracks[0]
         trk.invpt = np.true_divide(trk.q, trk.xml_pt)  # using unscaled pT
         histograms[hname1].fill(part.invpt, trk.invpt)
-        histograms[hname2].fill(abs(part.invpt), (abs(trk.invpt) - abs(part.invpt))/abs(part.invpt))
+        histograms[hname2].fill(abs(part.invpt), (abs(1.0/trk.invpt) - abs(1.0/part.invpt))/abs(1.0/part.invpt))
 
     for l in (0, 10, 15, 20, 30, 40, 50):
       select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l))
@@ -1546,8 +1576,8 @@ elif analysis == "mixing":
     roads = recog.run(evt.hits)
     clean_roads = clean.run(roads)
     #variables = roads_to_variables(clean_roads)
-    #variables_mod, predictions, chi2_vars = ptassign.run(variables)
-    #emtf2023_tracks = trkprod.run(clean_roads, variables_mod, predictions, chi2_vars)
+    #variables_mod, predictions, other_vars = ptassign.run(variables)
+    #emtf2023_tracks = trkprod.run(clean_roads, variables_mod, predictions, other_vars)
 
     def find_highest_part_pt():
       highest_pt = -999999.
