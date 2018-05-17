@@ -21,6 +21,7 @@ kDT, kCSC, kRPC, kGEM, kTT = 0, 1, 2, 3, 20
 
 # Globals
 eta_bins = (1.2, 1.4, 1.6, 1.8, 2.0, 2.16, 2.4)
+eta_bins = eta_bins[::-1]
 pt_bins = (-0.50, -0.333333, -0.25, -0.20, -0.15, -0.10, -0.05, 0.05, 0.10, 0.15, 0.20, 0.25, 0.333333, 0.50)
 nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
 
@@ -127,7 +128,7 @@ def find_pt_bin(pt):
   return ipt
 
 def find_eta_bin(eta):
-  ieta = np.digitize((abs(part.eta),), eta_bins[1:])[0]  # skip lowest edge
+  ieta = np.digitize((abs(eta),), eta_bins[1:])[0]  # skip lowest edge
   ieta = np.clip(ieta, 0, len(eta_bins)-2)
   return ieta
 
@@ -670,7 +671,8 @@ class PtAssignment(object):
     #
     import tensorflow as tf
     from keras import backend as K
-    from keras.models import load_model
+    from keras.models import load_model, model_from_json
+    import json
     #
     from encoder import Encoder
 
@@ -681,7 +683,10 @@ class PtAssignment(object):
       return encoder
     self.get_encoder = encode
 
-    self.loaded_model = load_model(model_file)
+    with open(model_file) as f:
+      json_string = json.dumps(json.load(f))
+      self.loaded_model = model_from_json(json_string)
+    #self.loaded_model = load_model(model_file)
     self.loaded_model.load_weights(model_weights_file)
 
   def run(self, x):
@@ -722,9 +727,9 @@ class TrackProducer(object):
       assert(myvars.shape[0] == (nlayers * 5) + 8)
 
       x = myvars
-      ndof = myother
-      y_meas = mypreds[...,0]
-      y_discr = mypreds[...,1]
+      ndof = np.asscalar(myother)
+      y_meas = np.asscalar(mypreds[...,0])
+      y_discr = np.asscalar(mypreds[...,1])
 
       trk_xml_pt = np.abs(1.0/y_meas)
       trk_q = np.sign(y_meas)
@@ -757,19 +762,28 @@ class TrackProducer(object):
     pt_clipped = np.clip(pt, 3., 60.)
     #pt = pt * (1.0 + (0.081 + 0.009 * pt_clipped) * 1.28155)  # erf(1.28155/sqrt(2)) = 0.8 [90% upper limit from -1 to -1]
     #pt = pt * (1.0 + (0.080 + 0.0051 * pt_clipped) * 1.28155)  # erf(1.28155/sqrt(2)) = 0.8 [90% upper limit from -1 to -1]
-    #pt = pt * (1.0 + (0.186434680223 + 0.00983759915829 * pt_clipped))
-    #pt = pt * (1.0 + (0.190618728994 + 0.00897454276456 * pt_clipped))
-    #pt = pt * (1.0 + (0.212511480853 + 0.00658309348582 * 0.97 * pt_clipped))
+    #pt = pt * (1.0 + (0.18643468 + 0.00983759 * pt_clipped))
+    #pt = pt * (1.0 + (0.19061872 + 0.00897454 * pt_clipped))
+    #pt = pt * (1.0 + (0.21251148 + 0.00658309 * 0.97 * pt_clipped))
+    #pt = pt * (1.0 + (0.21540622 + 0.00588042 * 0.97 * pt_clipped))
+    #pt = pt * (1.0 + (0.23736955 + 0.00444597 * pt_clipped))
 
-    sf =[[  0.00000000e+00,   2.03658178e-01,   6.89898338e-03],
-         [  1.00000000e+00,   2.03658178e-01,   6.89898338e-03],
-         [  2.00000000e+00,   1.64679393e-01,   3.02800257e-03],
-         [  3.00000000e+00,   1.64679393e-01,   3.02800257e-03],
-         [  4.00000000e+00,   1.90518111e-01,   6.97149290e-03],
-         [  5.00000000e+00,   2.40000000e-01,   1.00000000e-02]]
+    sf =[[  0.00000000e+00,   2.49868810e-01,   9.67491604e-03],
+         [  1.00000000e+00,   2.02819258e-01,   3.44642927e-03],
+         [  2.00000000e+00,   1.34788156e-01,   3.97331361e-03],
+         [  3.00000000e+00,   1.34788156e-01,   3.97331361e-03],
+         [  4.00000000e+00,   2.05471098e-01,   7.20871985e-03],
+         [  5.00000000e+00,   2.05471098e-01,   7.20871985e-03]]
+
+    sf =[[  0.00000000e+00,   2.63994873e-01,   9.85030923e-03],
+         [  1.00000000e+00,   1.79664418e-01,   5.61202876e-03],
+         [  2.00000000e+00,   1.62771225e-01,   2.96276459e-03],
+         [  3.00000000e+00,   1.62771225e-01,   2.96276459e-03],
+         [  4.00000000e+00,   1.40744388e-01,   6.65116590e-03],
+         [  5.00000000e+00,   1.40744388e-01,   6.65116590e-03]]
 
     a, b = sf[zone][1], sf[zone][2]
-    pt = pt * (1.0 + (a + b * 0.99 * pt_clipped))
+    pt = pt * (1.0 + (a + b * pt_clipped))
     return pt
 
   def pass_trigger(self, x, ndof, y_meas, y_discr, discr_pt_cut=14.):
@@ -794,7 +808,7 @@ class TrackProducer(object):
       if np.abs(1.0/y_meas) > discr_pt_cut:
         if ndof <= 3:
           #trigger = (y_discr > 0.8)
-          trigger = (y_discr > 0.995)
+          trigger = (y_discr > 0.996)
         else:
           #trigger = (y_discr > 0.5393)
           trigger = (y_discr > 0.992)
@@ -871,8 +885,8 @@ use_condor = ("CONDOR_EXEC" in os.environ)
 #analysis = "verbose"
 #analysis = "training"
 #analysis = "application"
-#analysis = "rates"
-analysis = "effie"
+analysis = "rates"
+#analysis = "effie"
 #analysis = "mixing"
 if use_condor:
   analysis = sys.argv[1]
@@ -889,9 +903,9 @@ print('[INFO] Using analysis mode : %s' % analysis)
 print('[INFO] Using job id        : %s' % jobid)
 
 # Other stuff
-bankfile = 'histos_tb.14.npz'
+bankfile = 'histos_tb.13.npz'
 
-kerasfile = ['model.14.h5', 'model_weights.14.h5']
+kerasfile = ['model.13.json', 'model_weights.13.h5']
 
 infile_r = None  # input file handle
 
@@ -1118,12 +1132,12 @@ elif analysis == "training":
 
     # Mask layers by (ieta, lay)
     valid_layers = [
-      (0,1), (0,2), (0,3), (0,4), (0,5), (0,6), (0,7), (0,8),
-      (1,1), (1,2), (1,3), (1,4), (1,5), (1,6), (1,7), (1,8),
-      (2,0), (2,2), (2,3), (2,4), (2,7), (2,8), (2,9), (2,10),
+      (5,1), (5,2), (5,3), (5,4), (5,5), (5,6), (5,7), (5,8),
+      (4,1), (4,2), (4,3), (4,4), (4,5), (4,6), (4,7), (4,8),
       (3,0), (3,2), (3,3), (3,4), (3,7), (3,8), (3,9), (3,10),
-      (4,0), (4,2), (4,3), (4,4), (4,7), (4,8), (4,9), (4,10), (4,11),
-      (5,0), (5,2), (5,3), (5,4), (5,7), (5,8), (5,10), (5,11),
+      (2,0), (2,2), (2,3), (2,4), (2,7), (2,8), (2,9), (2,10),
+      (1,0), (1,2), (1,3), (1,4), (1,7), (1,8), (1,9), (1,10), (1,11),
+      (0,0), (0,2), (0,3), (0,4), (0,7), (0,8), (0,10), (0,11),
     ]
     mask = np.ones_like(patterns_phi, dtype=np.bool)
     for valid_layer in valid_layers:
@@ -1223,30 +1237,29 @@ elif analysis == "application":
           print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.bx, myhit.sim_tp))
 
     # Quick efficiency
-    trigger = len(clean_roads) > 0
-    hname = "eff_vs_genpt_denom"
-    histograms[hname].fill(part.pt)
-    if trigger:
-      hname = "eff_vs_genpt_numer"
+    if part.pt > 5.:
+      trigger = len(clean_roads) > 0
+      ntotal += 1
+      if trigger:
+        npassed += 1
+
+      hname = "eff_vs_genpt_denom"
       histograms[hname].fill(part.pt)
-
-    if part.pt > 20.:
-      hname = "eff_vs_geneta_denom"
-      histograms[hname].fill(abs(part.eta))
       if trigger:
-        hname = "eff_vs_geneta_numer"
+        hname = "eff_vs_genpt_numer"
+        histograms[hname].fill(part.pt)
+
+      if part.pt > 20.:
+        hname = "eff_vs_geneta_denom"
         histograms[hname].fill(abs(part.eta))
-
-      hname = "eff_vs_genphi_denom"
-      histograms[hname].fill(part.phi)
-      if trigger:
-        hname = "eff_vs_genphi_numer"
+        if trigger:
+          hname = "eff_vs_geneta_numer"
+          histograms[hname].fill(abs(part.eta))
+        hname = "eff_vs_genphi_denom"
         histograms[hname].fill(part.phi)
-
-    # Quick statistics
-    ntotal += 1
-    if trigger:
-      npassed += 1
+        if trigger:
+          hname = "eff_vs_genphi_numer"
+          histograms[hname].fill(part.phi)
 
   # End loop over events
   unload_tree()
@@ -1268,8 +1281,7 @@ elif analysis == "application":
   # Save objects
   print('[INFO] Creating file: histos_tba.npz')
   if True:
-    assert(len(out_particles) == npassed)
-    assert(len(out_roads) == npassed)
+    assert(len(out_particles) == len(out_roads))
     parameters = particles_to_parameters(out_particles)
     variables = roads_to_variables(out_roads)
     outfile = 'histos_tba.npz'

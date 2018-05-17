@@ -76,6 +76,7 @@ class Encoder(object):
         self.x_fr[x_fr_tmp] = 0
         self.x_fr[~x_fr_tmp] = 1
       elif adjust_scale == 3:  # adjust by hand #2
+        #theta_cuts    = np.array((6., 6., 6., 6., 6., 12., 12., 12., 12., 9., 9., 9.), dtype=np.float32)
         theta_cuts    = np.array((6., 6., 6., 6., 6., 10., 10., 10., 10., 8., 8., 8.), dtype=np.float32)
         x_theta_tmp   = np.abs(self.x_theta) > theta_cuts
         x_ring_tmp    = self.x_ring.astype(np.int32)
