@@ -28,7 +28,7 @@ using namespace std;
 using namespace CLHEP;
 
 BaseFlatGunProducer2::BaseFlatGunProducer2( const ParameterSet& pset ) :
-   fEvt(0)
+   fEvt(nullptr)
    // fPDGTable( new DefaultConfig::ParticleDataTable("PDG Table") )
 {
    Service<RandomNumberGenerator> rng;

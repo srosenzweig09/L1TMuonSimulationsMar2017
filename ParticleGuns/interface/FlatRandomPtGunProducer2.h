@@ -20,9 +20,9 @@ namespace edm
 
   public:
     FlatRandomPtGunProducer2(const ParameterSet & pset);
-    virtual ~FlatRandomPtGunProducer2();
+    ~FlatRandomPtGunProducer2() override;
 
-    virtual void produce(Event & e, const EventSetup& es) override;
+    void produce(Event & e, const EventSetup& es) override;
 
   private:
 
