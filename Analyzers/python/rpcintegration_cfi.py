@@ -42,7 +42,6 @@ ntupler = cms.EDAnalyzer('NtupleMaker',
     gemDigiSimLinksTag = cms.InputTag('simMuonGEMDigis', 'GEM'),
 
     outFileName = cms.string('ntuple.root'),
-    docString = cms.string(''),  # Unused
     verbosity = cms.untracked.int32(0),
 )
 

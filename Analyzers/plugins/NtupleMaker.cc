@@ -39,13 +39,7 @@
 // From L1Trigger/L1TMuonEndCap/interface/MuonTriggerPrimitive.h
 class TriggerPrimitive {
 public:
-  enum subsystem_type{kDT,kCSC,kRPC,kGEM,kNSubsystems};
-};
-
-// From L1Trigger/L1TMuonEndCap/interface/TTMuonTriggerPrimitive.h
-class TTTriggerPrimitive {
-public:
-  enum subsystem_type{kTT = 20, kNSubsystems};
+  enum subsystem_type{kDT,kCSC,kRPC,kGEM,kME0,kNSubsystems};
 };
 
 
@@ -104,7 +98,7 @@ private:
   std::unique_ptr<std::vector<int16_t> >  vh_chamber;
   std::unique_ptr<std::vector<int16_t> >  vh_cscid;
   std::unique_ptr<std::vector<int16_t> >  vh_bx;
-  std::unique_ptr<std::vector<int16_t> >  vh_type;  // subsystem: DT=0,CSC=1,RPC=2,GEM=3
+  std::unique_ptr<std::vector<int16_t> >  vh_type;  // subsystem: DT=0,CSC=1,RPC=2,GEM=3,ME0=4
   std::unique_ptr<std::vector<int16_t> >  vh_neighbor;
   //
   std::unique_ptr<std::vector<int16_t> >  vh_strip;
@@ -118,6 +112,7 @@ private:
   //
   std::unique_ptr<std::vector<int32_t> >  vh_emtf_phi;
   std::unique_ptr<std::vector<int32_t> >  vh_emtf_theta;
+  std::unique_ptr<std::vector<uint64_t> > vh_comp_digis;
   //
   std::unique_ptr<std::vector<float  > >  vh_sim_phi;
   std::unique_ptr<std::vector<float  > >  vh_sim_theta;
@@ -175,7 +170,7 @@ NtupleMaker::NtupleMaker(const edm::ParameterSet& iConfig) :
     outFileName_  (iConfig.getParameter<std::string>  ("outFileName")),
     verbose_      (iConfig.getUntrackedParameter<int> ("verbosity"))
 {
-  usesResource("TFileService");
+  usesResource("TFileService");  // shared resources
 
   emuHitToken_   = consumes<l1t::EMTFHitCollection>     (emuHitTag_);
   emuTrackToken_ = consumes<l1t::EMTFTrackCollection>   (emuTrackTag_);
@@ -245,7 +240,6 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
   for (const auto& hit : (*emuHits_handle)) {
     if (!(-2 <= hit.BX() && hit.BX() <= 2))  continue;  // only BX=[-2,+2]
     //if (hit.Endcap() != 1)  continue;  // only positive endcap
-    if (hit.Subsystem() == TTTriggerPrimitive::kTT)  continue;  // ignore TTStubs
     emuHits_.push_back(hit);
   }
 
@@ -332,6 +326,9 @@ void NtupleMaker::process() {
     } else if (subsystem == TriggerPrimitive::kGEM) {
       //
       result = (chamber % 2 == 0);
+    } else if (subsystem == TriggerPrimitive::kME0) {
+      //
+      result = (chamber % 2 == 0);
     }
     return result;
   };
@@ -350,8 +347,10 @@ void NtupleMaker::process() {
       return truth_.findCSCStripSimLink(hit, trkParts_);
     } else if (hit.Subsystem() == TriggerPrimitive::kRPC) {
       return truth_.findRPCDigiSimLink(hit, trkParts_);
-    } else if (hit.Subsystem() == TriggerPrimitive::kGEM && hit.Ring() != 4) {  // ignore ME0 (ring 4)
+    } else if (hit.Subsystem() == TriggerPrimitive::kGEM) {
       return truth_.findGEMDigiSimLink(hit, trkParts_);
+    } else if (hit.Subsystem() == TriggerPrimitive::kME0) {
+      return -1;  // not implemented
     }
     return -1;
   };
@@ -361,8 +360,10 @@ void NtupleMaker::process() {
       return truth_.findCSCWireSimLink(hit, trkParts_);
     } else if (hit.Subsystem() == TriggerPrimitive::kRPC) {
       return truth_.findRPCDigiSimLink(hit, trkParts_);
-    } else if (hit.Subsystem() == TriggerPrimitive::kGEM && hit.Ring() != 4) {  // ignore ME0 (ring 4)
+    } else if (hit.Subsystem() == TriggerPrimitive::kGEM) {
       return truth_.findGEMDigiSimLink(hit, trkParts_);
+    } else if (hit.Subsystem() == TriggerPrimitive::kME0) {
+      return -1;  // not implemented
     }
     return -1;
   };
@@ -414,7 +415,25 @@ void NtupleMaker::process() {
     // Sanity check
     for (int istation = 0; istation < 4; ++istation) {
       bool has_hit = trk.Mode() & (1 << (3 - istation));
-      assert(has_hit == (hit_refs.at(istation) != -1));
+      bool has_hit_check = (hit_refs.at(istation) != -1);
+
+      if (has_hit != has_hit_check) {
+        std::cout << "[ERROR] mode: " << trk.Mode() << " station: " << istation << std::endl;
+        EMTFHitCollection::const_iterator conv_hits_it1  = trk.Hits().begin();
+        EMTFHitCollection::const_iterator conv_hits_end1 = trk.Hits().end();
+        for (; conv_hits_it1 != conv_hits_end1; ++conv_hits_it1) {
+          const EMTFHit& conv_hit_i = *conv_hits_it1;
+          std::cout << ".. " << conv_hit_i.Subsystem() << " " << conv_hit_i.PC_station() << " " << conv_hit_i.PC_chamber() << " " << conv_hit_i.Ring() << " " << conv_hit_i.Strip() << " " << conv_hit_i.Wire() << " " << conv_hit_i.Pattern() << " " << conv_hit_i.BX() << " " << conv_hit_i.Endcap() << " " << conv_hit_i.Sector() << std::endl;
+        }
+        EMTFHitCollection::const_iterator conv_hits_it2  = hits.begin();
+        EMTFHitCollection::const_iterator conv_hits_end2 = hits.end();
+        for (; conv_hits_it2 != conv_hits_end2; ++conv_hits_it2) {
+          const EMTFHit& conv_hit_j = *conv_hits_it2;
+          std::cout << ".... " << conv_hit_j.Subsystem() << " " << conv_hit_j.PC_station() << " " << conv_hit_j.PC_chamber() << " " << conv_hit_j.Ring() << " " << conv_hit_j.Strip() << " " << conv_hit_j.Wire() << " " << conv_hit_j.Pattern() << " " << conv_hit_j.BX() << " " << conv_hit_j.Endcap() << " " << conv_hit_j.Sector() << std::endl;
+        }
+      }
+
+      assert(has_hit == has_hit_check);
     }
 
     return hit_refs;
@@ -454,6 +473,7 @@ void NtupleMaker::process() {
     //
     vh_emtf_phi   ->push_back(hit.Phi_fp());
     vh_emtf_theta ->push_back(hit.Theta_fp());
+    vh_comp_digis ->push_back(hit.Comp_digis());
     //
     vh_sim_phi    ->push_back(hit.Phi_sim());
     vh_sim_theta  ->push_back(hit.Theta_sim());
@@ -557,6 +577,7 @@ void NtupleMaker::process() {
   //
   vh_emtf_phi   ->clear();
   vh_emtf_theta ->clear();
+  vh_comp_digis ->clear();
   //
   vh_sim_phi    ->clear();
   vh_sim_theta  ->clear();
@@ -620,72 +641,73 @@ void NtupleMaker::makeTree() {
   tree = fs->make<TTree>("tree", "tree");
 
   // Hits
-  vh_endcap     .reset(new std::vector<int16_t>());
-  vh_station    .reset(new std::vector<int16_t>());
-  vh_ring       .reset(new std::vector<int16_t>());
-  vh_sector     .reset(new std::vector<int16_t>());
-  vh_subsector  .reset(new std::vector<int16_t>());
-  vh_chamber    .reset(new std::vector<int16_t>());
-  vh_cscid      .reset(new std::vector<int16_t>());
-  vh_bx         .reset(new std::vector<int16_t>());
-  vh_type       .reset(new std::vector<int16_t>());
-  vh_neighbor   .reset(new std::vector<int16_t>());
+  vh_endcap     .reset(new std::vector<int16_t >());
+  vh_station    .reset(new std::vector<int16_t >());
+  vh_ring       .reset(new std::vector<int16_t >());
+  vh_sector     .reset(new std::vector<int16_t >());
+  vh_subsector  .reset(new std::vector<int16_t >());
+  vh_chamber    .reset(new std::vector<int16_t >());
+  vh_cscid      .reset(new std::vector<int16_t >());
+  vh_bx         .reset(new std::vector<int16_t >());
+  vh_type       .reset(new std::vector<int16_t >());
+  vh_neighbor   .reset(new std::vector<int16_t >());
   //
-  vh_strip      .reset(new std::vector<int16_t>());
-  vh_wire       .reset(new std::vector<int16_t>());
-  vh_roll       .reset(new std::vector<int16_t>());
-  vh_pattern    .reset(new std::vector<int16_t>());
-  vh_quality    .reset(new std::vector<int16_t>());
-  vh_bend       .reset(new std::vector<int16_t>());
-  vh_time       .reset(new std::vector<int16_t>());
-  vh_fr         .reset(new std::vector<int16_t>());
+  vh_strip      .reset(new std::vector<int16_t >());
+  vh_wire       .reset(new std::vector<int16_t >());
+  vh_roll       .reset(new std::vector<int16_t >());
+  vh_pattern    .reset(new std::vector<int16_t >());
+  vh_quality    .reset(new std::vector<int16_t >());
+  vh_bend       .reset(new std::vector<int16_t >());
+  vh_time       .reset(new std::vector<int16_t >());
+  vh_fr         .reset(new std::vector<int16_t >());
   //
-  vh_emtf_phi   .reset(new std::vector<int32_t>());
-  vh_emtf_theta .reset(new std::vector<int32_t>());
+  vh_emtf_phi   .reset(new std::vector<int32_t >());
+  vh_emtf_theta .reset(new std::vector<int32_t >());
+  vh_comp_digis .reset(new std::vector<uint64_t>());
   //
-  vh_sim_phi    .reset(new std::vector<float  >());
-  vh_sim_theta  .reset(new std::vector<float  >());
-  vh_sim_eta    .reset(new std::vector<float  >());
-  vh_sim_r      .reset(new std::vector<float  >());
-  vh_sim_z      .reset(new std::vector<float  >());
-  vh_sim_tp1    .reset(new std::vector<int32_t>());
-  vh_sim_tp2    .reset(new std::vector<int32_t>());
+  vh_sim_phi    .reset(new std::vector<float   >());
+  vh_sim_theta  .reset(new std::vector<float   >());
+  vh_sim_eta    .reset(new std::vector<float   >());
+  vh_sim_r      .reset(new std::vector<float   >());
+  vh_sim_z      .reset(new std::vector<float   >());
+  vh_sim_tp1    .reset(new std::vector<int32_t >());
+  vh_sim_tp2    .reset(new std::vector<int32_t >());
   //
-  vh_size       .reset(new int32_t(0)            );
+  vh_size       .reset(new int32_t(0)             );
 
   // Tracks
-  vt_pt         .reset(new std::vector<float  >());
-  vt_xml_pt     .reset(new std::vector<float  >());
-  vt_phi        .reset(new std::vector<float  >());
-  vt_eta        .reset(new std::vector<float  >());
-  vt_theta      .reset(new std::vector<float  >());
-  vt_q          .reset(new std::vector<int16_t>());
+  vt_pt         .reset(new std::vector<float   >());
+  vt_xml_pt     .reset(new std::vector<float   >());
+  vt_phi        .reset(new std::vector<float   >());
+  vt_eta        .reset(new std::vector<float   >());
+  vt_theta      .reset(new std::vector<float   >());
+  vt_q          .reset(new std::vector<int16_t >());
   vt_address    .reset(new std::vector<uint64_t>());
   //
-  vt_mode       .reset(new std::vector<int16_t>());
-  vt_endcap     .reset(new std::vector<int16_t>());
-  vt_sector     .reset(new std::vector<int16_t>());
-  vt_bx         .reset(new std::vector<int16_t>());
-  vt_hitref1    .reset(new std::vector<int32_t>());
-  vt_hitref2    .reset(new std::vector<int32_t>());
-  vt_hitref3    .reset(new std::vector<int32_t>());
-  vt_hitref4    .reset(new std::vector<int32_t>());
+  vt_mode       .reset(new std::vector<int16_t >());
+  vt_endcap     .reset(new std::vector<int16_t >());
+  vt_sector     .reset(new std::vector<int16_t >());
+  vt_bx         .reset(new std::vector<int16_t >());
+  vt_hitref1    .reset(new std::vector<int32_t >());
+  vt_hitref2    .reset(new std::vector<int32_t >());
+  vt_hitref3    .reset(new std::vector<int32_t >());
+  vt_hitref4    .reset(new std::vector<int32_t >());
   //
-  vt_size       .reset(new int32_t(0)            );
+  vt_size       .reset(new int32_t(0)             );
 
   // Gen particles
-  vp_pt         .reset(new std::vector<float  >());
-  vp_phi        .reset(new std::vector<float  >());
-  vp_eta        .reset(new std::vector<float  >());
-  vp_theta      .reset(new std::vector<float  >());
-  vp_vx         .reset(new std::vector<float  >());
-  vp_vy         .reset(new std::vector<float  >());
-  vp_vz         .reset(new std::vector<float  >());
-  vp_q          .reset(new std::vector<int16_t>());
-  vp_bx         .reset(new std::vector<int16_t>());
-  vp_event      .reset(new std::vector<int16_t>());
-  vp_pdgid      .reset(new std::vector<int32_t>());
-  vp_size       .reset(new int32_t(0)            );
+  vp_pt         .reset(new std::vector<float   >());
+  vp_phi        .reset(new std::vector<float   >());
+  vp_eta        .reset(new std::vector<float   >());
+  vp_theta      .reset(new std::vector<float   >());
+  vp_vx         .reset(new std::vector<float   >());
+  vp_vy         .reset(new std::vector<float   >());
+  vp_vz         .reset(new std::vector<float   >());
+  vp_q          .reset(new std::vector<int16_t >());
+  vp_bx         .reset(new std::vector<int16_t >());
+  vp_event      .reset(new std::vector<int16_t >());
+  vp_pdgid      .reset(new std::vector<int32_t >());
+  vp_size       .reset(new int32_t(0)             );
 
   // Set branches
   // Hits
@@ -711,6 +733,7 @@ void NtupleMaker::makeTree() {
   //
   tree->Branch("vh_emtf_phi"  , &(*vh_emtf_phi  ));
   tree->Branch("vh_emtf_theta", &(*vh_emtf_theta));
+  tree->Branch("vh_comp_digis", &(*vh_comp_digis));
   //
   tree->Branch("vh_sim_phi"   , &(*vh_sim_phi   ));
   tree->Branch("vh_sim_theta" , &(*vh_sim_theta ));
