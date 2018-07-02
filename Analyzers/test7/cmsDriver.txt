@@ -1,0 +1,52 @@
+# Rerun L1 emulator
+cmsDriver.py l1NtupleMC \
+  --step L1 \
+  --mc --eventcontent FEVTDEBUGHLT --datatier GEN-SIM-DIGI-RAW \
+  --conditions auto:phase2_realistic \
+  --beamspot HLLHC14TeV \
+  --geometry Extended2023D17 \
+  --era Phase2_timing \
+  --filein file:dummy.root \
+  --no_exec --nThreads 4 -n 100
+
+# Generate single muon events
+cmsDriver.py L1TMuonSimulations/Configuration/python/SingleMuonFlatOneOverPt2To7000_PositiveEndCap_cfi.py \
+  --step GEN,SIM,DIGI:pdigi_valid,L1,L1TrackTrigger,DIGI2RAW,RAW2DIGI \
+  --mc --eventcontent FEVTDEBUGHLT --datatier GEN-SIM-DIGI-RAW --processName L1 \
+  --conditions auto:phase2_realistic \
+  --beamspot HLLHC14TeV \
+  --geometry Extended2023D17 \
+  --era Phase2_timing \
+  --pileup NoPileUp \
+  --customise SimGeneral/MixingModule/customiseStoredTPConfig.higherPtTP,SLHCUpgradeSimulations/Configuration/aging.customise_aging_1000 \
+  --python_filename pset_SingleMuon_PositiveEndCap.py \
+  --fileout file:SingleMuon_PositiveEndCap.root \
+  --no_exec --nThreads 4 -n 100
+
+# Generate single minbias events
+cmsDriver.py L1TMuonSimulations/Configuration/python/PPD-PhaseIITDRFall17GS-00001-fragment.py \
+  --step GEN,SIM \
+  --mc --eventcontent FEVTDEBUGHLT --datatier GEN-SIM \
+  --conditions auto:phase2_realistic \
+  --beamspot HLLHC14TeV \
+  --geometry Extended2023D17 \
+  --era Phase2_timing \
+  --customise SimGeneral/MixingModule/customiseStoredTPConfig.higherPtTP,SLHCUpgradeSimulations/Configuration/aging.customise_aging_1000 \
+  --python_filename pset_MinBias_TuneCUETP8M1_14TeV-pythia8.py \
+  --fileout file:MinBias.root \
+  --no_exec --nThreads 4 -n 100
+
+# Generate single neutrino events
+cmsDriver.py L1TMuonSimulations/Configuration/python/TSG-PhaseIITDRFall17GS-00001-fragment.py \
+  --step GEN,SIM,DIGI:pdigi_valid,L1,L1TrackTrigger,DIGI2RAW,RAW2DIGI \
+  --mc --eventcontent FEVTDEBUGHLT --datatier GEN-SIM-DIGI-RAW --processName L1 \
+  --conditions auto:phase2_realistic \
+  --beamspot HLLHC14TeV \
+  --geometry Extended2023D17 \
+  --era Phase2_timing \
+  --customise SimGeneral/MixingModule/customiseStoredTPConfig.higherPtTP,SLHCUpgradeSimulations/Configuration/aging.customise_aging_1000 \
+  --pileup 'AVE_200_BX_25ns,{"B":(-3,3)}' --pileup_input "dummy.root" \
+  --python_filename pset_SingleNeutrino.py \
+  --fileout file:SingleNeutrino.root \
+  --no_exec --nThreads 4 -n 10
+
