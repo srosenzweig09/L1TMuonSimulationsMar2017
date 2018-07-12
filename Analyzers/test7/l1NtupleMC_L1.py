@@ -22,7 +22,7 @@ process.load('Configuration.StandardSequences.EndOfProcess_cff')
 process.load('Configuration.StandardSequences.FrontierConditions_GlobalTag_cff')
 
 process.maxEvents = cms.untracked.PSet(
-    input = cms.untracked.int32(100)
+    input = cms.untracked.int32(-1)
 )
 
 # Input source
@@ -82,9 +82,9 @@ process.FEVTDEBUGHLToutput_step = cms.EndPath(process.FEVTDEBUGHLToutput)
 #from PhysicsTools.PatAlgos.tools.helpers import associatePatAlgosToolsTask
 #associatePatAlgosToolsTask(process)
 
-#Setup FWK for multithreaded
-process.options.numberOfThreads=cms.untracked.uint32(4)
-process.options.numberOfStreams=cms.untracked.uint32(0)
+##Setup FWK for multithreaded
+#process.options.numberOfThreads=cms.untracked.uint32(4)
+#process.options.numberOfStreams=cms.untracked.uint32(0)
 
 
 # ##############################################################################

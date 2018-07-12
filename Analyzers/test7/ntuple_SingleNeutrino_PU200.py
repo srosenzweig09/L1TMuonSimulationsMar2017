@@ -28,11 +28,12 @@ process.maxEvents = cms.untracked.PSet(
 # Input source
 process.source = cms.Source("PoolSource",
     fileNames = cms.untracked.vstring(
-        '/store/mc/PhaseIIFall17D/SingleNeutrino/GEN-SIM-DIGI-RAW/L1TPU200_93X_upgrade2023_realistic_v5-v1/80000/1808B0B0-6A5C-E811-9CFF-0025904C66E4.root',
+        #'/store/mc/PhaseIIFall17D/SingleNeutrino/GEN-SIM-DIGI-RAW/L1TPU200_93X_upgrade2023_realistic_v5-v1/80000/1808B0B0-6A5C-E811-9CFF-0025904C66E4.root',
+        '/store/mc/PhaseIIFall17D/SingleNeutrino/GEN-SIM-DIGI-RAW/L1TPU200_93X_upgrade2023_realistic_v5-v1/80000/2485A703-DE5B-E811-BF8B-0CC47AFB7FFC.root',
     ),
     secondaryFileNames = cms.untracked.vstring(),
     inputCommands = cms.untracked.vstring(),
-    #skipEvents = cms.untracked.uint32(785),
+    #skipEvents = cms.untracked.uint32(1090),
 )
 
 process.options = cms.untracked.PSet(
@@ -83,9 +84,9 @@ process.FEVTDEBUGHLToutput_step = cms.EndPath(process.FEVTDEBUGHLToutput)
 #from PhysicsTools.PatAlgos.tools.helpers import associatePatAlgosToolsTask
 #associatePatAlgosToolsTask(process)
 
-#Setup FWK for multithreaded
-process.options.numberOfThreads=cms.untracked.uint32(4)
-process.options.numberOfStreams=cms.untracked.uint32(0)
+##Setup FWK for multithreaded
+#process.options.numberOfThreads=cms.untracked.uint32(4)
+#process.options.numberOfStreams=cms.untracked.uint32(0)
 
 
 # ##############################################################################
