@@ -1,7 +1,7 @@
 import numpy as np
 np.random.seed(2023)
 
-import os, sys, time
+import os, sys
 from itertools import izip
 #import concurrent.futures
 from rootpy.plotting import Hist, Hist2D, Graph, Efficiency
@@ -17,10 +17,10 @@ TH1.AddDirectory(False)
 # Analyzer
 
 # Enums
-kDT, kCSC, kRPC, kGEM, kTT = 0, 1, 2, 3, 20
+kDT, kCSC, kRPC, kGEM, kME0 = 0, 1, 2, 3, 4
 
 # Globals
-eta_bins = (1.2, 1.4, 1.6, 1.8, 2.0, 2.15, 2.4)
+eta_bins = (1.2, 1.4, 1.6, 1.8, 2.0, 2.15, 2.5)
 eta_bins = eta_bins[::-1]
 pt_bins = (-0.50, -0.333333, -0.25, -0.20, -0.15, -0.10, -0.05, 0.05, 0.10, 0.15, 0.20, 0.25, 0.333333, 0.50)
 nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
@@ -60,6 +60,16 @@ def calc_phi_loc_int(glob, sector):
     loc += 360.
   loc = (loc + 22.) * 60.
   phi_int = int(round(loc))
+  return phi_int
+
+def calc_phi_loc_int_1(glob, sector):
+  # glob in deg, sector [1-6]
+  loc = calc_phi_loc_deg_from_glob(glob, sector)
+  if (loc + 22.) < 0.:
+    loc += 360.
+  loc = (loc + 22.) * 60.
+  #phi_int = int(round(loc))
+  phi_int = loc  # no cast to int
   return phi_int
 
 def calc_phi_loc_deg(bits):
@@ -152,7 +162,7 @@ def weighted_percentile(data, percents, weights=None):
 # Decide EMTF hit layer number
 class EMTFLayer(object):
   def __init__(self):
-    lut = np.zeros((4,5,5), dtype=np.int32) - 99
+    lut = np.zeros((5,5,5), dtype=np.int32) - 99
     lut[1,1,4] = 0  # ME1/1a
     lut[1,1,1] = 0  # ME1/1b
     lut[1,1,2] = 1  # ME1/2
@@ -173,7 +183,7 @@ class EMTFLayer(object):
     lut[2,4,3] = 8  # RE4/3
     lut[3,1,1] = 9  # GE1/1
     lut[3,2,1] = 10 # GE2/1
-    lut[3,1,4] = 11 # ME0
+    lut[4,1,1] = 11 # ME0
     self.lut = lut
 
   def get(self, hit):
@@ -266,7 +276,7 @@ def emtf_is_muopen(mode):
 # Extrapolate from paramter space to EMTF space
 class EMTFExtrapolation(object):
   def __init__(self):
-    self.theta_bins = (14, 0.5, 1.9)
+    self.eta_bins = (13, 1.2, 2.5)
     self.pt_bins = (200, -0.5, 0.5)
     self.loaded = False
 
@@ -275,9 +285,9 @@ class EMTFExtrapolation(object):
     binx = (x - bins[1]) / (bins[2] - bins[1]) * bins[0]
     return int(binx)
 
-  def _find_theta_bin(self, part):
-    x = np.sinh(1.8) / np.sinh(abs(part.eta))
-    return self._find_bin(x, self.theta_bins)
+  def _find_eta_bin(self, part):
+    x = abs(part.eta)
+    return self._find_bin(x, self.eta_bins)
 
   def _find_pt_bin(self, part):
     x = part.invpt
@@ -288,7 +298,7 @@ class EMTFExtrapolation(object):
       with np.load(bankfile) as data:
         self.lut = data['patterns_exphi']
         self.loaded = True
-    index = (self._find_theta_bin(part), self._find_pt_bin(part))
+    index = (self._find_eta_bin(part), self._find_pt_bin(part))
     c = self.lut[index]
     dphi = c * (part.invpt * np.sinh(1.8) / np.sinh(abs(part.eta)))
     exphi = part.phi + dphi  # in radians
@@ -883,9 +893,9 @@ use_condor = ("CONDOR_EXEC" in os.environ)
 
 # Analysis mode
 #analysis = "verbose"
-#analysis = "training"
+analysis = "training"
 #analysis = "application"
-analysis = "rates"
+#analysis = "rates"
 #analysis = "effie"
 #analysis = "mixing"
 if use_condor:
@@ -903,17 +913,17 @@ print('[INFO] Using analysis mode : %s' % analysis)
 print('[INFO] Using job id        : %s' % jobid)
 
 # Other stuff
-bankfile = 'histos_tb.13.npz'
+bankfile = 'histos_tb.14.npz'
 
-kerasfile = ['model.13.json', 'model_weights.13.h5']
+kerasfile = ['model.14.json', 'model_weights.14.h5']
 
 infile_r = None  # input file handle
 
 def load_pgun():
   global infile_r
-  infile = 'ntuple_SingleMuon_Toy_2GeV_add.4.root'
+  infile = 'ntuple_SingleMuon_Toy_2GeV_add.5.root'
   if use_condor:
-    infile = 'root://cmsio5.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/SingleMuon_Toy_2GeV/'+infile
+    infile = 'root://cmsio5.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/'+infile
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
   #tree = TreeChain('ntupler/tree', [infile])
@@ -933,8 +943,8 @@ def load_pgun_batch(j):
   jj = np.split(np.arange(1000), 200)[j]  # 50% events for training
   infiles = []
   for j in jj:
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/SingleMuon_Toy_2GeV/ParticleGuns/CRAB3/180124_173319/%04i/ntuple_SingleMuon_Toy_%i.root' % ((j+1)/1000, (j+1)))
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/SingleMuon_Toy2_2GeV/ParticleGuns/CRAB3/180227_130909/%04i/ntuple_SingleMuon_Toy_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/ParticleGuns/CRAB3/180124_173319/%04i/ntuple_SingleMuon_Toy_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy2_2GeV/ParticleGuns/CRAB3/180227_130909/%04i/ntuple_SingleMuon_Toy_%i.root' % ((j+1)/1000, (j+1)))
 
   tree = TreeChain('ntupler/tree', infiles)
   print('[INFO] Opening file: %s' % ' '.join(infiles))
@@ -947,8 +957,8 @@ def load_pgun_batch(j):
 
 def load_minbias_batch(j):
   global infile_r
-  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
-  #pufiles = ['root://cmsio5.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_9_2_3_patch1/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
+  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
+  #pufiles = ['root://cmsio5.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
   infile = pufiles[j]
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
@@ -979,7 +989,7 @@ if analysis == "verbose":
 
     # Hits
     for ihit, hit in enumerate(evt.hits):
-      print(".. hit  {0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10}".format(ihit, hit.bx, hit.type, hit.station, hit.ring, hit.sector, hit.fr, hit.sim_phi, hit.sim_theta, hit.sim_tp1, hit.sim_tp2))
+      print(".. hit  {0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10} {11}".format(ihit, hit.bx, hit.type, hit.station, hit.ring, hit.sector, hit.fr, hit.sim_phi, hit.sim_theta, hit.time, hit.sim_tp1, hit.sim_tp2))
     # Tracks
     for itrk, trk in enumerate(evt.tracks):
       print(".. trk  {0} {1} {2} {3} {4} {5} {6} {7}".format(itrk, trk.sector, trk.mode, trk.pt, trk.phi, trk.eta, trk.theta, trk.q))
@@ -1007,9 +1017,9 @@ elif analysis == "training":
     patterns_theta[ind] = []
 
   # 2-dimensional arrays of lists
-  # [itheta][ipt]
+  # [ieta][ipt]
   e = EMTFExtrapolation()
-  patterns_exphi = np.empty((e.theta_bins[0], e.pt_bins[0]), dtype=np.object)
+  patterns_exphi = np.empty((e.eta_bins[0], e.pt_bins[0]), dtype=np.object)
   for ind in np.ndindex(patterns_exphi.shape):
     patterns_exphi[ind] = []
 
@@ -1027,25 +1037,9 @@ elif analysis == "training":
     part.exphi = emtf_extrapolation(part)
     part.sector = find_sector(part.exphi)
     part.endcap = find_endcap(part.eta)
-    part.emtf_phi = calc_phi_loc_int(np.rad2deg(part.exphi), part.sector)
+    #part.emtf_phi = calc_phi_loc_int(np.rad2deg(part.exphi), part.sector)
+    part.emtf_phi = calc_phi_loc_int_1(np.rad2deg(part.exphi), part.sector)  # no cast to int
     part.emtf_theta = calc_theta_int(calc_theta_deg_from_eta(part.eta), part.endcap)
-
-    smear = True
-    if smear:
-      # Use 'doublestrip' resolution
-      sigma = 16/np.sqrt(12)
-      sigma *= 0.5  # this is an arbitrary scale factor
-      smear = sigma * np.random.normal()
-      part.emtf_phi_nosmear = part.emtf_phi
-      part.emtf_phi = part.emtf_phi + smear
-    #if smear:
-    #  # CLCT spatial resolution (halfstrip) = (w/2)/sqrt(12)
-    #  pitch = 2.3271e-3  # in radians
-    #  sigma = (pitch/2)/np.sqrt(12)
-    #  sigma *= 2  # this is an arbitrary scale factor
-    #  smear = sigma * np.random.normal()
-    #  part.emtf_phi_nosmear = part.emtf_phi
-    #  part.emtf_phi = calc_phi_loc_int(np.rad2deg(part.exphi + smear), part.sector)
 
     if ievt < 20:
       print("evt {0} has {1} particles and {2} hits".format(ievt, len(evt.particles), len(evt.hits)))
@@ -1056,9 +1050,7 @@ elif analysis == "training":
     the_patterns_phi = patterns_phi[part.ipt,part.ieta]
     the_patterns_theta = patterns_theta[0,part.ieta]  # no binning in pt
     e = EMTFExtrapolation()
-    the_patterns_exphi = patterns_exphi[e._find_theta_bin(part),e._find_pt_bin(part)]
-
-    #pgun_weight = emtf_pgun_weight(part)
+    the_patterns_exphi = patterns_exphi[e._find_eta_bin(part), e._find_pt_bin(part)]
 
     # Loop over hits
     for ihit, hit in enumerate(evt.hits):
@@ -1067,9 +1059,10 @@ elif analysis == "training":
       if ievt < 20:
         print(".. hit {0} type: {1} st: {2} ri: {3} fr: {4} lay: {5} sec: {6} ph: {7} th: {8}".format(ihit, hit.type, hit.station, hit.ring, hit.fr, lay, hit.sector, hit.emtf_phi, hit.emtf_theta))
 
-      if hit.endcap == part.endcap and hit.sector == part.sector and hit.sim_tp1 == 0 and hit.sim_tp2 == 0:
+      if hit.endcap == part.endcap and hit.sector == part.sector and ((hit.sim_tp1 == 0 and hit.sim_tp2 == 0) or hit.type == kME0):
         the_patterns_phi[lay].append(hit.emtf_phi - part.emtf_phi)
-        the_patterns_theta[lay].append(hit.emtf_theta)
+        if part.pt >= 3.:
+          the_patterns_theta[lay].append(hit.emtf_theta)
 
         if hit.type == kCSC and hit.station == 2:  # extrapolation to EMTF using ME2
           dphi = delta_phi(np.deg2rad(hit.sim_phi), part.phi)
@@ -1160,7 +1153,7 @@ elif analysis == "training":
         patterns_exphi = np.zeros_like(patterns_exphi_tmp, dtype=np.float32)
         e = EMTFExtrapolation()
         x = [e.pt_bins[1] + (i+0.5)/e.pt_bins[0]*(e.pt_bins[2] - e.pt_bins[1]) for i in xrange(e.pt_bins[0])]
-        for index in np.ndindex(e.theta_bins[0]):
+        for index in np.ndindex(e.eta_bins[0]):
           assert(len(x) == len(patterns_exphi_tmp[index]))
           rbf = Rbf(x, patterns_exphi_tmp[index], smooth = 0.3, function='multiquadric')
           patterns_exphi[index] = rbf(x)
