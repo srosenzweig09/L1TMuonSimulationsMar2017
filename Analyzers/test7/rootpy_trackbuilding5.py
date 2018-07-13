@@ -459,11 +459,11 @@ class PatternRecognition(object):
       hit_lay = hit.lay
 
       # Match patterns
-      mask = (pattern_x[...,hit_lay,0] <= hit_x) & (hit_x <= pattern_x[...,hit_lay,2]) & (pattern_y[...,hit_lay,0] - 2 <= hit_y) & (hit_y <= pattern_y[...,hit_lay,2] + 2)
+      mask = (pattern_x[...,hit_lay,0] <= hit_x) & (hit_x <= pattern_x[...,hit_lay,2]) & (pattern_y[...,hit_lay,0] <= hit_y) & (hit_y <= pattern_y[...,hit_lay,2])
 
       # Create a hit (for output)
       hit_id = (hit.type, hit.station, hit.ring, hit.fr)
-      hit_sim_tp = (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)
+      hit_sim_tp = ((hit.sim_tp1 == 0 and hit.sim_tp2 == 0) or hit.type == kME0)
       myhit = Hit(hit_id, hit.bx, hit_lay, hit.emtf_phi, hit.emtf_theta, emtf_bend(hit), hit_sim_tp)
 
       # Associate hits to road ids
@@ -522,7 +522,7 @@ class PatternRecognition(object):
       for sector in (1, 2, 3, 4, 5, 6):
         endsec = find_endsec(endcap, sector)
         fake_mode = fake_modes[endsec]
-        early_exit = np.count_nonzero([fake_mode & (1<<3), fake_mode & (1<<2), fake_mode & (1<<1), fake_mode & (1<<0)]) < 2  # at least 2 CSC hits
+        early_exit = np.count_nonzero((fake_mode & (1<<3), fake_mode & (1<<2), fake_mode & (1<<1), fake_mode & (1<<0))) < 2  # at least 2 CSC hits
         if early_exit:  continue
 
         # Patterns to run
@@ -540,7 +540,7 @@ class PatternRecognition(object):
         # Cheat using gen particle info
         if part is not None:
           if part.ipt != find_pt_bin(0.):  # don't use MC info at the highest pT because of muon showering
-            sector_hits = [hit for hit in hits if hit.bx in (-1,0,+1) and hit.endsec == endsec and hit.sim_tp1 == 0 and hit.sim_tp2 == 0]
+            sector_hits = [hit for hit in hits if hit.bx in (-1,0,+1) and hit.endsec == endsec and ((hit.sim_tp1 == 0 and hit.sim_tp2 == 0) or hit.type == kME0)]
           #ipt_range = [x for x in xrange(part.ipt-1, part.ipt+1+1) if 0 <= x < len(pt_bins)-1]
           ipt_range = xrange(0,(len(pt_bins)-1)//2+1) if part.q < 0 else xrange((len(pt_bins)-1)//2, len(pt_bins)-1)
           ieta_range = [x for x in xrange(part.ieta-1, part.ieta+1+1) if 0 <= x < len(eta_bins)-1]
@@ -577,6 +577,7 @@ class RoadCleaning(object):
 
   def _groupby(self, data):
     def is_adjacent(prev, curr, length):
+      # adjacent if (x,y,z) == (x,y,z+length)
       return prev[:-1] == curr[:-1] and (prev[-1] + length) == curr[-1]
 
     if data:
@@ -605,12 +606,19 @@ class RoadCleaning(object):
     def select_bx_zero(road):
       bx_counter1 = 0  # count hits with BX <= -1
       bx_counter2 = 0  # count hits with BX <= 0
+      bx_counter3 = 0  # count hits with BX > 0
+      layer_has_been_used = set()
       for hit in road.hits:  #FIXME
-        if hit.bx <= -1:
-          bx_counter1 += 1
-        if hit.bx <= 0:
-          bx_counter2 += 1
-      trk_bx_zero = (bx_counter1 < 2 and bx_counter2 >= 2)
+        if hit.emtf_layer not in layer_has_been_used:
+          layer_has_been_used.add(hit.emtf_layer)
+          if hit.bx <= -1:
+            bx_counter1 += 1
+          if hit.bx <= 0:
+            bx_counter2 += 1
+          if hit.bx > 0:
+            bx_counter3 += 1
+      #trk_bx_zero = (bx_counter1 < 2 and bx_counter2 >= 2)
+      trk_bx_zero = (bx_counter1 < 2 and bx_counter2 >= 2 and bx_counter3 < 2)
       return trk_bx_zero
 
     clean_roads = filter(select_bx_zero, clean_roads)
@@ -629,7 +637,7 @@ class RoadCleaning(object):
           gj = groupinfo[road_to_check.id]
           _get_endsec = lambda x: x[:2]
           # Allow +/-2 due to extrapolation-to-EMTF error
-          if (_get_endsec(road.id) == _get_endsec(road_to_check.id)) and (gi[1] >= gj[0]-2) and (gi[0] <= gj[1]+2):
+          if (_get_endsec(road.id) == _get_endsec(road_to_check.id)) and (gi[1]+4 >= gj[0]) and (gi[0]-4 <= gj[1]):
             keep = False
             break
 
@@ -644,7 +652,11 @@ class RoadCleaning(object):
     # pick median in each iphi group
     clean_roads = []
     groupinfo = {}
+
+    # Loop over road clusters
     for group in self._groupby(amap.keys()):
+
+      # Loop over roads in road clusters, starting from middle
       for index in self._iter_from_middle(range(len(group))):
         road_id = group[index]
         road = amap[road_id]
@@ -659,7 +671,6 @@ class RoadCleaning(object):
       _get_iphi = lambda x: x[4]
       g = (_get_iphi(group[0]), _get_iphi(group[-1]))  # first and last road_id's in the iphi group
       groupinfo[road_id] = g
-      road.iphi_corr = float(_get_iphi(road.id) - g[0]) / (g[1] - g[0] + 1)
       clean_roads.append(road)
 
     # sort the roads + kill the siblings
@@ -893,8 +904,8 @@ use_condor = ("CONDOR_EXEC" in os.environ)
 
 # Analysis mode
 #analysis = "verbose"
-analysis = "training"
-#analysis = "application"
+#analysis = "training"
+analysis = "application"
 #analysis = "rates"
 #analysis = "effie"
 #analysis = "mixing"
@@ -1170,7 +1181,8 @@ elif analysis == "training":
 # ______________________________________________________________________________
 # Analysis: application
 elif analysis == "application":
-  tree = load_pgun_batch(jobid)
+  tree = load_pgun()
+  #tree = load_pgun_batch(jobid)
 
   # Workers
   bank = PatternBank(bankfile)
@@ -1206,7 +1218,7 @@ elif analysis == "application":
       out_particles.append(mypart)
       out_roads.append(clean_roads[0])
 
-    if ievt < 20:
+    if ievt < 20 or len(clean_roads) == 0:
       print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
       print(".. part invpt: {0} pt: {1} eta: {2} phi: {3}".format(part.invpt, part.pt, part.eta, part.phi))
       part.exphi = emtf_extrapolation(part)
@@ -1215,13 +1227,12 @@ elif analysis == "application":
       part.emtf_phi = calc_phi_loc_int(np.rad2deg(part.exphi), part.sector)
       part.emtf_theta = calc_theta_int(calc_theta_deg_from_eta(part.eta), part.endcap)
       part_road_id = (part.endcap, part.sector, part.ipt, part.ieta, part.emtf_phi/16)
-      part_nhits = sum([1 for hit in evt.hits if hit.endcap == part.endcap and hit.sector == part.sector and hit.sim_tp1 == 0 and hit.sim_tp2 == 0])
+      part_nhits = sum([1 for hit in evt.hits if hit.endcap == part.endcap and hit.sector == part.sector])
       print(".. part road id: {0} nhits: {1} exphi: {2} emtf_phi: {3}".format(part_road_id, part_nhits, part.exphi, part.emtf_phi))
       #for ihit, hit in enumerate(evt.hits):
-      #  if hit.endcap == part.endcap and hit.sector == part.sector and hit.sim_tp1 == 0 and hit.sim_tp2 == 0:
+      #  if hit.endcap == part.endcap and hit.sector == part.sector:
       #    hit_id = (hit.type, hit.station, hit.ring, hit.fr)
-      #    hit_sim_tp = (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)
-      #    print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}".format(ihit, hit_id, emtf_layer(hit), hit.emtf_phi, hit.emtf_theta, hit.bx, hit_sim_tp))
+      #    print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}/{7}".format(ihit, hit_id, emtf_layer(hit), hit.emtf_phi, hit.emtf_theta, hit.bx, hit.sim_tp1, hit.sim_tp2))
       for iroad, myroad in enumerate(sorted(roads, key=lambda x: x.id)):
         print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
       for iroad, myroad in enumerate(clean_roads):
@@ -1230,11 +1241,13 @@ elif analysis == "application":
           print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.bx, myhit.sim_tp))
 
     # Quick efficiency
-    if part.pt > 5.:
+    if (1.24 < abs(part.eta) < 2.4) and part.pt > 5.:
       trigger = len(clean_roads) > 0
       ntotal += 1
       if trigger:
         npassed += 1
+      #else:
+      #  print("evt {0} FAIL".format(ievt))
 
       hname = "eff_vs_genpt_denom"
       histograms[hname].fill(part.pt)
