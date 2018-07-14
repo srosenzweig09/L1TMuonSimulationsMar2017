@@ -337,8 +337,10 @@ class PatternBank(object):
     with np.load(bankfile) as data:
       patterns_phi = data['patterns_phi']
       patterns_theta = data['patterns_theta']
+      patterns_match = data['patterns_match']
     self.x_array = patterns_phi
     self.y_array = patterns_theta
+    self.z_array = patterns_match
     assert(self.x_array.dtype == np.int32)
     assert(self.y_array.dtype == np.int32)
     assert(self.x_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
@@ -680,9 +682,21 @@ class RoadCleaning(object):
     return sorted_clean_roads
 
 
+# Primitive matching module
+class PrimitiveMatching(object):
+  def __init__(self):
+    pass
+
+  def run(self, roads):
+    slimmed_roads = []
+    for road in roads:
+      pass
+
+    return slimmed_roads
+
+
 # pT assignment module
 class PtAssignment(object):
-
   def __init__(self, kerasfile):
     (model_file, model_weights_file) = kerasfile
 
@@ -1023,9 +1037,11 @@ elif analysis == "training":
   # [ipt][ieta][lay]
   patterns_phi = np.empty((len(pt_bins)-1, len(eta_bins)-1, nlayers), dtype=np.object)
   patterns_theta = np.empty((len(pt_bins)-1, len(eta_bins)-1, nlayers), dtype=np.object)
+  patterns_match = np.empty((len(pt_bins)-1, len(eta_bins)-1, nlayers), dtype=np.object)  # used for matching
   for ind in np.ndindex(patterns_phi.shape):
     patterns_phi[ind] = []
     patterns_theta[ind] = []
+    patterns_match[ind] = []
 
   # 2-dimensional arrays of lists
   # [ieta][ipt]
@@ -1060,12 +1076,16 @@ elif analysis == "training":
     part.ieta = find_eta_bin(part.eta)
     the_patterns_phi = patterns_phi[part.ipt,part.ieta]
     the_patterns_theta = patterns_theta[0,part.ieta]  # no binning in pt
+    the_patterns_match = patterns_match[part.ipt,part.ieta]
     e = EMTFExtrapolation()
     the_patterns_exphi = patterns_exphi[e._find_eta_bin(part), e._find_pt_bin(part)]
 
     # Loop over hits
+    cached_hits = {}  # used for matching
+
     for ihit, hit in enumerate(evt.hits):
       lay = emtf_layer(hit)
+      hit.lay = lay
       assert(lay != -99)
       if ievt < 20:
         print(".. hit {0} type: {1} st: {2} ri: {3} fr: {4} lay: {5} sec: {6} ph: {7} th: {8}".format(ihit, hit.type, hit.station, hit.ring, hit.fr, lay, hit.sector, hit.emtf_phi, hit.emtf_theta))
@@ -1074,11 +1094,28 @@ elif analysis == "training":
         the_patterns_phi[lay].append(hit.emtf_phi - part.emtf_phi)
         if part.pt >= 3.:
           the_patterns_theta[lay].append(hit.emtf_theta)
+        if lay not in cached_hits:
+          cached_hits[lay] = hit
 
         if hit.type == kCSC and hit.station == 2:  # extrapolation to EMTF using ME2
           dphi = delta_phi(np.deg2rad(hit.sim_phi), part.phi)
           dphi /= (part.invpt * np.sinh(1.8) / np.sinh(abs(part.eta)))
           the_patterns_exphi.append(dphi)
+
+    # Find pairs of hits
+    if part.ieta <= 3:
+      pairings = dict([(0,2), (1,2), (2,0), (3,0), (4,0), (5,0), (6,2), (7,3), (8,4), (9,0), (10,2), (11,0)])
+    else:
+      pairings = dict([(0,2), (1,2), (2,1), (3,1), (4,1), (5,1), (6,2), (7,3), (8,4), (9,1), (10,2), (11,1)])
+
+    for ihit, hit in enumerate(evt.hits):
+      if hit.endcap == part.endcap and hit.sector == part.sector and ((hit.sim_tp1 == 0 and hit.sim_tp2 == 0) or hit.type == kME0):
+        lay = hit.lay
+        lay_p = pairings[lay]
+        if lay_p in cached_hits:
+          hit_p = cached_hits[lay_p]
+          the_patterns_match[lay].append(hit.emtf_phi - hit_p.emtf_phi)
+
 
   # End loop over events
   unload_tree()
@@ -1106,8 +1143,10 @@ elif analysis == "training":
   if True:
     patterns_phi_tmp = patterns_phi
     patterns_theta_tmp = patterns_theta
+    patterns_match_tmp = patterns_match
     patterns_phi = np.zeros((len(pt_bins)-1, len(eta_bins)-1, nlayers, 3), dtype=np.int32)
     patterns_theta = np.zeros((len(pt_bins)-1, len(eta_bins)-1, nlayers, 3), dtype=np.int32)
+    patterns_match = np.zeros((len(pt_bins)-1, len(eta_bins)-1, nlayers, 3), dtype=np.int32)
     #
     for i in xrange(len(pt_bins)-1):
       for j in xrange(len(eta_bins)-1):
@@ -1134,6 +1173,13 @@ elif analysis == "training":
             x = [int(round(xx)) for xx in x]
             patterns_theta[i,j,k] = x
 
+          patterns_match_tmp_ijk = patterns_match_tmp[i,j,k]
+          if len(patterns_match_tmp_ijk) > 1000:
+            x = np.percentile(patterns_match_tmp_ijk, [2.5, 50, 97.5], overwrite_input=True)
+            x = [int(round(xx)) for xx in x]
+            patterns_match[i,j,k] = x
+
+
     # Mask layers by (ieta, lay)
     valid_layers = [
       (5,1), (5,2), (5,3), (5,4), (5,5), (5,6), (5,7), (5,8),
@@ -1148,6 +1194,7 @@ elif analysis == "training":
       mask[:,valid_layer[0],valid_layer[1],:] = False
     patterns_phi[mask] = 0
     patterns_theta[mask] = 0
+    patterns_match[mask] = 0
 
     # extrapolation to EMTF using ME2
     overwrite_extrapolation = True
@@ -1173,7 +1220,7 @@ elif analysis == "training":
         patterns_exphi = data['patterns_exphi']
 
     outfile = 'histos_tb.npz'
-    np.savez_compressed(outfile, patterns_phi=patterns_phi, patterns_theta=patterns_theta, patterns_exphi=patterns_exphi)
+    np.savez_compressed(outfile, patterns_phi=patterns_phi, patterns_theta=patterns_theta, patterns_match=patterns_match, patterns_exphi=patterns_exphi)
 
 
 
@@ -1193,7 +1240,7 @@ elif analysis == "application":
   npassed, ntotal = 0, 0
 
   # Event range
-  n = -1
+  n = 20000
 
   # ____________________________________________________________________________
   # Loop over events
@@ -1229,10 +1276,10 @@ elif analysis == "application":
       part_road_id = (part.endcap, part.sector, part.ipt, part.ieta, part.emtf_phi/16)
       part_nhits = sum([1 for hit in evt.hits if hit.endcap == part.endcap and hit.sector == part.sector])
       print(".. part road id: {0} nhits: {1} exphi: {2} emtf_phi: {3}".format(part_road_id, part_nhits, part.exphi, part.emtf_phi))
-      #for ihit, hit in enumerate(evt.hits):
-      #  if hit.endcap == part.endcap and hit.sector == part.sector:
-      #    hit_id = (hit.type, hit.station, hit.ring, hit.fr)
-      #    print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}/{7}".format(ihit, hit_id, emtf_layer(hit), hit.emtf_phi, hit.emtf_theta, hit.bx, hit.sim_tp1, hit.sim_tp2))
+      for ihit, hit in enumerate(evt.hits):
+        if hit.endcap == part.endcap and hit.sector == part.sector:
+          hit_id = (hit.type, hit.station, hit.ring, hit.fr)
+          print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}/{7}".format(ihit, hit_id, emtf_layer(hit), hit.emtf_phi, hit.emtf_theta, hit.bx, hit.sim_tp1, hit.sim_tp2))
       for iroad, myroad in enumerate(sorted(roads, key=lambda x: x.id)):
         print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
       for iroad, myroad in enumerate(clean_roads):
