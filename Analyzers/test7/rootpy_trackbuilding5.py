@@ -205,7 +205,7 @@ class EMTFBend(object):
       bend = self.lut[clct]
       bend *= hit.endcap
     else:
-      bend = 0
+      bend = hit.bend
     return bend
 
 anemtfbend = EMTFBend()
@@ -343,17 +343,20 @@ class PatternBank(object):
     self.z_array = patterns_match
     assert(self.x_array.dtype == np.int32)
     assert(self.y_array.dtype == np.int32)
+    assert(self.z_array.dtype == np.int32)
     assert(self.x_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
     assert(self.y_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
+    assert(self.z_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
 
 class Hit(object):
-  def __init__(self, _id, bx, emtf_layer, emtf_phi, emtf_theta, emtf_bend, sim_tp):
+  def __init__(self, _id, bx, emtf_layer, emtf_phi, emtf_theta, emtf_bend, time, sim_tp):
     self.id = _id  # (_type, station, ring, fr)
     self.bx = bx
     self.emtf_layer = emtf_layer
     self.emtf_phi = emtf_phi
     self.emtf_theta = emtf_theta
     self.emtf_bend = emtf_bend
+    self.time = time
     self.sim_tp = sim_tp
 
   def get_ring(self):
@@ -369,28 +372,19 @@ class Road(object):
     self.mode = mode
     self.quality = quality
     self.sort_code = sort_code
-    self.iphi_corr = 0.
 
   def to_variables(self):
     amap = {}
-    np.random.shuffle(self.hits)  # randomize the order
+    #np.random.shuffle(self.hits)  # randomize the order
     for hit in self.hits:
       hit_lay = hit.emtf_layer
       if hit_lay not in amap:
         amap[hit_lay] = hit
     #
-    # Pick closest to median theta
-    tmp_thetas =[v.emtf_theta for k, v in amap.iteritems()]
-    tmp_theta =  np.median(tmp_thetas, overwrite_input=True)
-    for hit in self.hits:
-      hit_lay = hit.emtf_layer
-      hit_check = amap[hit_lay]
-      if abs(hit.emtf_theta - tmp_theta) < abs(hit_check.emtf_theta - tmp_theta):
-        amap[hit_lay] = hit
-    #
     hits_phi = np.zeros(nlayers, dtype=np.float32) + np.nan
     hits_theta = np.zeros(nlayers, dtype=np.float32) + np.nan
     hits_bend = np.zeros(nlayers, dtype=np.float32) + np.nan
+    hits_time = np.zeros(nlayers, dtype=np.float32) + np.nan
     hits_ring = np.zeros(nlayers, dtype=np.float32) + np.nan
     hits_fr = np.zeros(nlayers, dtype=np.float32) + np.nan
     hits_mask = np.zeros(nlayers, dtype=np.float32) + 1.0
@@ -398,13 +392,14 @@ class Road(object):
       hits_phi[lay] = hit.emtf_phi
       hits_theta[lay] = hit.emtf_theta
       hits_bend[lay] = hit.emtf_bend
+      hits_time[lay] = hit.time
       hits_ring[lay] = hit.get_ring()
       hits_fr[lay] = hit.get_fr()
       hits_mask[lay] = 0.0
     #
     (endcap, sector, ipt, ieta, iphi) = self.id
-    road_info = (ipt, ieta, iphi, self.iphi_corr)
-    variables = np.hstack((hits_phi, hits_theta, hits_bend, hits_ring, hits_fr, hits_mask, road_info))
+    road_info = (ipt, ieta, iphi)
+    variables = np.hstack((hits_phi, hits_theta, hits_bend, hits_time, hits_ring, hits_fr, hits_mask, road_info))
     return variables
 
 class Track(object):
@@ -430,7 +425,7 @@ def particles_to_parameters(particles):
   return parameters
 
 def roads_to_variables(roads):
-  variables = np.zeros((len(roads), (nlayers * 6) + 4), dtype=np.float32)
+  variables = np.zeros((len(roads), (nlayers * 7) + 3), dtype=np.float32)
   for i, road in enumerate(roads):
     variables[i] = road.to_variables()
   return variables
@@ -466,7 +461,7 @@ class PatternRecognition(object):
       # Create a hit (for output)
       hit_id = (hit.type, hit.station, hit.ring, hit.fr)
       hit_sim_tp = ((hit.sim_tp1 == 0 and hit.sim_tp2 == 0) or hit.type == kME0)
-      myhit = Hit(hit_id, hit.bx, hit_lay, hit.emtf_phi, hit.emtf_theta, emtf_bend(hit), hit_sim_tp)
+      myhit = Hit(hit_id, hit.bx, hit_lay, hit.emtf_phi, hit.emtf_theta, emtf_bend(hit), hit.time, hit_sim_tp)
 
       # Associate hits to road ids
       for index, condition in np.ndenumerate(mask):
@@ -682,17 +677,64 @@ class RoadCleaning(object):
     return sorted_clean_roads
 
 
-# Primitive matching module
-class PrimitiveMatching(object):
-  def __init__(self):
-    pass
+# Road slimming module
+class RoadSlimming(object):
+  def __init__(self, bank):
+    self.bank = bank
 
   def run(self, roads):
-    slimmed_roads = []
-    for road in roads:
-      pass
+    slim_roads = []
 
-    return slimmed_roads
+    for road in roads:
+      road_id = road.id
+      ipt, ieta, iphi = road_id[2:]
+      if ieta <= 3:
+        pairings = dict([(0,2), (1,2), (2,0), (3,0), (4,0), (5,0), (6,2), (7,3), (8,4), (9,0), (10,2), (11,0)])
+      else:
+        pairings = dict([(0,2), (1,2), (2,1), (3,1), (4,1), (5,1), (6,2), (7,3), (8,4), (9,1), (10,2), (11,1)])
+      #print "..", road_id
+
+      hits_array = np.empty((nlayers,), dtype=np.object)
+      for ind in np.ndindex(hits_array.shape):
+        hits_array[ind] = []
+
+      tmp_thetas = [hit.emtf_theta for hit in road.hits]
+      tmp_theta = np.median(tmp_thetas, overwrite_input=True)
+
+      for hit in road.hits:
+        hit_lay = hit.emtf_layer
+        hits_array[hit_lay].append(hit)
+
+      for hit_lay in xrange(nlayers):
+        mean_dphi = self.bank.z_array[ipt, ieta, hit_lay, 1]
+        hit_lay_p = pairings[hit_lay]
+
+        pairs = []
+        if hits_array[hit_lay]:
+          for hit1 in hits_array[hit_lay]:
+            if hits_array[hit_lay_p]:
+              for hit2 in hits_array[hit_lay_p]:
+                dphi = abs((hit1.emtf_phi - hit2.emtf_phi) - mean_dphi)
+                dtheta = abs(hit1.emtf_theta - tmp_theta)
+                pairs.append((hit1, hit2, dphi, dtheta))
+                #print hit1.emtf_phi, hit2.emtf_phi, abs((hit1.emtf_phi - hit2.emtf_phi)), dphi
+            else:
+              dtheta = abs(hit1.emtf_theta - tmp_theta)
+              pairs.append((hit1, hit1, 0, dtheta))
+
+          best_pair = min(pairs, key=lambda x: (x[2], x[3]))
+          best_hit = best_pair[0]
+          hits_array[hit_lay] = [best_hit]
+
+      slim_road_hits = []
+      for hit_lay in xrange(nlayers):
+        if hits_array[hit_lay]:
+          assert(len(hits_array[hit_lay]) == 1)
+          slim_road_hits.append(hits_array[hit_lay][0])
+
+      slim_road = Road(road.id, slim_road_hits, road.mode, road.quality, road.sort_code)
+      slim_roads.append(slim_road)
+    return slim_roads
 
 
 # pT assignment module
@@ -749,14 +791,14 @@ class TrackProducer(object):
   def __init__(self):
     pass
 
-  def run(self, clean_roads, variables, predictions, other_vars):
-    assert(len(clean_roads) == len(variables))
-    assert(len(clean_roads) == len(predictions))
-    assert(len(clean_roads) == len(other_vars))
+  def run(self, slim_roads, variables, predictions, other_vars):
+    assert(len(slim_roads) == len(variables))
+    assert(len(slim_roads) == len(predictions))
+    assert(len(slim_roads) == len(other_vars))
 
     tracks = []
 
-    for myroad, myvars, mypreds, myother in izip(clean_roads, variables, predictions, other_vars):
+    for myroad, myvars, mypreds, myother in izip(slim_roads, variables, predictions, other_vars):
       # Unpack variables
       assert(len(myvars.shape) == 1)
       assert(myvars.shape[0] == (nlayers * 5) + 8)
@@ -964,12 +1006,11 @@ def load_pgun_batch(j):
   global infile_r
   infile_r = root_open('pippo.root', 'w')
 
-  #jj = np.split(np.arange(2000), 200)[j]
-  jj = np.split(np.arange(1000), 200)[j]  # 50% events for training
+  jj = np.split(np.arange(2000), 200)[j]
   infiles = []
   for j in jj:
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/ParticleGuns/CRAB3/180124_173319/%04i/ntuple_SingleMuon_Toy_%i.root' % ((j+1)/1000, (j+1)))
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy2_2GeV/ParticleGuns/CRAB3/180227_130909/%04i/ntuple_SingleMuon_Toy_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/ParticleGuns/CRAB3/180718_010051/%04i/ntuple_SingleMuon_Toy_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy2_2GeV/ParticleGuns/CRAB3/180718_010234/%04i/ntuple_SingleMuon_Toy2_%i.root' % ((j+1)/1000, (j+1)))
 
   tree = TreeChain('ntupler/tree', infiles)
   print('[INFO] Opening file: %s' % ' '.join(infiles))
@@ -982,8 +1023,7 @@ def load_pgun_batch(j):
 
 def load_minbias_batch(j):
   global infile_r
-  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
-  #pufiles = ['root://cmsio5.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180116_214738/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(100)]
+  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180718_005900/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
   infile = pufiles[j]
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
@@ -1084,18 +1124,18 @@ elif analysis == "training":
     cached_hits = {}  # used for matching
 
     for ihit, hit in enumerate(evt.hits):
-      lay = emtf_layer(hit)
-      hit.lay = lay
-      assert(lay != -99)
+      hit_lay = emtf_layer(hit)
+      hit.lay = hit_lay
+      assert(hit_lay != -99)
       if ievt < 20:
-        print(".. hit {0} type: {1} st: {2} ri: {3} fr: {4} lay: {5} sec: {6} ph: {7} th: {8}".format(ihit, hit.type, hit.station, hit.ring, hit.fr, lay, hit.sector, hit.emtf_phi, hit.emtf_theta))
+        print(".. hit {0} type: {1} st: {2} ri: {3} fr: {4} lay: {5} sec: {6} ph: {7} th: {8}".format(ihit, hit.type, hit.station, hit.ring, hit.fr, hit_lay, hit.sector, hit.emtf_phi, hit.emtf_theta))
 
       if hit.endcap == part.endcap and hit.sector == part.sector and ((hit.sim_tp1 == 0 and hit.sim_tp2 == 0) or hit.type == kME0):
-        the_patterns_phi[lay].append(hit.emtf_phi - part.emtf_phi)
+        the_patterns_phi[hit_lay].append(hit.emtf_phi - part.emtf_phi)
         if part.pt >= 3.:
-          the_patterns_theta[lay].append(hit.emtf_theta)
-        if lay not in cached_hits:
-          cached_hits[lay] = hit
+          the_patterns_theta[hit_lay].append(hit.emtf_theta)
+        if hit_lay not in cached_hits:
+          cached_hits[hit_lay] = hit
 
         if hit.type == kCSC and hit.station == 2:  # extrapolation to EMTF using ME2
           dphi = delta_phi(np.deg2rad(hit.sim_phi), part.phi)
@@ -1110,11 +1150,11 @@ elif analysis == "training":
 
     for ihit, hit in enumerate(evt.hits):
       if hit.endcap == part.endcap and hit.sector == part.sector and ((hit.sim_tp1 == 0 and hit.sim_tp2 == 0) or hit.type == kME0):
-        lay = hit.lay
-        lay_p = pairings[lay]
-        if lay_p in cached_hits:
-          hit_p = cached_hits[lay_p]
-          the_patterns_match[lay].append(hit.emtf_phi - hit_p.emtf_phi)
+        hit_lay = hit.lay
+        hit_lay_p = pairings[hit_lay]
+        if hit_lay_p in cached_hits:
+          hit_p = cached_hits[hit_lay_p]
+          the_patterns_match[hit_lay].append(hit.emtf_phi - hit_p.emtf_phi)
 
 
   # End loop over events
@@ -1175,7 +1215,7 @@ elif analysis == "training":
 
           patterns_match_tmp_ijk = patterns_match_tmp[i,j,k]
           if len(patterns_match_tmp_ijk) > 1000:
-            x = np.percentile(patterns_match_tmp_ijk, [2.5, 50, 97.5], overwrite_input=True)
+            x = np.percentile(patterns_match_tmp_ijk, [5, 50, 95], overwrite_input=True)
             x = [int(round(xx)) for xx in x]
             patterns_match[i,j,k] = x
 
@@ -1228,19 +1268,20 @@ elif analysis == "training":
 # ______________________________________________________________________________
 # Analysis: application
 elif analysis == "application":
-  tree = load_pgun()
-  #tree = load_pgun_batch(jobid)
+  #tree = load_pgun()
+  tree = load_pgun_batch(jobid)
 
   # Workers
   bank = PatternBank(bankfile)
   recog = PatternRecognition(bank)
   clean = RoadCleaning()
+  slim = RoadSlimming(bank)
   out_particles = []
   out_roads = []
   npassed, ntotal = 0, 0
 
   # Event range
-  n = 20000
+  n = -1
 
   # ____________________________________________________________________________
   # Loop over events
@@ -1259,11 +1300,13 @@ elif analysis == "application":
 
     roads = recog.run(evt.hits)
     clean_roads = clean.run(roads)
+    slim_roads = slim.run(clean_roads)
+    assert(len(clean_roads) == len(slim_roads))
 
-    if len(clean_roads) > 0:
+    if len(slim_roads) > 0:
       mypart = Particle(part.pt, part.eta, part.phi, part.q)
       out_particles.append(mypart)
-      out_roads.append(clean_roads[0])
+      out_roads.append(slim_roads[0])
 
     if ievt < 20 or len(clean_roads) == 0:
       print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
@@ -1284,6 +1327,10 @@ elif analysis == "application":
         print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
       for iroad, myroad in enumerate(clean_roads):
         print(".. croad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
+        for ihit, myhit in enumerate(myroad.hits):
+          print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.bx, myhit.sim_tp))
+      for iroad, myroad in enumerate(slim_roads):
+        print(".. sroad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
         for ihit, myhit in enumerate(myroad.hits):
           print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.bx, myhit.sim_tp))
 
@@ -1353,6 +1400,7 @@ elif analysis == "rates":
   bank = PatternBank(bankfile)
   recog = PatternRecognition(bank)
   clean = RoadCleaning()
+  slim = RoadSlimming(bank)
   ptassign = PtAssignment(kerasfile)
   trkprod = TrackProducer()
   out_variables = []
@@ -1369,9 +1417,10 @@ elif analysis == "rates":
 
     roads = recog.run(evt.hits)
     clean_roads = clean.run(roads)
-    variables = roads_to_variables(clean_roads)
+    slim_roads = slim.run(clean_roads)
+    variables = roads_to_variables(slim_roads)
     variables_mod, predictions, other_vars = ptassign.run(variables)
-    emtf2023_tracks = trkprod.run(clean_roads, variables_mod, predictions, other_vars)
+    emtf2023_tracks = trkprod.run(slim_roads, variables_mod, predictions, other_vars)
 
     found_high_pt_tracks = any(map(lambda trk: trk.pt > 20., emtf2023_tracks))
 
@@ -1501,34 +1550,35 @@ elif analysis == "rates":
 # Analysis: effie
 
 elif analysis == "effie":
-  tree = load_pgun()
+  #tree = load_pgun()
+  tree = load_pgun_batch(jobid)
 
   # Workers
   bank = PatternBank(bankfile)
   recog = PatternRecognition(bank)
   clean = RoadCleaning()
+  slim = RoadSlimming(bank)
   ptassign = PtAssignment(kerasfile)
   trkprod = TrackProducer()
 
   # Event range
-  evt = next(iter(tree))
-  n = 10000
-  n_skip = 2000000
-  evt_range = xrange(n_skip+jobid*n, n_skip+(jobid+1)*n)
+  n = -1
 
   # ____________________________________________________________________________
   # Loop over events
-  for ievt in evt_range:
-    tree.GetEntry(ievt)
+  for ievt, evt in enumerate(tree):
+    if n != -1 and ievt == n:
+      break
 
     part = evt.particles[0]  # particle gun
     part.invpt = np.true_divide(part.q, part.pt)
 
     roads = recog.run(evt.hits)
     clean_roads = clean.run(roads)
-    variables = roads_to_variables(clean_roads)
+    slim_roads = slim.run(clean_roads)
+    variables = roads_to_variables(slim_roads)
     variables_mod, predictions, other_vars = ptassign.run(variables)
-    emtf2023_tracks = trkprod.run(clean_roads, variables_mod, predictions, other_vars)
+    emtf2023_tracks = trkprod.run(slim_roads, variables_mod, predictions, other_vars)
 
     if ievt < (n_skip + 20) and False:
       print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2023_tracks)))
@@ -1623,6 +1673,7 @@ elif analysis == "mixing":
   bank = PatternBank(bankfile)
   recog = PatternRecognition(bank)
   clean = RoadCleaning()
+  slim = RoadSlimming(bank)
   #ptassign = PtAssignment(kerasfile)
   #trkprod = TrackProducer()
   out_particles = []
@@ -1640,9 +1691,10 @@ elif analysis == "mixing":
 
     roads = recog.run(evt.hits)
     clean_roads = clean.run(roads)
-    #variables = roads_to_variables(clean_roads)
+    slim_roads = slim.run(clean_roads)
+    #variables = roads_to_variables(slim_roads)
     #variables_mod, predictions, other_vars = ptassign.run(variables)
-    #emtf2023_tracks = trkprod.run(clean_roads, variables_mod, predictions, other_vars)
+    #emtf2023_tracks = trkprod.run(slim_roads, variables_mod, predictions, other_vars)
 
     def find_highest_part_pt():
       highest_pt = -999999.
@@ -1671,10 +1723,10 @@ elif analysis == "mixing":
     highest_track_pt = find_highest_track_pt()
 
 
-    if len(clean_roads) > 0:
+    if len(slim_roads) > 0:
       part = (jobid, ievt, highest_part_pt, highest_track_pt)
-      out_particles += [part for _ in xrange(len(clean_roads))]
-      out_roads += clean_roads
+      out_particles += [part for _ in xrange(len(slim_roads))]
+      out_roads += slim_roads
 
     if ievt < 20 and False:
       print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
