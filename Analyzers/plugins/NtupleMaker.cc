@@ -368,8 +368,8 @@ void NtupleMaker::process() {
     return -1;
   };
 
-  auto get_time = [](double time) {
-    return static_cast<int>(std::round(time * 100));  // to integer unit of 0.01 ns (arbitrary)
+  auto get_time = [](float time) {
+    return static_cast<int>(std::round(time));  // to integer unit of 1 ns (arbitrary)
   };
 
   auto get_hit_refs = [](const auto& trk, const auto& hits) {
@@ -451,6 +451,20 @@ void NtupleMaker::process() {
   prepare_sim_tp();  // must be called before calling get_sim_tp1() and get_sim_tp2()
 
   for (const auto& hit : emuHits_) {
+    // Hack 'bend'
+    // For RPC, use cluster width
+    int bend = hit.Bend();
+    if (hit.Subsystem() == TriggerPrimitive::kRPC) {
+      bend = (hit.Strip_hi() - hit.Strip_low() + 1);
+    }
+
+    // Hack 'time'
+    // For CSC/GEM, set to 0
+    int time = get_time(hit.Time());
+    if (hit.Subsystem() == TriggerPrimitive::kCSC || hit.Subsystem() == TriggerPrimitive::kGEM) {
+      time = 0;
+    }
+
     vh_endcap     ->push_back(hit.Endcap());
     vh_station    ->push_back(hit.Station());
     vh_ring       ->push_back(hit.Ring());
@@ -467,8 +481,8 @@ void NtupleMaker::process() {
     vh_roll       ->push_back(hit.Roll());
     vh_pattern    ->push_back(hit.Pattern());
     vh_quality    ->push_back(hit.Quality());
-    vh_bend       ->push_back(hit.Bend());
-    vh_time       ->push_back(get_time(hit.Time()));
+    vh_bend       ->push_back(bend);
+    vh_time       ->push_back(time);
     vh_fr         ->push_back(isFront(hit));
     //
     vh_emtf_phi   ->push_back(hit.Phi_fp());
