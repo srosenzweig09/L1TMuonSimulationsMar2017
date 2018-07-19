@@ -1,5 +1,4 @@
-cd ~/L1MuonTrigger/PostProcessJobs/CMSSW_10_2_0/src/
+cd ~/L1MuonTrigger/PostProcessJobs/CMSSW_9_3_11/src/
 cmsenv
-source venv/bin/activate
 cd -
 
