@@ -369,7 +369,7 @@ void NtupleMaker::process() {
   };
 
   auto get_time = [](float time) {
-    return static_cast<int>(std::round(time));  // to integer unit of 1 ns (arbitrary)
+    return static_cast<int>(std::round(time/0.1));  // to integer unit of 0.1 ns (arbitrary)
   };
 
   auto get_hit_refs = [](const auto& trk, const auto& hits) {
@@ -456,6 +456,9 @@ void NtupleMaker::process() {
     int bend = hit.Bend();
     if (hit.Subsystem() == TriggerPrimitive::kRPC) {
       bend = (hit.Strip_hi() - hit.Strip_low() + 1);
+      bool is_irpc = hit.Is_RPC() && ((hit.Station() == 3 || hit.Station() == 4) && (hit.Ring() == 1));
+      if (!is_irpc)
+        bend *= 3;
     }
 
     // Hack 'time'
