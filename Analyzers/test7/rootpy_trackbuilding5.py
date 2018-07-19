@@ -204,7 +204,10 @@ class EMTFBend(object):
       clct = int(hit.pattern)
       bend = self.lut[clct]
       bend *= hit.endcap
-    else:
+    elif hit.type == kGEM:
+      bend = hit.bend
+      bend *= hit.endcap
+    else:  # kRPC, kME0
       bend = hit.bend
     return bend
 
@@ -801,7 +804,7 @@ class TrackProducer(object):
     for myroad, myvars, mypreds, myother in izip(slim_roads, variables, predictions, other_vars):
       # Unpack variables
       assert(len(myvars.shape) == 1)
-      assert(myvars.shape[0] == (nlayers * 5) + 8)
+      assert(myvars.shape[0] == (nlayers * 6) + 8)
 
       x = myvars
       ndof = np.asscalar(myother)
@@ -816,7 +819,7 @@ class TrackProducer(object):
 
       if passed:
         trk_mode = 0
-        x_mode_vars = np.equal(x[nlayers*5+3:nlayers*5+8], 1)
+        x_mode_vars = np.equal(x[nlayers*6+3:nlayers*6+8], 1)
         for i, x_mode_var in enumerate(x_mode_vars):
           if i == 0:
             station = 1
@@ -826,14 +829,14 @@ class TrackProducer(object):
             trk_mode |= (1 << (4 - station))
 
         trk_emtf_phi = myroad.id[4]
-        trk_emtf_theta = int(x[(nlayers*5) + 2] * 83) + 3
+        trk_emtf_theta = int(x[(nlayers*6) + 2] * 83) + 3
 
         trk = Track(myroad.id, myroad.hits, trk_mode, trk_xml_pt, trk_pt, trk_q, trk_emtf_phi, trk_emtf_theta, ndof, y_discr)
         tracks.append(trk)
     return tracks
 
   def get_trigger_pt(self, x, y_meas):
-    zone = int(x[(nlayers*5) + 1] * 5)
+    zone = int(x[(nlayers*6) + 1] * 5)
 
     pt = np.abs(1.0/y_meas)
     pt_clipped = np.clip(pt, 3., 60.)
@@ -859,13 +862,20 @@ class TrackProducer(object):
          [  4.00000000e+00,   1.40744388e-01,   6.65116590e-03],
          [  5.00000000e+00,   1.40744388e-01,   6.65116590e-03]]
 
+    sf =[[  0.00000000e+00,   2.15202525e-01,   8.81482661e-03],
+         [  1.00000000e+00,   1.72450796e-01,   4.26442083e-03],
+         [  2.00000000e+00,   1.40032098e-01,   4.12079226e-03],
+         [  3.00000000e+00,   1.40032098e-01,   4.12079226e-03],
+         [  4.00000000e+00,   1.67389825e-01,   1.19965505e-02],
+         [  5.00000000e+00,   1.67389825e-01,   1.19965505e-02]]
+
     a, b = sf[zone][1], sf[zone][2]
     pt = pt * (1.0 + (a + b * pt_clipped))
     return pt
 
   def pass_trigger(self, x, ndof, y_meas, y_discr, discr_pt_cut=14.):
     trk_mode = 0
-    x_mode_vars = np.equal(x[nlayers*5+3:nlayers*5+8], 1)
+    x_mode_vars = np.equal(x[nlayers*6+3:nlayers*6+8], 1)
     for i, x_mode_var in enumerate(x_mode_vars):
       if i == 0:
         station = 1
@@ -874,7 +884,7 @@ class TrackProducer(object):
       if x_mode_var:
         trk_mode |= (1 << (4 - station))
 
-    straightness = int(x[(nlayers*5) + 0] * 6) + 6
+    straightness = int(x[(nlayers*6) + 0] * 6) + 6
 
     ipt1 = straightness
     ipt2 = find_pt_bin(y_meas)
@@ -961,8 +971,8 @@ use_condor = ("CONDOR_EXEC" in os.environ)
 # Analysis mode
 #analysis = "verbose"
 #analysis = "training"
-analysis = "application"
-#analysis = "rates"
+#analysis = "application"
+analysis = "rates"
 #analysis = "effie"
 #analysis = "mixing"
 if use_condor:
