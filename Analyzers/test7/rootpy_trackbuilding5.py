@@ -3,7 +3,6 @@ np.random.seed(2023)
 
 import os, sys
 from itertools import izip
-#import concurrent.futures
 from rootpy.plotting import Hist, Hist2D, Graph, Efficiency
 from rootpy.tree import Tree, TreeChain, TreeModel, FloatCol, IntCol, ShortCol
 from rootpy.io import root_open
@@ -739,27 +738,29 @@ class RoadSlimming(object):
       slim_roads.append(slim_road)
     return slim_roads
 
-
 # pT assignment module
 class PtAssignment(object):
   def __init__(self, kerasfile):
     (model_file, model_weights_file) = kerasfile
 
-    # Keras library
-    import os
-    os.environ['KERAS_BACKEND'] = 'tensorflow'
-    #
-    import tensorflow as tf
-    from keras import backend as K
+    # Get encoder
+    nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
+    nvariables = (nlayers * 6) + 8
+    from nn_encode import Encoder
+
+    # Get custom objects
+    from nn_model import masked_huber_loss, masked_binary_crossentropy, NewLeakyReLU, NewTanh
+    from keras.utils.generic_utils import get_custom_objects
+    get_custom_objects().update({'masked_huber_loss': masked_huber_loss, 'masked_binary_crossentropy': masked_binary_crossentropy, 'NewLeakyReLU': NewLeakyReLU, 'NewTanh': NewTanh})
+
+    # Load Keras model
     from keras.models import load_model, model_from_json
     import json
-    #
-    from encoder import Encoder
 
     def encode(x):
       nentries = x.shape[0]
       dummy = np.zeros((nentries, 3), dtype=np.float32)
-      encoder = Encoder(x, dummy, adjust_scale=3)
+      encoder = Encoder(x, dummy, nlayers=nlayers, adjust_scale=3)
       return encoder
     self.get_encoder = encode
 
@@ -972,8 +973,8 @@ use_condor = ("CONDOR_EXEC" in os.environ)
 #analysis = "verbose"
 #analysis = "training"
 #analysis = "application"
-analysis = "rates"
-#analysis = "effie"
+#analysis = "rates"
+analysis = "effie"
 #analysis = "mixing"
 if use_condor:
   analysis = sys.argv[1]
@@ -1590,7 +1591,7 @@ elif analysis == "effie":
     variables_mod, predictions, other_vars = ptassign.run(variables)
     emtf2023_tracks = trkprod.run(slim_roads, variables_mod, predictions, other_vars)
 
-    if ievt < (n_skip + 20) and False:
+    if ievt < 20 and False:
       print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2023_tracks)))
       for itrk, mytrk in enumerate(emtf2023_tracks):
         y = np.true_divide(part.q, part.pt)
