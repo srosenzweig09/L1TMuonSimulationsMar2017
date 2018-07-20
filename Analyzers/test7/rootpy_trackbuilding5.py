@@ -744,8 +744,6 @@ class PtAssignment(object):
     (model_file, model_weights_file) = kerasfile
 
     # Get encoder
-    nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
-    nvariables = (nlayers * 6) + 8
     from nn_encode import Encoder
 
     # Get custom objects
@@ -760,7 +758,7 @@ class PtAssignment(object):
     def encode(x):
       nentries = x.shape[0]
       dummy = np.zeros((nentries, 3), dtype=np.float32)
-      encoder = Encoder(x, dummy, nlayers=nlayers, adjust_scale=3)
+      encoder = Encoder(x, dummy, adjust_scale=3)
       return encoder
     self.get_encoder = encode
 
@@ -1020,8 +1018,8 @@ def load_pgun_batch(j):
   jj = np.split(np.arange(2000), 200)[j]
   infiles = []
   for j in jj:
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/ParticleGuns/CRAB3/180718_010051/%04i/ntuple_SingleMuon_Toy_%i.root' % ((j+1)/1000, (j+1)))
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy2_2GeV/ParticleGuns/CRAB3/180718_010234/%04i/ntuple_SingleMuon_Toy2_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/ParticleGuns/CRAB3/180719_123205/%04i/ntuple_SingleMuon_Toy_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy2_2GeV/ParticleGuns/CRAB3/180719_123320/%04i/ntuple_SingleMuon_Toy2_%i.root' % ((j+1)/1000, (j+1)))
 
   tree = TreeChain('ntupler/tree', infiles)
   print('[INFO] Opening file: %s' % ' '.join(infiles))
@@ -1034,7 +1032,7 @@ def load_pgun_batch(j):
 
 def load_minbias_batch(j):
   global infile_r
-  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180718_005900/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
+  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180719_210355/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
   infile = pufiles[j]
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
