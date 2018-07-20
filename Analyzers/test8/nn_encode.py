@@ -1,11 +1,19 @@
 import numpy as np
 
+nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
+
+nvariables = (nlayers * 6) + 8
+
+nvariables_input = (nlayers * 7) + 3
+
+nparameters_input = 3
+
 class Encoder(object):
 
-  def __init__(self, x, y, nlayers, adjust_scale=0):
+  def __init__(self, x, y, adjust_scale=0, reg_pt_scale=1.0):
     if x is not None and y is not None:
-      assert(x.shape[1] == (nlayers * 7) + 3)
-      assert(y.shape[1] == 3)
+      assert(x.shape[1] == nvariables_input)
+      assert(y.shape[1] == nparameters_input)
       assert(x.shape[0] == y.shape[0])
 
       self.nentries = x.shape[0]
@@ -70,29 +78,30 @@ class Encoder(object):
         self.x_ring[~x_ring_tmp] = 1 # ring 2,3 -> 1
         x_fr_tmp      = self.x_fr.astype(np.int32)
         x_fr_tmp      = (x_fr_tmp == 0)
-        self.x_fr[x_fr_tmp] = 0
-        self.x_fr[~x_fr_tmp] = 1
+        self.x_fr[x_fr_tmp] = 0  # rear chamber
+        self.x_fr[~x_fr_tmp] = 1  # front chamber
       elif adjust_scale == 3:  # adjust by hand #2
         #theta_cuts    = np.array((6., 6., 6., 6., 6., 12., 12., 12., 12., 9., 9., 9.), dtype=np.float32)
         theta_cuts    = np.array((6., 6., 6., 6., 6., 10., 10., 10., 10., 8., 8., 8.), dtype=np.float32)
         x_theta_tmp   = np.abs(self.x_theta) > theta_cuts
         self.x_bend[:, 5:9] = 0  # do not use RPC bend
+        self.x_time[:, :] = 0  # do not use time
         x_ring_tmp    = self.x_ring.astype(np.int32)
         x_ring_tmp    = (x_ring_tmp == 1) | (x_ring_tmp == 4)
         self.x_ring[x_ring_tmp] = 0  # ring 1,4 -> 0
         self.x_ring[~x_ring_tmp] = 1 # ring 2,3 -> 1
         x_fr_tmp      = self.x_fr.astype(np.int32)
         x_fr_tmp      = (x_fr_tmp == 0)
-        self.x_fr[x_fr_tmp] = 0
-        self.x_fr[~x_fr_tmp] = 1
-        s = [ 0.005907,  0.012209, -0.015324, -0.011308, -0.008402,  0.013371,
-             -0.0267  , -0.00999 , -0.007698,  0.004138, -0.018402,  0.005181,
-              0.603693,  0.580338,  1.456922,  1.50118 ,  1.06335 ,  0.21944 ,
-              0.291049,  0.346278,  0.386362,  0.510937,  0.600389,  0.719824,
-              0.826546,  0.498369,  1.65504 , -1.189355, -1.215245,  1.278912,
-              1.276016, -1.002222, -1.025343,  0.720984,  1.459154,  1.      ,
-              1.      ,  1.      ,  1.      ,  1.      ,  1.      ,  0.590936,
-              0.605932,  0.722654,  0.71606 ,  1.      ,  1.      ,  0.881102,
+        self.x_fr[x_fr_tmp] = 0  # rear chamber
+        self.x_fr[~x_fr_tmp] = 1  # front chamber
+        s = [ 0.005909,  0.012267, -0.015301, -0.011267, -0.008402,  0.013432,
+             -0.0269  , -0.009947, -0.007701,  0.004138, -0.018376,  0.005177,
+              0.602024,  0.583569,  1.468463,  1.495808,  1.065654,  0.21992 ,
+              0.290317,  0.346079,  0.386772,  0.510747,  0.603561,  0.717645,
+              0.823954,  0.481051,  1.646311, -1.189624, -1.216857,  0.424129,
+              0.421771, -0.415821, -0.403669,  0.72155 ,  1.461753, -0.111264,
+              1.      ,  1.      ,  1.      ,  1.      ,  1.      ,  0.060318,
+              0.061456,  0.073901,  0.073099,  1.      ,  1.      ,  0.084686,
               1.      ,  1.      ,  1.      ,  1.      ,  1.      ,  1.      ,
               1.      ,  1.      ,  1.      ,  1.      ,  1.      ,  1.      ,
               1.      ,  1.      ,  1.      ,  1.      ,  1.      ,  1.      ,
@@ -128,6 +137,10 @@ class Encoder(object):
       #np.nan_to_num(self.x_copy, copy=False)
       self.x_copy[np.isnan(self.x_copy)] = 0.0
 
+      # Scale q/pT for training
+      self.y_pt *= reg_pt_scale
+      return
+
   # Copied from scikit-learn
   def _handle_zero_in_scale(self, scale):
     scale[scale == 0.0] = 1.0
@@ -157,4 +170,3 @@ class Encoder(object):
     loaded = np.load(filepath)
     self.x_mean = loaded['x_mean']
     self.x_std = loaded['x_std']
-
