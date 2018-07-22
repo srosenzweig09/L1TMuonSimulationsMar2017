@@ -394,7 +394,7 @@ class Road(object):
       hits_phi[lay] = hit.emtf_phi
       hits_theta[lay] = hit.emtf_theta
       hits_bend[lay] = hit.emtf_bend
-      hits_time[lay] = hit.time
+      hits_time[lay] = hit.bx  #FIXME: use hit.time?
       hits_ring[lay] = hit.get_ring()
       hits_fr[lay] = hit.get_fr()
       hits_mask[lay] = 0.0
@@ -738,16 +738,21 @@ class RoadSlimming(object):
       slim_roads.append(slim_road)
     return slim_roads
 
+
 # pT assignment module
 class PtAssignment(object):
   def __init__(self, kerasfile):
     (model_file, model_weights_file) = kerasfile
 
+    adjust_scale = 3
+
+    reg_pt_scale = 100.
+
     # Get encoder
     from nn_encode import Encoder
 
     # Get custom objects
-    from nn_model import masked_huber_loss, masked_binary_crossentropy, NewLeakyReLU, NewTanh
+    from nn_models import masked_huber_loss, masked_binary_crossentropy, NewLeakyReLU, NewTanh
     from keras.utils.generic_utils import get_custom_objects
     get_custom_objects().update({'masked_huber_loss': masked_huber_loss, 'masked_binary_crossentropy': masked_binary_crossentropy, 'NewLeakyReLU': NewLeakyReLU, 'NewTanh': NewTanh})
 
@@ -755,18 +760,26 @@ class PtAssignment(object):
     from keras.models import load_model, model_from_json
     import json
 
-    def encode(x):
+    def create_encoder(x):
       nentries = x.shape[0]
       dummy = np.zeros((nentries, 3), dtype=np.float32)
-      encoder = Encoder(x, dummy, adjust_scale=3)
+      encoder = Encoder(x, dummy, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale)
       return encoder
-    self.get_encoder = encode
+    self.create_encoder = create_encoder
 
     with open(model_file) as f:
       json_string = json.dumps(json.load(f))
       self.loaded_model = model_from_json(json_string)
     #self.loaded_model = load_model(model_file)
     self.loaded_model.load_weights(model_weights_file)
+
+    def predict(x):
+      y = self.loaded_model.predict(x)
+      assert len(y) == 2
+      y[0] /= reg_pt_scale
+      y = np.moveaxis(np.asarray(y),0,-1)  # shape (2, n, 1) -> shape (n, 1, 2)
+      return y
+    self.predict = predict
 
   def run(self, x):
     x_new = np.array([], dtype=np.float32)
@@ -775,17 +788,14 @@ class PtAssignment(object):
     if len(x) == 0:
       return (x_new, y, z)
 
-    encoder = self.get_encoder(x)
+    encoder = self.create_encoder(x)
     x_new = encoder.get_x()
+
+    y = self.predict(x_new)
+
     ndof = (encoder.x_mask == False).sum(axis=1)  # num of hits
     ndof = ndof[:, np.newaxis]
-
-    reg_pt_scale = 100.
-    y = self.loaded_model.predict(x_new)
-    y[0] /= reg_pt_scale
-    assert len(y) == 2
-    y_new = np.rollaxis(np.asarray(y),0,3)
-    return (x_new, y_new, ndof)
+    return (x_new, y, ndof)
 
 
 # Track producer module
