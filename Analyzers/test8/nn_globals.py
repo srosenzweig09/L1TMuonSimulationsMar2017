@@ -41,6 +41,7 @@ from keras import backend as K
 #K.set_epsilon(1e-08)
 K.set_session(tf.Session(config=tf.ConfigProto(intra_op_parallelism_threads=4, inter_op_parallelism_threads=4, allow_soft_placement=True)))
 logger.info('Using keras {0}'.format(keras.__version__))
+logger.info('.. list devices: {0}'.format(K.get_session().list_devices()))
 
 import sklearn
 logger.info('Using sklearn {0}'.format(sklearn.__version__))
