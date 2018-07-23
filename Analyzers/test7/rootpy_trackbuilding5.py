@@ -975,15 +975,15 @@ for m in ("emtf", "emtf2023"):
 maxEvents = 1000
 
 # Condor or not
-use_condor = ("CONDOR_EXEC" in os.environ)
+use_condor = ('CONDOR_EXEC' in os.environ)
 
 # Analysis mode
-#analysis = "verbose"
-#analysis = "training"
-#analysis = "application"
-#analysis = "rates"
-analysis = "effie"
-#analysis = "mixing"
+#analysis = 'verbose'
+#analysis = 'training'
+#analysis = 'application'
+#analysis = 'rates'
+analysis = 'effie'
+#analysis = 'mixing'
 if use_condor:
   analysis = sys.argv[1]
 
@@ -1061,7 +1061,7 @@ def unload_tree():
 
 # ______________________________________________________________________________
 # Analysis: verbose
-if analysis == "verbose":
+if analysis == 'verbose':
   tree = load_pgun()
 
   # Loop over events
@@ -1089,7 +1089,7 @@ if analysis == "verbose":
 
 # ______________________________________________________________________________
 # Analysis: training
-elif analysis == "training":
+elif analysis == 'training':
   tree = load_pgun()
 
   # 3-dimensional arrays of lists
@@ -1286,7 +1286,7 @@ elif analysis == "training":
 
 # ______________________________________________________________________________
 # Analysis: application
-elif analysis == "application":
+elif analysis == 'application':
   #tree = load_pgun()
   tree = load_pgun_batch(jobid)
 
@@ -1412,7 +1412,7 @@ elif analysis == "application":
 # ______________________________________________________________________________
 # Analysis: rates
 
-elif analysis == "rates":
+elif analysis == 'rates':
   tree = load_minbias_batch(jobid)
 
   # Workers
@@ -1568,7 +1568,7 @@ elif analysis == "rates":
 # ______________________________________________________________________________
 # Analysis: effie
 
-elif analysis == "effie":
+elif analysis == 'effie':
   #tree = load_pgun()
   tree = load_pgun_batch(jobid)
 
@@ -1685,7 +1685,7 @@ elif analysis == "effie":
 
 # ______________________________________________________________________________
 # Analysis: mixing
-elif analysis == "mixing":
+elif analysis == 'mixing':
   tree = load_minbias_batch(jobid)
 
   # Workers
