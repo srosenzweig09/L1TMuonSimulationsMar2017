@@ -13,7 +13,7 @@ axes.labelsize : large
 axes.grid : True
 
 ### LINES
-lines.linewidth : 3
+lines.linewidth : 2
 lines.markersize : 10
 
 ### TICKS
