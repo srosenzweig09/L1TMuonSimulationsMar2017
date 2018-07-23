@@ -16,6 +16,9 @@ pip install scikit-optimize
 #   https://github.com/scikit-optimize/scikit-optimize/blob/master/examples/sklearn-gridsearchcv-replacement.ipynb
 """
 
+import sklearn
+import skopt
+
 
 # ______________________________________________________________________________
 from nn_globals import *
@@ -30,12 +33,7 @@ from nn_models import create_model, create_model_sequential, \
 from nn_training import train_model, train_model_sequential
 
 
-# ______________________________________________________________________________
-import skopt
-logger.info('Using skopt {0}'.format(skopt.__version__))
-
 use_hpe = ('SLURM_JOB_ID' in os.environ)
-
 if use_hpe:
   infile_muon = '/scratch/CMS/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/histos_tba.14.npz'
   infile_pileup = '/scratch/CMS/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/histos_tbd.14.npz'
@@ -52,38 +50,31 @@ x_train, x_test, y_train, y_test, w_train, w_test, x_mask_train, x_mask_test = \
 from nn_models import NewKerasRegressor
 estimator = NewKerasRegressor(build_fn=create_model_sequential, reg_pt_scale=reg_pt_scale, min_pt=20., max_pt=22., coverage=90.,
                               nvariables=nvariables, lr=learning_rate,
-                              epochs=20, batch_size=256, verbose=0)
+                              epochs=5, batch_size=256, verbose=0)
 callbacks_list = [lr_decay,modelbestcheck]
 
 # ______________________________________________________________________________
-# Create Objective
+# Create BayesSearchCV
 
 from sklearn.model_selection import cross_val_score, KFold
-from skopt.space import Real, Integer, Categorical
-from skopt.utils import use_named_args
+from skopt.space import Space, Real, Integer, Categorical
+from skopt import BayesSearchCV
+search_spaces = {
+  #'lr': Real(1e-4, 1e-2, prior='log-uniform'),  # 'lr': Real(1e-4, 2e-3),
+  'batch_size': Categorical([128, 256, 512, 1024, 2048, 4096, 8192]),
+  #'nodes1': Integer(4, 256),
+  #'nodes2': Integer(4, 256),
+  #'nodes3': Integer(4, 256),
+}
 
-space = [
-  Real(1e-4, 1e-1, prior='log-uniform', name='lr'),
-  Categorical([128, 256, 512, 1024, 2048, 4096, 8192, 16384], name='batch_size'),
-  #Integer(4, 256, name='nodes1'),
-  #Integer(4, 256, name='nodes2'),
-  #Integer(4, 256, name='nodes3'),
-]
-
-@use_named_args(space)
-def objective(**params):
-  estimator.set_params(**params)
-
-  scores = cross_val_score(estimator, x_train, y_train, cv=KFold(3), n_jobs=1, scoring='neg_mean_squared_error', fit_params=dict(callbacks=callbacks_list))
-
-  print("score: {0} +/- {1} with {2}".format(np.mean(scores), np.std(scores), params))
-  return -np.mean(scores)
-
+#opt = BayesSearchCV(estimator=estimator, search_spaces=search_spaces, n_iter=5, scoring='neg_mean_squared_error', fit_params=dict(callbacks=callbacks_list))
+opt = BayesSearchCV(estimator=estimator, search_spaces=search_spaces, n_iter=5, scoring=None, fit_params=dict(callbacks=callbacks_list))
+#opt = BayesSearchCV(estimator=estimator, search_spaces=search_spaces, n_iter=5, n_points=1, cv=KFold(5), n_jobs=5, scoring=None, return_train_score=True)
 
 # ______________________________________________________________________________
 # Fit
 
-debug = False
+debug = True
 
 if debug:
   estimator.model = estimator.build_fn(**estimator.filter_sk_params(estimator.build_fn))
@@ -99,26 +90,26 @@ if debug:
   print
 
 else:
-  res_gp = skopt.gp_minimize(objective, space, n_calls=30, random_state=0,  n_random_starts=10, verbose=True)
+  opt.fit(x_train, y_train)
 
 
 # ______________________________________________________________________________
 # Results
 
-print("Best score: {0}".format(res_gp.fun))
-print("Best parameters: {0!s}".format(res_gp.x))
+print("Best: %f using %s" % (opt.best_score_, opt.best_params_))
+opt.best_estimator_.model.summary()
+means = opt.cv_results_['mean_test_score']
+stds = opt.cv_results_['std_test_score']
+params = opt.cv_results_['params']
+for mean, stdev, param in zip(means, stds, params):
+  print("%f (%f) with: %r" % (mean, stdev, param))
+print
 
-print("History:")
-n_calls = len(res_gp.x_iters)
-for i in xrange(n_calls):
-  #print res_gp.models[i]
-  print(".. {0} x_iter: {1!s} func_val: {2!s}".format(i, res_gp.x_iters[i], res_gp.func_vals[i]))
+print(opt)
+print(opt.cv_results_)
+print
 
-print("Space: {0!s}".format(res_gp.space))
-print("Specs: {0!s}".format(res_gp.specs))
-
-skopt.dump(res_gp, filename='res_gp.pkl', store_objective=False)
-res_gp = skopt.load('res_gp.pkl')
-print(res_gp)
+print("Test: %f using %s" % (opt.score(x_test, y_test), opt.best_params_))
+print
 
 logger.info('DONE')

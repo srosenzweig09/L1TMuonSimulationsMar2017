@@ -133,6 +133,28 @@ def create_model_sequential(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=1
   model.compile(loss=huber_loss, optimizer=adam, metrics=['acc'])
   return model
 
+def create_model_sequential_2layers(nvariables, lr=0.001, nodes1=64, nodes2=32):
+  model = Sequential()
+  model.add(Dense(nodes1, input_dim=nvariables, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizers.l2(0.0000)))
+  #model.add(Dropout(0.2))
+  model.add(Dense(nodes2, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizers.l2(0.0000)))
+  #model.add(Dropout(0.2))
+  model.add(Dense(1, activation='linear', kernel_initializer='glorot_uniform'))
+
+  adam = optimizers.Adam(lr=lr)
+  model.compile(loss=huber_loss, optimizer=adam, metrics=['acc'])
+  return model
+
+def create_model_sequential_1layer(nvariables, lr=0.001, nodes1=64):
+  model = Sequential()
+  model.add(Dense(nodes1, input_dim=nvariables, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizers.l2(0.0000)))
+  #model.add(Dropout(0.2))
+  model.add(Dense(1, activation='linear', kernel_initializer='glorot_uniform'))
+
+  adam = optimizers.Adam(lr=lr)
+  model.compile(loss=huber_loss, optimizer=adam, metrics=['acc'])
+  return model
+
 
 # ______________________________________________________________________________
 def save_my_model(model, name='model'):
@@ -192,10 +214,8 @@ class NewKerasRegressor(KerasRegressor):
         score: float
             Mean accuracy of predictions on `x` wrt. `y`.
     """
-    #kwargs = self.filter_sk_params(Sequential.evaluate, kwargs)
+    kwargs = self.filter_sk_params(Sequential.evaluate, kwargs)
     #loss = self.model.evaluate(x, y, **kwargs)
-    #if isinstance(loss, list):
-    #  return -loss[0]
 
     # Prepare y_test_true, y_test_meas
     y_test_true = y
@@ -205,7 +225,7 @@ class NewKerasRegressor(KerasRegressor):
     y_test_true = y_test_true.reshape(-1)
     y_test_true /= self.reg_pt_scale
 
-    y_test_meas = self.model.predict(x, batch_size=2048)
+    y_test_meas = self.model.predict(x, **kwargs)
     if isinstance(y_test_meas, list):
       y_test_meas = y_test_meas[0]
     y_test_meas = y_test_meas.reshape(-1)
@@ -214,7 +234,7 @@ class NewKerasRegressor(KerasRegressor):
     xx = np.abs(1.0/y_test_true)
     yy = np.abs(1.0/y_test_meas)
 
-    reweight = lambda x, y, thres: 7.778 * np.power(x,-2.5) if y >= thres else 0.  # -2.5 instead of -3.5 because the parent distribution is already 1/pT-weighted
+    reweight = lambda x, y, thresh: 7.778 * np.power(x,-2.5) if y >= thresh else 0.  # -2.5 instead of -3.5 because the parent distribution is already 1/pT-weighted
 
     xedges = [2., self.min_pt, self.max_pt, 42.]
     inds = np.digitize(xx, xedges[1:])
@@ -223,11 +243,13 @@ class NewKerasRegressor(KerasRegressor):
     yy_i = yy[inds==1]
     pct = np.percentile(yy_i, [100-self.coverage], overwrite_input=True)
 
-    thres = pct[0]
-    yw = np.fromiter((reweight(xi, yi, thres) for (xi, yi) in zip(xx, yy)), xx.dtype)
+    thresh = pct[0]
+    yw = np.fromiter((reweight(xi, yi, thresh) for (xi, yi) in zip(xx, yy)), xx.dtype)
 
     loss = np.sum(yw)
 
-    #print "min_pt {0} max_pt {1} coverage {2} thres {3} loss {4}".format(self.min_pt, self.max_pt, self.coverage, thres, loss)
+    #print "min_pt {0} max_pt {1} coverage {2} thresh {3} loss {4}".format(self.min_pt, self.max_pt, self.coverage, thresh, loss)
 
+    if isinstance(loss, list):
+      return -loss[0]
     return -loss

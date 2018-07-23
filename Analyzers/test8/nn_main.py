@@ -4,7 +4,8 @@ from nn_encode import nlayers, nvariables
 
 from nn_data import muon_data, pileup_data, muon_data_split, pileup_data_split
 
-from nn_models import create_model, create_model_sequential
+from nn_models import create_model, create_model_sequential, \
+                      lr_decay, modelbestcheck, modelbestcheck_weights
 
 from nn_training import train_model, train_model_sequential
 
@@ -15,9 +16,9 @@ x_train, x_test, y_train, y_test, w_train, w_test, x_mask_train, x_mask_test = \
 
 # Add discrimator output node
 if add_noise:
-  labels = np.where(np.abs(1.0/y_train) > discr_pt_cut, 1., 100.)  # mask_value is set to 100
+  labels = np.where(np.abs(1.0/y_train) >= discr_pt_cut/reg_pt_scale, 1., mask_value)
   y_train = [y_train, labels.astype(np.float32)]
-  labels = np.where(np.abs(1.0/y_test) > discr_pt_cut, 1., 100.)  # mask_value is set to 100
+  labels = np.where(np.abs(1.0/y_test) >= discr_pt_cut/reg_pt_scale, 1., mask_value)
   y_test = [y_test, labels.astype(np.float32)]
 
 # ______________________________________________________________________________
@@ -27,8 +28,8 @@ pu_x_train, pu_x_test, pu_aux_train, pu_aux_test, pu_w_train, pu_w_test, pu_x_ma
 
 # Add output nodes for pileup data
 if add_noise:
-  pu_y_train = [np.zeros((pu_x_train.shape[0],), dtype=np.float32) + 100., np.zeros((pu_x_train.shape[0],), dtype=np.float32)]  # mask_value is set to 100
-  pu_y_test = [np.zeros((pu_x_test.shape[0],), dtype=np.float32) + 100., np.zeros((pu_x_test.shape[0],), dtype=np.float32)]  # mask_value is set to 100
+  pu_y_train = [np.zeros((pu_x_train.shape[0],), dtype=np.float32) + mask_value, np.zeros((pu_x_train.shape[0],), dtype=np.float32)]
+  pu_y_test = [np.zeros((pu_x_test.shape[0],), dtype=np.float32) + mask_value, np.zeros((pu_x_test.shape[0],), dtype=np.float32)]
 
 # ______________________________________________________________________________
 # Create models

@@ -7,6 +7,7 @@ logger = getLogger()
 from nn_models import save_my_model
 
 
+# ______________________________________________________________________________
 # See https://stackoverflow.com/q/616645
 
 class TrainingLog(object):
@@ -26,8 +27,10 @@ class TrainingLog(object):
     self.file.flush()
 
 
-def train_model(model, x, y, x_adv, y_adv, model_name='model', batch_size=None, epochs=1, verbose=1, callbacks=None,
+# ______________________________________________________________________________
+def train_model(model, x, y, model_name='model', batch_size=None, epochs=1, verbose=1, callbacks=None,
                 validation_split=0., shuffle=True, class_weight=None, sample_weight=None):
+
   start_time = datetime.datetime.now()
   logger.info('Begin training ...')
 
@@ -46,6 +49,7 @@ def train_model(model, x, y, x_adv, y_adv, model_name='model', batch_size=None, 
   return history
 
 
+# ______________________________________________________________________________
 def train_model_sequential(model, x, y, model_name='model', batch_size=None, epochs=1, verbose=1, callbacks=None,
                            validation_split=0., shuffle=True, class_weight=None, sample_weight=None):
   start_time = datetime.datetime.now()
