@@ -752,13 +752,13 @@ class PtAssignment(object):
     from nn_encode import Encoder
 
     # Get custom objects
-    from nn_models import masked_huber_loss, masked_binary_crossentropy, NewLeakyReLU, NewTanh
-    from keras.utils.generic_utils import get_custom_objects
-    get_custom_objects().update({'masked_huber_loss': masked_huber_loss, 'masked_binary_crossentropy': masked_binary_crossentropy, 'NewLeakyReLU': NewLeakyReLU, 'NewTanh': NewTanh})
+    from nn_models import update_keras_custom_objects
+    update_keras_custom_objects()
 
     # Load Keras model
-    from keras.models import load_model, model_from_json
-    import json
+    from nn_models import load_my_model
+    self.loaded_model = load_my_model(model_file.replace(".json",""),
+                                      model_weights_file.replace(".h5",""))
 
     def create_encoder(x):
       nentries = x.shape[0]
@@ -766,12 +766,6 @@ class PtAssignment(object):
       encoder = Encoder(x, dummy, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale)
       return encoder
     self.create_encoder = create_encoder
-
-    with open(model_file) as f:
-      json_string = json.dumps(json.load(f))
-      self.loaded_model = model_from_json(json_string)
-    #self.loaded_model = load_model(model_file)
-    self.loaded_model.load_weights(model_weights_file)
 
     def predict(x):
       y = self.loaded_model.predict(x)
@@ -793,7 +787,7 @@ class PtAssignment(object):
 
     y = self.predict(x_new)
 
-    ndof = (encoder.x_mask == False).sum(axis=1)  # num of hits
+    ndof = (encoder.get_x_mask() == False).sum(axis=1)  # num of hits
     ndof = ndof[:, np.newaxis]
     return (x_new, y, ndof)
 
@@ -801,12 +795,33 @@ class PtAssignment(object):
 # Track producer module
 class TrackProducer(object):
   def __init__(self):
-    pass
+    self.s_min = 0.
+    self.s_max = 60.
+    self.s_nbins = 120
+    self.s_step = (self.s_max - self.s_min)/self.s_nbins
+    self.s_lut =[ 1.8122,  1.5505,  1.5987,  1.8406,  2.1982,  2.6263,  3.1101,  3.6364,
+                  4.1923,  4.7697,  5.3611,  5.9618,  6.5726,  7.1921,  7.8183,  8.4505,
+                  9.0873,  9.724 , 10.3678, 11.0315, 11.7178, 12.4243, 13.1443, 13.8801,
+                 14.6116, 15.3313, 16.0396, 16.7349, 17.424 , 18.1076, 18.8025, 19.5209,
+                 20.2587, 20.9896, 21.7237, 22.4794, 23.2378, 23.9332, 24.5762, 25.2311,
+                 25.9084, 26.5745, 27.2173, 27.8681, 28.5311, 29.1892, 29.8409, 30.5124,
+                 31.2162, 31.9348, 32.6499, 33.4271, 34.2586, 35.0995, 35.9558, 36.8444,
+                 37.8401, 38.9129, 40.0174, 41.0973, 42.0977, 43.0319, 43.9069, 44.7463,
+                 45.6313, 46.7382, 48.1309, 49.4432, 50.5079, 51.3958, 52.1904, 52.9669,
+                 53.739 , 54.5095, 55.2792, 56.0485, 56.8175, 57.5864, 58.3551, 59.1238,
+                 59.8924, 60.661 , 61.4295, 62.198 , 62.9665, 63.735 , 64.5034, 65.2719,
+                 66.0403, 66.8088, 67.5772, 68.3456, 69.114 , 69.8824, 70.6509, 71.4193,
+                 72.1877, 72.9561, 73.7245, 74.4929, 75.2613, 76.0297, 76.7981, 77.5665,
+                 78.3349, 79.1033, 79.8717, 80.6401, 81.4085, 82.1769, 82.9453, 83.7137,
+                 84.4821, 85.2505, 86.0189, 86.7873, 87.5557, 88.3241, 89.0925, 89.8609]
+    #self.s_lut = np.linspace(self.s_min, self.s_max, num=self.s_nbins+1)[:-1]
 
   def run(self, slim_roads, variables, predictions, other_vars):
     assert(len(slim_roads) == len(variables))
     assert(len(slim_roads) == len(predictions))
     assert(len(slim_roads) == len(other_vars))
+
+    discr_pt_cut = 14.
 
     tracks = []
 
@@ -820,13 +835,12 @@ class TrackProducer(object):
       y_meas = np.asscalar(mypreds[...,0])
       y_discr = np.asscalar(mypreds[...,1])
 
+      passed = self.pass_trigger(x, ndof, y_meas, y_discr, discr_pt_cut=discr_pt_cut)
       trk_xml_pt = np.abs(1.0/y_meas)
-      trk_q = np.sign(y_meas)
-
-      passed = self.pass_trigger(x, ndof, y_meas, y_discr)
       trk_pt = self.get_trigger_pt(x, y_meas)
 
       if passed:
+        trk_q = np.sign(y_meas)
         trk_mode = 0
         x_mode_vars = np.equal(x[nlayers*6+3:nlayers*6+8], 1)
         for i, x_mode_var in enumerate(x_mode_vars):
@@ -845,41 +859,28 @@ class TrackProducer(object):
     return tracks
 
   def get_trigger_pt(self, x, y_meas):
-    zone = int(x[(nlayers*6) + 1] * 5)
+    #zone = int(x[(nlayers*6) + 1] * 5)
 
-    pt = np.abs(1.0/y_meas)
-    pt_clipped = np.clip(pt, 3., 60.)
-    #pt = pt * (1.0 + (0.081 + 0.009 * pt_clipped) * 1.28155)  # erf(1.28155/sqrt(2)) = 0.8 [90% upper limit from -1 to -1]
-    #pt = pt * (1.0 + (0.080 + 0.0051 * pt_clipped) * 1.28155)  # erf(1.28155/sqrt(2)) = 0.8 [90% upper limit from -1 to -1]
-    #pt = pt * (1.0 + (0.18643468 + 0.00983759 * pt_clipped))
-    #pt = pt * (1.0 + (0.19061872 + 0.00897454 * pt_clipped))
-    #pt = pt * (1.0 + (0.21251148 + 0.00658309 * 0.97 * pt_clipped))
-    #pt = pt * (1.0 + (0.21540622 + 0.00588042 * 0.97 * pt_clipped))
-    #pt = pt * (1.0 + (0.23736955 + 0.00444597 * pt_clipped))
+    xml_pt = np.abs(1.0/y_meas)
+    if xml_pt <= 2.:
+      return xml_pt
 
-    sf =[[  0.00000000e+00,   2.49868810e-01,   9.67491604e-03],
-         [  1.00000000e+00,   2.02819258e-01,   3.44642927e-03],
-         [  2.00000000e+00,   1.34788156e-01,   3.97331361e-03],
-         [  3.00000000e+00,   1.34788156e-01,   3.97331361e-03],
-         [  4.00000000e+00,   2.05471098e-01,   7.20871985e-03],
-         [  5.00000000e+00,   2.05471098e-01,   7.20871985e-03]]
+    def digitize(x, bins=(self.s_nbins, self.s_min, self.s_max)):
+      x = np.clip(x, bins[1], bins[2]-1e-8)
+      binx = (x - bins[1]) / (bins[2] - bins[1]) * bins[0]
+      return int(binx)
 
-    sf =[[  0.00000000e+00,   2.63994873e-01,   9.85030923e-03],
-         [  1.00000000e+00,   1.79664418e-01,   5.61202876e-03],
-         [  2.00000000e+00,   1.62771225e-01,   2.96276459e-03],
-         [  3.00000000e+00,   1.62771225e-01,   2.96276459e-03],
-         [  4.00000000e+00,   1.40744388e-01,   6.65116590e-03],
-         [  5.00000000e+00,   1.40744388e-01,   6.65116590e-03]]
+    def interpolate(x, x0, x1, y0, y1):
+      y = (x - x0) / (x1 - x0) * (y1 - y0) + y0
+      return y
 
-    sf =[[  0.00000000e+00,   2.15202525e-01,   8.81482661e-03],
-         [  1.00000000e+00,   1.72450796e-01,   4.26442083e-03],
-         [  2.00000000e+00,   1.40032098e-01,   4.12079226e-03],
-         [  3.00000000e+00,   1.40032098e-01,   4.12079226e-03],
-         [  4.00000000e+00,   1.67389825e-01,   1.19965505e-02],
-         [  5.00000000e+00,   1.67389825e-01,   1.19965505e-02]]
+    binx = digitize(xml_pt)
+    if (binx+1) >= self.s_nbins:  # check boundary
+      binx = self.s_nbins-2
 
-    a, b = sf[zone][1], sf[zone][2]
-    pt = pt * (1.0 + (a + b * pt_clipped))
+    x0, x1 = binx * self.s_step, (binx+1) * self.s_step
+    y0, y1 = self.s_lut[binx], self.s_lut[binx+1]
+    pt = interpolate(xml_pt, x0, x1, y0, y1)
     return pt
 
   def pass_trigger(self, x, ndof, y_meas, y_discr, discr_pt_cut=14.):
@@ -904,10 +905,10 @@ class TrackProducer(object):
       if np.abs(1.0/y_meas) > discr_pt_cut:
         if ndof <= 3:
           #trigger = (y_discr > 0.8)
-          trigger = (y_discr > 0.996)
+          trigger = (y_discr > 0.9974)
         else:
           #trigger = (y_discr > 0.5393)
-          trigger = (y_discr > 0.992)
+          trigger = (y_discr > 0.9942)
       else:
         trigger = (y_discr >= 0.)  # True
     else:
@@ -920,7 +921,8 @@ class TrackProducer(object):
 histograms = {}
 
 # Efficiency
-eff_pt_bins = (0., 0.5, 1., 2., 3., 4., 5., 6., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 35., 40., 45., 50., 60., 80., 120.)
+#eff_pt_bins = (0., 0.5, 1., 2., 3., 4., 5., 6., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 35., 40., 45., 50., 60., 80., 120.)
+eff_pt_bins = (0., 0.5, 1., 2., 3., 4., 5., 6., 8., 10., 12., 14., 16., 18., 20., 22., 24., 27., 30., 34., 40., 48., 60., 80., 120.)
 for k in ("denom", "numer"):
   hname = "eff_vs_genpt_%s" % k
   histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
@@ -1354,7 +1356,7 @@ elif analysis == 'application':
           print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bx: {5} tp: {6}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.bx, myhit.sim_tp))
 
     # Quick efficiency
-    if (1.24 < abs(part.eta) < 2.4) and part.pt > 5.:
+    if (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0) and part.pt > 5.:
       trigger = len(clean_roads) > 0
       ntotal += 1
       if trigger:
@@ -1611,9 +1613,10 @@ elif analysis == 'effie':
       trigger = any([select(trk) for trk in tracks])  # using scaled pT
       denom = histograms[hname + "_denom"]
       numer = histograms[hname + "_numer"]
-      denom.fill(part.pt)
-      if trigger:
-        numer.fill(part.pt)
+      if (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0):
+        denom.fill(part.pt)
+        if trigger:
+          numer.fill(part.pt)
 
     def fill_efficiency_eta():
       trigger = any([select(trk) for trk in tracks])  # using scaled pT
@@ -1624,7 +1627,7 @@ elif analysis == 'effie':
         numer.fill(abs(part.eta))
 
     def fill_resolution():
-      if len(tracks) > 0:
+      if (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0) and len(tracks) > 0:
         trk = tracks[0]
         trk.invpt = np.true_divide(trk.q, trk.xml_pt)  # using unscaled pT
         histograms[hname1].fill(part.invpt, trk.invpt)
