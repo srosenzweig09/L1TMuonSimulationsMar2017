@@ -52,7 +52,7 @@ x_train, x_test, y_train, y_test, w_train, w_test, x_mask_train, x_mask_test = \
 from nn_models import NewKerasRegressor
 estimator = NewKerasRegressor(build_fn=create_model_sequential, reg_pt_scale=reg_pt_scale, min_pt=20., max_pt=22., coverage=90.,
                               nvariables=nvariables, lr=learning_rate,
-                              epochs=20, batch_size=256, verbose=0)
+                              epochs=25, batch_size=256, verbose=0)
 callbacks_list = [lr_decay,modelbestcheck]
 
 # ______________________________________________________________________________
@@ -99,7 +99,7 @@ if debug:
   print
 
 else:
-  res_gp = skopt.gp_minimize(objective, space, n_calls=30, random_state=0,  n_random_starts=10, verbose=True)
+  res_gp = skopt.gp_minimize(objective, space, n_calls=45, random_state=0,  n_random_starts=10, verbose=True)
 
 
 # ______________________________________________________________________________

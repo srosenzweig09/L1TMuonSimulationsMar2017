@@ -11,8 +11,9 @@ from nn_training import train_model, train_model_sequential
 
 # ______________________________________________________________________________
 # Import muon data
+# 'x' is the input variables with shape (n, 87), 'y' is the q/pT with shape (n, 1)
 x_train, x_test, y_train, y_test, w_train, w_test, x_mask_train, x_mask_test = \
-    muon_data_split(infile_muon, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale, test_size=0.275)
+    muon_data_split(infile_muon, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale, test_size=0.3)
 
 # Add discrimator output node
 if add_noise:
@@ -23,8 +24,9 @@ if add_noise:
 
 # ______________________________________________________________________________
 # Import pileup data
+# 'x' is the input variables with shape (n, 87), 'aux' is pileup info with shape (n, 4)
 pu_x_train, pu_x_test, pu_aux_train, pu_aux_test, pu_w_train, pu_w_test, pu_x_mask_train, pu_x_mask_test = \
-    pileup_data_split(infile_pileup, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale, discr_pt_cut=discr_pt_cut, test_job=30)
+    pileup_data_split(infile_pileup, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale, test_job=30)
 
 # Add output nodes for pileup data
 if add_noise:
@@ -33,8 +35,10 @@ if add_noise:
 
 # ______________________________________________________________________________
 # Create models
-
-model = create_model(nvariables=nvariables, lr=learning_rate, discr_loss_weight=discr_loss_weight)
+# model_seq is a densely connected NN with 3 hidden layers and 1 output node
+# model is a densely connected NN with 3 hidden layers and 2 output nodes, q/pT and PU discriminator
 
 model_seq = create_model_sequential(nvariables=nvariables, lr=learning_rate)
+
+model = create_model(nvariables=nvariables, lr=learning_rate, discr_loss_weight=discr_loss_weight)
 

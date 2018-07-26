@@ -86,6 +86,13 @@ terminate_on_nan = TerminateOnNaN()
 modelbestcheck = ModelCheckpoint(filepath='model_bchk.h5', monitor='val_loss', verbose=1, save_best_only=True)
 modelbestcheck_weights = ModelCheckpoint(filepath='model_bchk_weights.h5', monitor='val_loss', verbose=1, save_best_only=True, save_weights_only=True)
 
+# ______________________________________________________________________________
+# Custom objects
+
+from keras.utils.generic_utils import get_custom_objects
+
+def update_keras_custom_objects():
+  get_custom_objects().update({'masked_huber_loss': masked_huber_loss, 'masked_binary_crossentropy': masked_binary_crossentropy, 'NewLeakyReLU': NewLeakyReLU, 'NewTanh': NewTanh})
 
 # ______________________________________________________________________________
 def create_model(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0):
@@ -168,12 +175,12 @@ def save_my_model(model, name='model'):
   logger.info('Saved model as {0}.h5, {0}.json and {0}_weights.h5'.format(name))
   return
 
-def load_my_model(name='model'):
+def load_my_model(name='model', weights_name='model_weights'):
   with open(name + '.json', 'r') as f:
     json_string = json.dumps(json.load(f))
     model = model_from_json(json_string)
   #model = load_model(name + '.h5')
-  model.load_weights(name + '_weights.h5')
+  model.load_weights(weights_name + '.h5')
   logger.info('Loaded model from {0} and weights from {1}'.format(name + '.json', name + '_weights.h5'))
   return model
 

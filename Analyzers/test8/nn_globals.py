@@ -18,9 +18,9 @@ discr_loss_weight = 10.
 
 add_noise = True
 
-infile_muon = '../test7/histos_tba.14.npz'
+infile_muon = '../test7/histos_tba.15.npz'
 
-infile_pileup = '../test7/histos_tbd.14.npz'
+infile_pileup = '../test7/histos_tbd.15.npz'
 
 
 # ______________________________________________________________________________
@@ -46,10 +46,13 @@ from keras import backend as K
 logger.info('Using keras {0}'.format(keras.__version__))
 logger.info('.. list devices: {0}'.format(K.get_session().list_devices()))
 
+import scipy
+logger.info('Using scipy {0}'.format(scipy.__version__))
+
 import sklearn
 logger.info('Using sklearn {0}'.format(sklearn.__version__))
 
 import matplotlib.pyplot as plt
-from matplotlib import colors
+#from matplotlib import colors
 #%matplotlib inline
 
