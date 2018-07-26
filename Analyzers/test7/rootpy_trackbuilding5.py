@@ -368,10 +368,11 @@ class Hit(object):
     return self.id[3]
 
 class Road(object):
-  def __init__(self, _id, hits, mode, quality, sort_code):
+  def __init__(self, _id, hits, mode, mode_csc, quality, sort_code):
     self.id = _id  # (endcap, sector, ipt, ieta, iphi)
     self.hits = hits
     self.mode = mode
+    self.mode_csc = mode_csc
     self.quality = quality
     self.sort_code = sort_code
 
@@ -479,14 +480,17 @@ class PatternRecognition(object):
     for road_id, road_hits in amap.iteritems():
       # Try BX window (-1,0)
       road_mode = 0
+      road_mode_csconly = 0
       tmp_road_hits = []
       for hit in road_hits:
         if hit.bx in (-1,0):
           (_type, station, ring, fr) = hit.id
           road_mode |= (1 << (4 - station))
+          if _type == kCSC:
+            road_mode_csconly |= (1 << (4 - station))
           tmp_road_hits.append(hit)
 
-      if not emtf_is_singlemu(road_mode):
+      if not (emtf_is_singlemu(road_mode) and emtf_is_muopen(road_mode_csconly)):
         # Try BX window (0,+1)
         road_mode = 0
         tmp_road_hits = []
@@ -494,13 +498,15 @@ class PatternRecognition(object):
           if hit.bx in (0,+1):
             (_type, station, ring, fr) = hit.id
             road_mode |= (1 << (4 - station))
+            if _type == kCSC:
+              road_mode_csconly |= (1 << (4 - station))
             tmp_road_hits.append(hit)
 
-      if emtf_is_singlemu(road_mode):
+      if (emtf_is_singlemu(road_mode) and emtf_is_muopen(road_mode_csconly)):
         (endcap, sector, ipt, ieta, iphi) = road_id
         road_quality = emtf_road_quality(ipt)
         road_sort_code = emtf_road_sort_code(road_mode, road_quality, tmp_road_hits)
-        myroad = Road(road_id, tmp_road_hits, road_mode, road_quality, road_sort_code)
+        myroad = Road(road_id, tmp_road_hits, road_mode, road_mode_csconly, road_quality, road_sort_code)
         roads.append(myroad)
     return roads
 
@@ -607,7 +613,7 @@ class RoadCleaning(object):
       bx_counter2 = 0  # count hits with BX <= 0
       bx_counter3 = 0  # count hits with BX > 0
       layer_has_been_used = set()
-      for hit in road.hits:  #FIXME
+      for hit in road.hits:
         if hit.emtf_layer not in layer_has_been_used:
           layer_has_been_used.add(hit.emtf_layer)
           if hit.bx <= -1:
@@ -620,7 +626,20 @@ class RoadCleaning(object):
       trk_bx_zero = (bx_counter1 < 2 and bx_counter2 >= 2 and bx_counter3 < 2)
       return trk_bx_zero
 
+    def select_two_csc(road):
+      layer_has_been_used = set()
+      for hit in road.hits:
+        if hit.emtf_layer not in layer_has_been_used:
+          layer_has_been_used.add(hit.emtf_layer)
+      count = 0
+      for lay in layer_has_been_used:
+        if lay in [0,1,2,3,4]:
+          count += 1
+      trk_two_csc = (count >= 2)
+      return trk_two_csc
+
     clean_roads = filter(select_bx_zero, clean_roads)
+    #clean_roads = filter(select_two_csc, clean_roads)
 
     if clean_roads:
       clean_roads.sort(key=lambda road: road.sort_code, reverse=True)
@@ -734,7 +753,7 @@ class RoadSlimming(object):
           assert(len(hits_array[hit_lay]) == 1)
           slim_road_hits.append(hits_array[hit_lay][0])
 
-      slim_road = Road(road.id, slim_road_hits, road.mode, road.quality, road.sort_code)
+      slim_road = Road(road.id, slim_road_hits, road.mode, road.mode_csc, road.quality, road.sort_code)
       slim_roads.append(slim_road)
     return slim_roads
 
@@ -799,21 +818,21 @@ class TrackProducer(object):
     self.s_max = 60.
     self.s_nbins = 120
     self.s_step = (self.s_max - self.s_min)/self.s_nbins
-    self.s_lut =[ 1.8122,  1.5505,  1.5987,  1.8406,  2.1982,  2.6263,  3.1101,  3.6364,
-                  4.1923,  4.7697,  5.3611,  5.9618,  6.5726,  7.1921,  7.8183,  8.4505,
-                  9.0873,  9.724 , 10.3678, 11.0315, 11.7178, 12.4243, 13.1443, 13.8801,
-                 14.6116, 15.3313, 16.0396, 16.7349, 17.424 , 18.1076, 18.8025, 19.5209,
-                 20.2587, 20.9896, 21.7237, 22.4794, 23.2378, 23.9332, 24.5762, 25.2311,
-                 25.9084, 26.5745, 27.2173, 27.8681, 28.5311, 29.1892, 29.8409, 30.5124,
-                 31.2162, 31.9348, 32.6499, 33.4271, 34.2586, 35.0995, 35.9558, 36.8444,
-                 37.8401, 38.9129, 40.0174, 41.0973, 42.0977, 43.0319, 43.9069, 44.7463,
-                 45.6313, 46.7382, 48.1309, 49.4432, 50.5079, 51.3958, 52.1904, 52.9669,
-                 53.739 , 54.5095, 55.2792, 56.0485, 56.8175, 57.5864, 58.3551, 59.1238,
-                 59.8924, 60.661 , 61.4295, 62.198 , 62.9665, 63.735 , 64.5034, 65.2719,
-                 66.0403, 66.8088, 67.5772, 68.3456, 69.114 , 69.8824, 70.6509, 71.4193,
-                 72.1877, 72.9561, 73.7245, 74.4929, 75.2613, 76.0297, 76.7981, 77.5665,
-                 78.3349, 79.1033, 79.8717, 80.6401, 81.4085, 82.1769, 82.9453, 83.7137,
-                 84.4821, 85.2505, 86.0189, 86.7873, 87.5557, 88.3241, 89.0925, 89.8609]
+    self.s_lut =[ 1.8083,  1.53  ,  1.5887,  1.8565,  2.2556,  2.7481,  3.3069,  3.9016,
+                  4.5181,  5.1509,  5.7982,  6.4616,  7.1376,  7.8206,  8.5078,  9.2082,
+                  9.9437, 10.7192, 11.524 , 12.3383, 13.1506, 13.9548, 14.7237, 15.4477,
+                 16.1472, 16.8589, 17.6153, 18.3951, 19.0949, 19.7085, 20.2814, 20.8368,
+                 21.402 , 22.0002, 22.6433, 23.3329, 24.0349, 24.7457, 25.5347, 26.4613,
+                 27.4382, 28.4077, 29.3628, 30.3453, 31.37  , 32.3737, 33.3329, 34.2386,
+                 35.0927, 35.921 , 36.7631, 37.6888, 38.6463, 39.5794, 40.5871, 41.7497,
+                 42.8502, 43.7862, 44.6583, 45.6146, 46.8072, 48.2101, 49.5126, 50.6291,
+                 51.5251, 52.3686, 53.2038, 54.0365, 54.8681, 55.6992, 56.53  , 57.3606,
+                 58.1911, 59.0215, 59.8519, 60.6822, 61.5125, 62.3427, 63.173 , 64.0032,
+                 64.8334, 65.6636, 66.4938, 67.324 , 68.1542, 68.9844, 69.8145, 70.6447,
+                 71.4749, 72.305 , 73.1352, 73.9654, 74.7955, 75.6257, 76.4559, 77.286 ,
+                 78.1162, 78.9463, 79.7765, 80.6067, 81.4368, 82.267 , 83.0971, 83.9273,
+                 84.7575, 85.5876, 86.4178, 87.2479, 88.0781, 88.9082, 89.7384, 90.5686,
+                 91.3987, 92.2289, 93.059 , 93.8892, 94.7193, 95.5495, 96.3797, 97.2098]
     #self.s_lut = np.linspace(self.s_min, self.s_max, num=self.s_nbins+1)[:-1]
 
   def run(self, slim_roads, variables, predictions, other_vars):
@@ -1001,9 +1020,9 @@ print('[INFO] Using analysis mode : %s' % analysis)
 print('[INFO] Using job id        : %s' % jobid)
 
 # Other stuff
-bankfile = 'histos_tb.14.npz'
+bankfile = 'histos_tb.15.npz'
 
-kerasfile = ['model.14.json', 'model_weights.14.h5']
+kerasfile = ['model.15.json', 'model_weights.15.h5']
 
 infile_r = None  # input file handle
 
@@ -1445,9 +1464,9 @@ elif analysis == 'rates':
 
     found_high_pt_tracks = any(map(lambda trk: trk.pt > 20., emtf2023_tracks))
 
-    if found_high_pt_tracks:
-      out_variables.append(variables)
-      out_predictions.append(predictions)
+    #if found_high_pt_tracks:
+    #  out_variables.append(variables)
+    #  out_predictions.append(predictions)
 
     if found_high_pt_tracks:
       print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2023_tracks)))
@@ -1744,16 +1763,17 @@ elif analysis == 'mixing':
     select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
     highest_track_pt = find_highest_track_pt()
 
-
     if len(slim_roads) > 0:
       part = (jobid, ievt, highest_part_pt, highest_track_pt)
       out_particles += [part for _ in xrange(len(slim_roads))]
       out_roads += slim_roads
 
-    if ievt < 20 and False:
-      print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
-      for iroad, myroad in enumerate(sorted(roads, key=lambda x: x.id)):
-        print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
+    debug_events = [1410, 2598, 4860, 7244]  #FIXME
+
+    if ievt < 20 or ievt in debug_events:
+      print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), '?'))
+      #for iroad, myroad in enumerate(sorted(roads, key=lambda x: x.id)):
+      #  print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
       for iroad, myroad in enumerate(clean_roads):
         print(".. croad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
         for ihit, myhit in enumerate(myroad.hits):
