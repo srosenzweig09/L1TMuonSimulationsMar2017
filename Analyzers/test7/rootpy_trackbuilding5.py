@@ -544,6 +544,8 @@ class PatternRecognition(object):
 
         # Cheat using gen particle info
         if part is not None:
+          part.ipt = find_pt_bin(part.invpt)
+          part.ieta = find_eta_bin(part.eta)
           if part.ipt != find_pt_bin(0.):  # don't use MC info at the highest pT because of muon showering
             sector_hits = [hit for hit in hits if hit.bx in (-1,0,+1) and hit.endsec == endsec and ((hit.sim_tp1 == 0 and hit.sim_tp2 == 0) or hit.type == kME0)]
           #ipt_range = [x for x in xrange(part.ipt-1, part.ipt+1+1) if 0 <= x < len(pt_bins)-1]
@@ -818,21 +820,21 @@ class TrackProducer(object):
     self.s_max = 60.
     self.s_nbins = 120
     self.s_step = (self.s_max - self.s_min)/self.s_nbins
-    self.s_lut =[ 1.8083,  1.53  ,  1.5887,  1.8565,  2.2556,  2.7481,  3.3069,  3.9016,
-                  4.5181,  5.1509,  5.7982,  6.4616,  7.1376,  7.8206,  8.5078,  9.2082,
-                  9.9437, 10.7192, 11.524 , 12.3383, 13.1506, 13.9548, 14.7237, 15.4477,
-                 16.1472, 16.8589, 17.6153, 18.3951, 19.0949, 19.7085, 20.2814, 20.8368,
-                 21.402 , 22.0002, 22.6433, 23.3329, 24.0349, 24.7457, 25.5347, 26.4613,
-                 27.4382, 28.4077, 29.3628, 30.3453, 31.37  , 32.3737, 33.3329, 34.2386,
-                 35.0927, 35.921 , 36.7631, 37.6888, 38.6463, 39.5794, 40.5871, 41.7497,
-                 42.8502, 43.7862, 44.6583, 45.6146, 46.8072, 48.2101, 49.5126, 50.6291,
-                 51.5251, 52.3686, 53.2038, 54.0365, 54.8681, 55.6992, 56.53  , 57.3606,
-                 58.1911, 59.0215, 59.8519, 60.6822, 61.5125, 62.3427, 63.173 , 64.0032,
-                 64.8334, 65.6636, 66.4938, 67.324 , 68.1542, 68.9844, 69.8145, 70.6447,
-                 71.4749, 72.305 , 73.1352, 73.9654, 74.7955, 75.6257, 76.4559, 77.286 ,
-                 78.1162, 78.9463, 79.7765, 80.6067, 81.4368, 82.267 , 83.0971, 83.9273,
-                 84.7575, 85.5876, 86.4178, 87.2479, 88.0781, 88.9082, 89.7384, 90.5686,
-                 91.3987, 92.2289, 93.059 , 93.8892, 94.7193, 95.5495, 96.3797, 97.2098]
+    self.s_lut =[ 1.7994,  1.5236,  1.5775,  1.8338,  2.2119,  2.6684,  3.1811,  3.7320,
+                  4.3086,  4.9037,  5.5131,  6.1390,  6.7811,  7.4354,  8.1003,  8.7811,
+                  9.4916, 10.2483, 11.0518, 11.8874, 12.7355, 13.5824, 14.3905, 15.1336,
+                 15.8081, 16.4455, 17.0833, 17.7328, 18.4089, 19.0887, 19.7613, 20.4472,
+                 21.1186, 21.7855, 22.4415, 23.0929, 23.7298, 24.3540, 25.0041, 25.7368,
+                 26.5742, 27.4483, 28.3675, 29.3337, 30.3500, 31.4014, 32.3467, 33.2153,
+                 34.0382, 34.8240, 35.5667, 36.2689, 36.9847, 37.8032, 38.6935, 39.6294,
+                 40.7280, 41.9730, 42.9979, 43.8741, 44.7806, 45.8657, 47.3479, 49.2395,
+                 50.6104, 51.5231, 52.3626, 53.1887, 54.0105, 54.8304, 55.6495, 56.4680,
+                 57.2863, 58.1043, 58.9222, 59.7400, 60.5577, 61.3754, 62.1931, 63.0107,
+                 63.8283, 64.6459, 65.4634, 66.2810, 67.0986, 67.9161, 68.7336, 69.5512,
+                 70.3687, 71.1862, 72.0037, 72.8212, 73.6388, 74.4563, 75.2738, 76.0913,
+                 76.9088, 77.7263, 78.5438, 79.3613, 80.1788, 80.9963, 81.8138, 82.6313,
+                 83.4488, 84.2663, 85.0838, 85.9013, 86.7188, 87.5363, 88.3538, 89.1713,
+                 89.9888, 90.8063, 91.6238, 92.4414, 93.2589, 94.0764, 94.8939, 95.7114]
     #self.s_lut = np.linspace(self.s_min, self.s_max, num=self.s_nbins+1)[:-1]
 
   def run(self, slim_roads, variables, predictions, other_vars):
@@ -924,10 +926,10 @@ class TrackProducer(object):
       if np.abs(1.0/y_meas) > discr_pt_cut:
         if ndof <= 3:
           #trigger = (y_discr > 0.8)
-          trigger = (y_discr > 0.9974)
+          trigger = (y_discr > 0.9944)  # 92.5% coverage
         else:
           #trigger = (y_discr > 0.5393)
-          trigger = (y_discr > 0.9942)
+          trigger = (y_discr > 0.9674)  # 98.5% coverage
       else:
         trigger = (y_discr >= 0.)  # True
     else:
@@ -1331,8 +1333,6 @@ elif analysis == 'application':
 
     part = evt.particles[0]  # particle gun
     part.invpt = np.true_divide(part.q, part.pt)
-    part.ipt = find_pt_bin(part.invpt)
-    part.ieta = find_eta_bin(part.eta)
 
     ## Cheat using gen particle info
     #roads = recog.run(evt.hits, part)
@@ -1351,6 +1351,8 @@ elif analysis == 'application':
     if ievt < 20 or len(clean_roads) == 0:
       print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
       print(".. part invpt: {0} pt: {1} eta: {2} phi: {3}".format(part.invpt, part.pt, part.eta, part.phi))
+      part.ipt = find_pt_bin(part.invpt)
+      part.ieta = find_eta_bin(part.eta)
       part.exphi = emtf_extrapolation(part)
       part.sector = find_sector(part.exphi)
       part.endcap = find_endcap(part.eta)
@@ -1641,12 +1643,14 @@ elif analysis == 'effie':
       trigger = any([select(trk) for trk in tracks])  # using scaled pT
       denom = histograms[hname + "_denom"]
       numer = histograms[hname + "_numer"]
-      denom.fill(abs(part.eta))
-      if trigger:
-        numer.fill(abs(part.eta))
+      if (part.bx == 0):
+        denom.fill(abs(part.eta))
+        if trigger:
+          numer.fill(abs(part.eta))
 
     def fill_resolution():
-      if (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0) and len(tracks) > 0:
+      trigger = any([select(trk) for trk in tracks])  # using scaled pT
+      if (part.bx == 0) and trigger:
         trk = tracks[0]
         trk.invpt = np.true_divide(trk.q, trk.xml_pt)  # using unscaled pT
         histograms[hname1].fill(part.invpt, trk.invpt)
@@ -1661,7 +1665,7 @@ elif analysis == 'effie':
       if part.pt > 20.:
         hname = "emtf_eff_vs_geneta_l1pt%i" % (l)
         fill_efficiency_eta()
-      if l == 20:
+      if l == 0:
         hname1 = "emtf_l1pt_vs_genpt"
         hname2 = "emtf_l1ptres_vs_genpt"
         fill_resolution()
@@ -1674,7 +1678,7 @@ elif analysis == 'effie':
       if part.pt > 20.:
         hname = "emtf2023_eff_vs_geneta_l1pt%i" % (l)
         fill_efficiency_eta()
-      if l == 20:
+      if l == 0:
         hname1 = "emtf2023_l1pt_vs_genpt"
         hname2 = "emtf2023_l1ptres_vs_genpt"
         fill_resolution()
