@@ -25,6 +25,7 @@ from nn_encode import nlayers, nvariables
 from nn_data import muon_data, pileup_data, muon_data_split, pileup_data_split
 
 from nn_models import create_model, create_model_sequential, \
+                      create_model_sequential_2layers, create_model_sequential_1layer, \
                       lr_decay, modelbestcheck, modelbestcheck_weights
 
 from nn_training import train_model, train_model_sequential
@@ -37,14 +38,14 @@ logger.info('Using skopt {0}'.format(skopt.__version__))
 use_hpe = ('SLURM_JOB_ID' in os.environ)
 
 if use_hpe:
-  infile_muon = '/scratch/CMS/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/histos_tba.14.npz'
-  infile_pileup = '/scratch/CMS/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/histos_tbd.14.npz'
+  infile_muon = '/scratch/CMS/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/histos_tba.15.npz'
+  infile_pileup = '/scratch/CMS/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/histos_tbd.15.npz'
 
 
 # ______________________________________________________________________________
 # Import muon data
 x_train, x_test, y_train, y_test, w_train, w_test, x_mask_train, x_mask_test = \
-    muon_data_split(infile_muon, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale, test_size=0.275)
+    muon_data_split(infile_muon, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale, test_size=0.3)
 
 # ______________________________________________________________________________
 # Create KerasRegressor
@@ -63,11 +64,11 @@ from skopt.space import Real, Integer, Categorical
 from skopt.utils import use_named_args
 
 space = [
-  Real(1e-4, 1e-1, prior='log-uniform', name='lr'),
-  Categorical([128, 256, 512, 1024, 2048, 4096, 8192, 16384], name='batch_size'),
-  #Integer(4, 256, name='nodes1'),
-  #Integer(4, 256, name='nodes2'),
-  #Integer(4, 256, name='nodes3'),
+  #Real(1e-4, 1e-1, prior='log-uniform', name='lr'),
+  Categorical([128, 256, 512, 1024, 2048, 4096, 8192], name='batch_size'),
+  Integer(4, 128, name='nodes1'),
+  Integer(4, 128, name='nodes2'),
+  Integer(4, 128, name='nodes3'),
 ]
 
 @use_named_args(space)
@@ -99,7 +100,7 @@ if debug:
   print
 
 else:
-  res_gp = skopt.gp_minimize(objective, space, n_calls=45, random_state=0,  n_random_starts=10, verbose=True)
+  res_gp = skopt.gp_minimize(objective, space, n_calls=50, random_state=0,  n_random_starts=12, verbose=True)
 
 
 # ______________________________________________________________________________
