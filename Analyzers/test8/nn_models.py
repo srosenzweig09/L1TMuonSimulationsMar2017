@@ -9,6 +9,7 @@ from keras import backend as K
 from keras.models import Sequential, Model, load_model, model_from_json
 from keras.layers import Dense, Activation, Dropout, Input, BatchNormalization
 from keras.callbacks import LearningRateScheduler, TerminateOnNaN, ModelCheckpoint
+from keras.regularizers import Regularizer
 from keras import initializers, regularizers, optimizers, losses
 
 import h5py
@@ -29,6 +30,32 @@ def NewTanh(x):
   return K.tanh(x)
   #return 1.7159 * K.tanh(x * 2./3.)
   #return K.clip(x, -1., 1.)
+
+# ______________________________________________________________________________
+class LParams(Regularizer):
+  """Regularizer that penalizes large number of parameters.
+     Copied from class L1L2 from https://github.com/keras-team/keras/blob/master/keras/regularizers.py
+
+  # Arguments
+      l1: Float; L1 regularization factor.
+      l2: Float; L2 regularization factor.
+  """
+
+  def __init__(self, l1=0., l2=0.):
+    self.l1 = K.cast_to_floatx(l1)
+    self.l2 = K.cast_to_floatx(l2)
+
+  def __call__(self, x):
+    regularization = 0.
+    if self.l1:
+      regularization += self.l1 * K.abs(K.count_params(x))
+    if self.l2:
+      regularization += self.l2 * K.square(K.count_params(x))
+    return regularization
+
+  def get_config(self):
+    return {'l1': float(self.l1),
+            'l2': float(self.l2)}
 
 # ______________________________________________________________________________
 # Huber loss
@@ -89,21 +116,23 @@ modelbestcheck_weights = ModelCheckpoint(filepath='model_bchk_weights.h5', monit
 # ______________________________________________________________________________
 # Custom objects
 
-from keras.utils.generic_utils import get_custom_objects
-
 def update_keras_custom_objects():
   get_custom_objects().update({'masked_huber_loss': masked_huber_loss, 'masked_binary_crossentropy': masked_binary_crossentropy, 'NewLeakyReLU': NewLeakyReLU, 'NewTanh': NewTanh})
 
 # ______________________________________________________________________________
-def create_model(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0):
+# Create models
+def create_model(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0, l1_reg=0.0, l2_reg=0.0):
+  regularizer = regularizers.l1_l2(l1=l1_reg, l2=l2_reg)
   inputs = Input(shape=(nvariables,), dtype='float32')
 
-  x = Dense(nodes1, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizers.l2(0.0000))(inputs)
+  x = Dense(nodes1, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizer)(inputs)
   #x = Dropout(0.2)(x)
-  x = Dense(nodes2, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizers.l2(0.0000))(x)
-  #x = Dropout(0.2)(x)
-  x = Dense(nodes3, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizers.l2(0.0000))(x)
-  #x = Dropout(0.2)(x)
+  if nodes2 > 0:
+    x = Dense(nodes2, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizer)(x)
+    #x = Dropout(0.2)(x)
+    if nodes3 > 0:
+      x = Dense(nodes3, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizer)(x)
+      #x = Dropout(0.2)(x)
 
   regr = Dense(1, activation='linear', kernel_initializer='glorot_uniform', name='regr')(x)
   discr = Dense(1, activation='sigmoid', kernel_initializer='glorot_uniform', name='discr')(x)
@@ -124,46 +153,88 @@ def create_model(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr_lo
     )
   return model
 
+# ______________________________________________________________________________
+def create_model_bn(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0, l1_reg=0.0, l2_reg=0.0):
+  regularizer = regularizers.L1L2(l1=l1_reg, l2=l2_reg)
+  inputs = Input(shape=(nvariables,), dtype='float32')
+
+  x = Dense(nodes1, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer)(inputs)
+  #x = Dropout(0.2)(x)
+  x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)
+  x = Activation('tanh')(x)
+  if nodes2 > 0:
+    x = Dense(nodes2, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer)(x)
+    #x = Dropout(0.2)(x)
+    x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)
+    x = Activation('tanh')(x)
+    if nodes3 > 0:
+      x = Dense(nodes3, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer)(x)
+      #x = Dropout(0.2)(x)
+      x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)
+      x = Activation('tanh')(x)
+
+  regr = Dense(1, activation='linear', kernel_initializer='glorot_uniform', name='regr')(x)
+  discr = Dense(1, activation='sigmoid', kernel_initializer='glorot_uniform', name='discr')(x)
+
+  # This creates a model that includes
+  # the Input layer, three Dense layers and the Output layer
+  model = Model(inputs=inputs, outputs=[regr, discr])
+
+  # Set loss and optimizers
+  #binary_crossentropy = losses.binary_crossentropy
+  #mean_squared_error = losses.mean_squared_error
+
+  adam = optimizers.Adam(lr=lr)
+  model.compile(optimizer=adam,
+    loss={'regr': masked_huber_loss, 'discr': masked_binary_crossentropy},
+    loss_weights={'regr': 1.0, 'discr': discr_loss_weight},
+    #metrics={'regr': ['acc', 'mse', 'mae'], 'discr': ['acc',]}
+    )
+  return model
 
 # ______________________________________________________________________________
-def create_model_sequential(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16):
+def create_model_sequential(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, l1_reg=0.0, l2_reg=0.0):
+  regularizer = regularizers.L1L2(l1=l1_reg, l2=l2_reg)
+
   model = Sequential()
-  model.add(Dense(nodes1, input_dim=nvariables, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizers.l2(0.0000)))
+  model.add(Dense(nodes1, input_dim=nvariables, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizer))
   #model.add(Dropout(0.2))
-  model.add(Dense(nodes2, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizers.l2(0.0000)))
-  #model.add(Dropout(0.2))
-  model.add(Dense(nodes3, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizers.l2(0.0000)))
-  #model.add(Dropout(0.2))
+  if nodes2 > 0:
+    model.add(Dense(nodes2, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizer))
+    #model.add(Dropout(0.2))
+    if nodes3 > 0:
+      model.add(Dense(nodes3, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizer))
+      #model.add(Dropout(0.2))
+
   model.add(Dense(1, activation='linear', kernel_initializer='glorot_uniform'))
 
   adam = optimizers.Adam(lr=lr)
   model.compile(loss=huber_loss, optimizer=adam, metrics=['acc'])
   return model
-
-def create_model_sequential_2layers(nvariables, lr=0.001, nodes1=64, nodes2=32):
-  model = Sequential()
-  model.add(Dense(nodes1, input_dim=nvariables, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizers.l2(0.0000)))
-  #model.add(Dropout(0.2))
-  model.add(Dense(nodes2, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizers.l2(0.0000)))
-  #model.add(Dropout(0.2))
-  model.add(Dense(1, activation='linear', kernel_initializer='glorot_uniform'))
-
-  adam = optimizers.Adam(lr=lr)
-  model.compile(loss=huber_loss, optimizer=adam, metrics=['acc'])
-  return model
-
-def create_model_sequential_1layer(nvariables, lr=0.001, nodes1=64):
-  model = Sequential()
-  model.add(Dense(nodes1, input_dim=nvariables, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizers.l2(0.0000)))
-  #model.add(Dropout(0.2))
-  model.add(Dense(1, activation='linear', kernel_initializer='glorot_uniform'))
-
-  adam = optimizers.Adam(lr=lr)
-  model.compile(loss=huber_loss, optimizer=adam, metrics=['acc'])
-  return model
-
 
 # ______________________________________________________________________________
+def create_model_sequential_regularized(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, l1_reg=0.0, l2_reg=0.0):
+  #regularizer = regularizers.L1L2(l1=l1_reg, l2=l2_reg)
+  regularizer = LParams(l1=l1_reg, l2=l2_reg)
+
+  model = Sequential()
+  model.add(Dense(nodes1, input_dim=nvariables, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizer))
+  #model.add(Dropout(0.2))
+  if nodes2 > 0:
+    model.add(Dense(nodes2, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizer))
+    #model.add(Dropout(0.2))
+    if nodes3 > 0:
+      model.add(Dense(nodes3, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizer))
+      #model.add(Dropout(0.2))
+
+  model.add(Dense(1, activation='linear', kernel_initializer='glorot_uniform'))
+
+  adam = optimizers.Adam(lr=lr)
+  model.compile(loss=huber_loss, optimizer=adam, metrics=['acc'])
+  return model
+
+# ______________________________________________________________________________
+# Save/Load models
 def save_my_model(model, name='model'):
   # Store model to file
   model.summary()

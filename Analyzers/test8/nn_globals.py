@@ -6,8 +6,8 @@ logger = getLogger()
 
 adjust_scale = 3
 
-#learning_rate = 0.00113
-learning_rate = 0.0035
+learning_rate = 0.00113
+#learning_rate = 0.0034
 
 mask_value = 100.
 
@@ -19,9 +19,13 @@ discr_loss_weight = 10.
 
 add_noise = True
 
-infile_muon = '../test7/histos_tba.15.npz'
+l1_reg = 1e-4
 
-infile_pileup = '../test7/histos_tbd.15.npz'
+add_pruning = False
+
+infile_muon = '../test7/histos_tba.16.npz'
+
+infile_pileup = '../test7/histos_tbd.16.npz'
 
 
 # ______________________________________________________________________________

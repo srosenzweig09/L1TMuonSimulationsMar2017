@@ -1,12 +1,11 @@
 """
 export SCRAM_ARCH=slc6_amd64_gcc630
-cmsrel CMSSW_9_3_6
-cd CMSSW_9_3_6/src
+cmsrel CMSSW_10_1_7
+cd CMSSW_10_1_7/src
 cmsenv
 cd ../..
 #
 virtualenv venv
-# edit venv/bin/activate to set PYTHONPATH
 source venv/bin/activate
 pip install scikit-optimize
 
@@ -25,7 +24,6 @@ from nn_encode import nlayers, nvariables
 from nn_data import muon_data, pileup_data, muon_data_split, pileup_data_split
 
 from nn_models import create_model, create_model_sequential, \
-                      create_model_sequential_2layers, create_model_sequential_1layer, \
                       lr_decay, modelbestcheck, modelbestcheck_weights
 
 from nn_training import train_model, train_model_sequential

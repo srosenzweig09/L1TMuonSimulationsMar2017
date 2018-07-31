@@ -68,4 +68,3 @@ def train_model_sequential(model, x, y, model_name='model', batch_size=None, epo
 
   logger.info('Done training. Time elapsed: {0} sec'.format(str(datetime.datetime.now() - start_time)))
   return history
-
