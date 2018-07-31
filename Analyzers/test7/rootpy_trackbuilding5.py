@@ -625,7 +625,7 @@ class RoadCleaning(object):
           if hit.bx > 0:
             bx_counter3 += 1
       #trk_bx_zero = (bx_counter1 < 2 and bx_counter2 >= 2)
-      trk_bx_zero = (bx_counter1 < 2 and bx_counter2 >= 2 and bx_counter3 < 2)
+      trk_bx_zero = (bx_counter1 < 3 and bx_counter2 >= 2 and bx_counter3 < 2)
       return trk_bx_zero
 
     def select_two_csc(road):
@@ -715,23 +715,34 @@ class RoadSlimming(object):
         pairings = dict([(0,2), (1,2), (2,0), (3,0), (4,0), (5,0), (6,2), (7,3), (8,4), (9,0), (10,2), (11,0)])
       else:
         pairings = dict([(0,2), (1,2), (2,1), (3,1), (4,1), (5,1), (6,2), (7,3), (8,4), (9,1), (10,2), (11,1)])
-      #print "..", road_id
+
+      #tmp_phi = (iphi * 32 - 16)  # multiply by 'quadstrip' unit (4 * 8)
+      tmp_phi = (iphi * 16 - 8)  # multiply by 'doublestrip' unit (2 * 8)
+
+      _select_csc = lambda x: (x.emtf_layer <= 4)
+      tmp_thetas = [hit.emtf_theta for hit in road.hits if _select_csc(hit)]
+      tmp_theta = np.median(tmp_thetas, overwrite_input=True)
 
       hits_array = np.empty((nlayers,), dtype=np.object)
       for ind in np.ndindex(hits_array.shape):
         hits_array[ind] = []
 
-      tmp_thetas = [hit.emtf_theta for hit in road.hits]
-      tmp_theta = np.median(tmp_thetas, overwrite_input=True)
+      best_phi_array = np.zeros((nlayers,), dtype=np.float32) + tmp_phi
+      best_theta_array = np.zeros((nlayers,), dtype=np.float32) + tmp_theta
 
       for hit in road.hits:
         hit_lay = hit.emtf_layer
         hits_array[hit_lay].append(hit)
 
+      # Assume going through ME1, ME2, ... in order
       for hit_lay in xrange(nlayers):
         mean_dphi = self.bank.z_array[ipt, ieta, hit_lay, 1]
         hit_lay_p = pairings[hit_lay]
+        if hit_lay != 0 and hit_lay != 1:
+          assert(hit_lay > hit_lay_p)
 
+        # Make pairs of (hit1, hit2)
+        # Want to pick the best hit1, given the selection of hit2 and mean_dphi
         pairs = []
         if hits_array[hit_lay]:
           for hit1 in hits_array[hit_lay]:
@@ -741,13 +752,24 @@ class RoadSlimming(object):
                 dtheta = abs(hit1.emtf_theta - tmp_theta)
                 pairs.append((hit1, hit2, dphi, dtheta))
                 #print hit1.emtf_phi, hit2.emtf_phi, abs((hit1.emtf_phi - hit2.emtf_phi)), dphi
+                continue  # end loop over hit2
             else:
+              dphi = abs((hit1.emtf_phi - best_phi_array[hit_lay_p]) - mean_dphi)
               dtheta = abs(hit1.emtf_theta - tmp_theta)
-              pairs.append((hit1, hit1, 0, dtheta))
+              pairs.append((hit1, hit1, dphi, dtheta))
+            continue  # end loop over hit1
 
+          # Found best pair
           best_pair = min(pairs, key=lambda x: (x[2], x[3]))
           best_hit = best_pair[0]
           hits_array[hit_lay] = [best_hit]
+          best_phi_array[hit_lay] = best_hit.emtf_phi
+          best_theta_array[hit_lay] = best_hit.emtf_theta
+        else:
+          # No hit in layer, put in the best estimate
+          best_phi_array[hit_lay] = best_phi_array[hit_lay_p] + mean_dphi
+          best_theta_array[hit_lay] = best_theta_array[hit_lay_p]
+
 
       slim_road_hits = []
       for hit_lay in xrange(nlayers):
@@ -1003,9 +1025,9 @@ use_condor = ('CONDOR_EXEC' in os.environ)
 # Analysis mode
 #analysis = 'verbose'
 #analysis = 'training'
-#analysis = 'application'
+analysis = 'application'
 #analysis = 'rates'
-analysis = 'effie'
+#analysis = 'effie'
 #analysis = 'mixing'
 if use_condor:
   analysis = sys.argv[1]
@@ -1022,9 +1044,9 @@ print('[INFO] Using analysis mode : %s' % analysis)
 print('[INFO] Using job id        : %s' % jobid)
 
 # Other stuff
-bankfile = 'histos_tb.15.npz'
+bankfile = 'histos_tb.16.npz'
 
-kerasfile = ['model.15.json', 'model_weights.15.h5']
+kerasfile = ['model.16.json', 'model_weights.16.h5']
 
 infile_r = None  # input file handle
 
