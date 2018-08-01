@@ -2,12 +2,16 @@ from nn_globals import *
 
 from nn_encode import nlayers, nvariables
 
-from nn_data import muon_data, pileup_data, muon_data_split, pileup_data_split
+from nn_data import muon_data, pileup_data, muon_data_split, pileup_data_split, \
+                    mix_training_inputs
 
-from nn_models import create_model, create_model_sequential, \
+from nn_models import create_model, create_model_bn, create_model_pruned, \
+                      create_model_sequential, create_model_sequential_regularized, \
                       lr_decay, modelbestcheck, modelbestcheck_weights
 
 from nn_training import train_model, train_model_sequential
+
+from nn_pruning import prune_model
 
 # ______________________________________________________________________________
 # Import muon data
@@ -38,7 +42,13 @@ if add_noise:
 # model_seq is a densely connected NN with 3 hidden layers and 1 output node
 # model is a densely connected NN with 3 hidden layers and 2 output nodes, q/pT and PU discriminator
 
-model_seq = create_model_sequential(nvariables=nvariables, lr=learning_rate)
+model_seq = create_model_sequential(nvariables=nvariables, lr=learning_rate, l1_reg=l1_reg, l2_reg=l2_reg)
 
-model = create_model(nvariables=nvariables, lr=learning_rate, discr_loss_weight=discr_loss_weight)
+#model_seq = create_model_sequential_regularized(nvariables=nvariables, lr=learning_rate, l1_reg=l1_reg, l2_reg=l2_reg)
+
+model = create_model(nvariables=nvariables, lr=learning_rate, l1_reg=l1_reg, l2_reg=l2_reg, discr_loss_weight=discr_loss_weight,
+                     nodes1=48, nodes2=32, nodes3=20)
+
+#model = create_model_bn(nvariables=nvariables, lr=learning_rate, l1_reg=l1_reg, l2_reg=l2_reg, discr_loss_weight=discr_loss_weight,
+#                        nodes1=48, nodes2=32, nodes3=20)
 

@@ -19,9 +19,9 @@ discr_loss_weight = 10.
 
 add_noise = True
 
-l1_reg = 1e-4
+l1_reg = 0.0
 
-add_pruning = False
+l2_reg = 0.0
 
 infile_muon = '../test7/histos_tba.16.npz'
 
