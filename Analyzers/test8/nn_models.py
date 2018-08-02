@@ -16,9 +16,6 @@ from keras import initializers, regularizers, optimizers, losses
 import h5py
 import json
 
-from nn_logging import getLogger
-logger = getLogger()
-
 
 # ______________________________________________________________________________
 # New leaky relu
@@ -189,19 +186,18 @@ def create_model(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr_lo
 # ______________________________________________________________________________
 def create_model_bn(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0, l1_reg=0.0, l2_reg=0.0, use_bn=True):
   regularizer = regularizers.L1L2(l1=l1_reg, l2=l2_reg)
-  batch_normalization = BatchNormalization(center=True, scale=True, epsilon=1e-4, momentum=0.9)
   inputs = Input(shape=(nvariables,), dtype='float32')
 
   x = Dense(nodes1, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False)(inputs)
-  if use_bn: x = batch_normalization(x)
+  if use_bn: x = BatchNormalization(center=True, scale=True, epsilon=1e-4, momentum=0.9)(x)
   x = Activation('tanh')(x)
   if nodes2:
     x = Dense(nodes2, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False)(x)
-    if use_bn: x = batch_normalization(x)
+    if use_bn: x = BatchNormalization(center=True, scale=True, epsilon=1e-4, momentum=0.9)(x)
     x = Activation('tanh')(x)
     if nodes3:
       x = Dense(nodes3, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False)(x)
-      if use_bn: x = batch_normalization(x)
+      if use_bn: x = BatchNormalization(center=True, scale=True, epsilon=1e-4, momentum=0.9)(x)
       x = Activation('tanh')(x)
 
   regr = Dense(1, activation='linear', kernel_initializer='glorot_uniform', name='regr')(x)
@@ -226,19 +222,18 @@ def create_model_bn(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr
 # ______________________________________________________________________________
 def create_model_pruned(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0, l1_reg=0.0, l2_reg=0.0, use_bn=True, constraint1=None, constraint2=None, constraint3=None):
   regularizer = None  # disable
-  batch_normalization = BatchNormalization(center=True, scale=True, epsilon=1e-4, momentum=0.9)
   inputs = Input(shape=(nvariables,), dtype='float32')
 
   x = Dense(nodes1, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, kernel_constraint=constraint1, use_bias=False)(inputs)
-  if use_bn: x = batch_normalization(x)
+  if use_bn: x = BatchNormalization(center=True, scale=True, epsilon=1e-4, momentum=0.9)(x)
   x = Activation('tanh')(x)
   if nodes2:
     x = Dense(nodes2, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, kernel_constraint=constraint2, use_bias=False)(x)
-    if use_bn: x = batch_normalization(x)
+    if use_bn: x = BatchNormalization(center=True, scale=True, epsilon=1e-4, momentum=0.9)(x)
     x = Activation('tanh')(x)
     if nodes3:
       x = Dense(nodes3, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, kernel_constraint=constraint3, use_bias=False)(x)
-      if use_bn: x = batch_normalization(x)
+      if use_bn: x = BatchNormalization(center=True, scale=True, epsilon=1e-4, momentum=0.9)(x)
       x = Activation('tanh')(x)
 
   regr = Dense(1, activation='linear', kernel_initializer='glorot_uniform', name='regr')(x)
@@ -311,7 +306,6 @@ def save_my_model(model, name='model'):
   # Store model to json
   with open(name + '.json', 'w') as outfile:
     outfile.write(model.to_json())
-  logger.info('Saved model as {0}.h5, {0}.json and {0}_weights.h5'.format(name))
   return
 
 def load_my_model(name='model', weights_name='model_weights'):
@@ -320,7 +314,6 @@ def load_my_model(name='model', weights_name='model_weights'):
     model = model_from_json(json_string)
   #model = load_model(name + '.h5')
   model.load_weights(weights_name + '.h5')
-  logger.info('Loaded model from {0} and weights from {1}'.format(name + '.json', name + '_weights.h5'))
   return model
 
 

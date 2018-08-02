@@ -6,8 +6,8 @@ logger = getLogger()
 
 adjust_scale = 3
 
-learning_rate = 0.00113
-#learning_rate = 0.0034
+#learning_rate = 0.00113
+learning_rate = 0.0033
 
 mask_value = 100.
 
