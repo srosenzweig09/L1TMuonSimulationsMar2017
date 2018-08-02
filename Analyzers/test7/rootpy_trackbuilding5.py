@@ -799,9 +799,9 @@ class PtAssignment(object):
     update_keras_custom_objects()
 
     # Load Keras model
-    from nn_models import load_my_model
-    self.loaded_model = load_my_model(model_file.replace(".json",""),
-                                      model_weights_file.replace(".h5",""))
+    from nn_models import load_my_model, update_keras_custom_objects
+    update_keras_custom_objects()
+    self.loaded_model = load_my_model(model_file.replace('.json',''), model_weights_file.replace('.h5',''))
 
     def create_encoder(x):
       nentries = x.shape[0]
@@ -842,21 +842,21 @@ class TrackProducer(object):
     self.s_max = 60.
     self.s_nbins = 120
     self.s_step = (self.s_max - self.s_min)/self.s_nbins
-    self.s_lut =[ 1.7997,  1.5335,  1.5873,  1.8394,  2.2112,  2.6594,  3.1650,  3.7100,
-                  4.2826,  4.8755,  5.4852,  6.1093,  6.7450,  7.3884,  8.0364,  8.6860,
-                  9.3394, 10.0038, 10.6766, 11.3633, 12.0579, 12.7606, 13.4706, 14.1840,
-                 14.8908, 15.6021, 16.3355, 17.0990, 17.9094, 18.7488, 19.5361, 20.2485,
-                 20.9080, 21.5306, 22.1699, 22.8563, 23.5613, 24.2132, 24.8594, 25.5662,
-                 26.3533, 27.1661, 27.9729, 28.7811, 29.6343, 30.5480, 31.4512, 32.3118,
-                 33.1749, 34.0481, 34.8451, 35.5729, 36.2505, 36.9350, 37.6869, 38.5038,
-                 39.3259, 40.1248, 40.9606, 41.8753, 42.9116, 44.0568, 45.3040, 46.5765,
-                 47.8053, 49.1354, 50.4045, 51.3158, 52.1287, 52.9267, 53.7206, 54.5128,
-                 55.3041, 56.0950, 56.8856, 57.6761, 58.4664, 59.2566, 60.0468, 60.8370,
-                 61.6271, 62.4171, 63.2072, 63.9972, 64.7873, 65.5773, 66.3673, 67.1573,
-                 67.9473, 68.7373, 69.5273, 70.3173, 71.1072, 71.8972, 72.6872, 73.4772,
-                 74.2672, 75.0571, 75.8471, 76.6371, 77.4270, 78.2170, 79.0070, 79.7970,
-                 80.5869, 81.3769, 82.1669, 82.9568, 83.7468, 84.5368, 85.3267, 86.1167,
-                 86.9067, 87.6966, 88.4866, 89.2766, 90.0665, 90.8565, 91.6465, 92.4364]
+    self.s_lut =[ 1.7822,  1.5017,  1.5567,  1.8140,  2.1903,  2.6407,  3.1506,  3.7038,
+                  4.2855,  4.8892,  5.5135,  6.1538,  6.8062,  7.4675,  8.1358,  8.8129,
+                  9.5006, 10.1893, 10.8752, 11.5731, 12.2918, 13.0238, 13.7528, 14.4833,
+                 15.2289, 15.9930, 16.7752, 17.5625, 18.3535, 19.1416, 19.9296, 20.7557,
+                 21.6340, 22.5020, 23.2818, 23.9860, 24.6808, 25.4054, 26.2238, 27.0751,
+                 27.9190, 28.8167, 29.8185, 30.8708, 31.7760, 32.5681, 33.4202, 34.3624,
+                 35.3410, 36.2845, 37.2035, 38.1359, 38.9998, 39.7940, 40.5750, 41.4005,
+                 42.2826, 43.2236, 44.3138, 45.5656, 46.9730, 48.6543, 50.0740, 51.0015,
+                 51.8566, 52.6991, 53.5378, 54.3748, 55.2111, 56.0469, 56.8824, 57.7177,
+                 58.5530, 59.3881, 60.2232, 61.0583, 61.8933, 62.7283, 63.5633, 64.3982,
+                 65.2332, 66.0681, 66.9030, 67.7380, 68.5729, 69.4078, 70.2427, 71.0777,
+                 71.9126, 72.7475, 73.5824, 74.4173, 75.2522, 76.0871, 76.9220, 77.7569,
+                 78.5918, 79.4267, 80.2616, 81.0965, 81.9314, 82.7663, 83.6012, 84.4361,
+                 85.2710, 86.1059, 86.9408, 87.7757, 88.6106, 89.4455, 90.2804, 91.1153,
+                 91.9502, 92.7851, 93.6200, 94.4549, 95.2898, 96.1247, 96.9595, 97.7944]
     #self.s_lut = np.linspace(self.s_min, self.s_max, num=self.s_nbins+1)[:-1]
 
   def run(self, slim_roads, variables, predictions, other_vars):
@@ -948,10 +948,12 @@ class TrackProducer(object):
       if np.abs(1.0/y_meas) > discr_pt_cut:
         if ndof <= 3:
           #trigger = (y_discr > 0.8)
-          trigger = (y_discr > 0.995)  # 92.5% coverage
+          trigger = (y_discr > 0.9900)  # 90% coverage
+          #trigger = (y_discr > 0.9999)  # 95% coverage
         else:
           #trigger = (y_discr > 0.5393)
-          trigger = (y_discr > 0.975)  # 98.5% coverage
+          trigger = (y_discr > 0.9041) # 98.5% coverage
+          #trigger = (y_discr > 0.9929) # 99% coverage
       else:
         trigger = (y_discr >= 0.)  # True
     else:
@@ -965,7 +967,8 @@ histograms = {}
 
 # Efficiency
 #eff_pt_bins = (0., 0.5, 1., 2., 3., 4., 5., 6., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 35., 40., 45., 50., 60., 80., 120.)
-eff_pt_bins = (0., 0.5, 1., 2., 3., 4., 5., 6., 8., 10., 12., 14., 16., 18., 20., 22., 24., 27., 30., 34., 40., 48., 60., 80., 120.)
+eff_pt_bins = (0., 0.5, 1., 1.5, 2., 3., 4., 5., 6., 7., 8., 10., 12., 14., 16., 18., 20., 22., 24., 27., 30., 34., 40., 48., 60., 80., 120.)
+
 for k in ("denom", "numer"):
   hname = "eff_vs_genpt_%s" % k
   histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
@@ -1794,9 +1797,9 @@ elif analysis == 'mixing':
       out_particles += [part for _ in xrange(len(slim_roads))]
       out_roads += slim_roads
 
-    debug_events = [1410, 2598, 4860, 7244]  #FIXME
+    debug_event_list = [2826, 2937, 3675, 4581, 4838, 5379, 7640]
 
-    if ievt < 20 or ievt in debug_events:
+    if ievt < 20 or ievt in debug_event_list:
       print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), '?'))
       #for iroad, myroad in enumerate(sorted(roads, key=lambda x: x.id)):
       #  print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
