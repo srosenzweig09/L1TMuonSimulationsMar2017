@@ -112,7 +112,6 @@ private:
   //
   std::unique_ptr<std::vector<int32_t> >  vh_emtf_phi;
   std::unique_ptr<std::vector<int32_t> >  vh_emtf_theta;
-  std::unique_ptr<std::vector<uint64_t> > vh_comp_digis;
   //
   std::unique_ptr<std::vector<float  > >  vh_sim_phi;
   std::unique_ptr<std::vector<float  > >  vh_sim_theta;
@@ -131,8 +130,8 @@ private:
   std::unique_ptr<std::vector<float  > >  vt_eta;
   std::unique_ptr<std::vector<float  > >  vt_theta;
   std::unique_ptr<std::vector<int16_t> >  vt_q;  // charge
-  std::unique_ptr<std::vector<uint64_t> > vt_address;
   //
+  std::unique_ptr<std::vector<uint64_t> > vt_address;
   std::unique_ptr<std::vector<int16_t> >  vt_mode;
   std::unique_ptr<std::vector<int16_t> >  vt_endcap;
   std::unique_ptr<std::vector<int16_t> >  vt_sector;
@@ -342,30 +341,23 @@ void NtupleMaker::process() {
     return;
   };
 
-  auto get_sim_tp1 = [&](const auto& hit) {
+  auto get_sim_tp_matches = [&](const auto& hit) {
+    int sim_tp1 = -1;
+    int sim_tp2 = -1;
     if (hit.Subsystem() == TriggerPrimitive::kCSC) {
-      return truth_.findCSCStripSimLink(hit, trkParts_);
+      sim_tp1 = truth_.findCSCStripSimLink(hit, trkParts_);
+      sim_tp2 = truth_.findCSCWireSimLink(hit, trkParts_);
     } else if (hit.Subsystem() == TriggerPrimitive::kRPC) {
-      return truth_.findRPCDigiSimLink(hit, trkParts_);
+      sim_tp1 = truth_.findRPCDigiSimLink(hit, trkParts_);
+      sim_tp2 = sim_tp1;
     } else if (hit.Subsystem() == TriggerPrimitive::kGEM) {
-      return truth_.findGEMDigiSimLink(hit, trkParts_);
+      sim_tp1 = truth_.findGEMDigiSimLink(hit, trkParts_);
+      sim_tp2 = sim_tp1;
     } else if (hit.Subsystem() == TriggerPrimitive::kME0) {
-      return -1;  // not implemented
+      sim_tp1 = truth_.findME0DigiSimLink(hit, trkParts_);
+      sim_tp2 = sim_tp1;
     }
-    return -1;
-  };
-
-  auto get_sim_tp2 = [&](const auto& hit) {
-    if (hit.Subsystem() == TriggerPrimitive::kCSC) {
-      return truth_.findCSCWireSimLink(hit, trkParts_);
-    } else if (hit.Subsystem() == TriggerPrimitive::kRPC) {
-      return truth_.findRPCDigiSimLink(hit, trkParts_);
-    } else if (hit.Subsystem() == TriggerPrimitive::kGEM) {
-      return truth_.findGEMDigiSimLink(hit, trkParts_);
-    } else if (hit.Subsystem() == TriggerPrimitive::kME0) {
-      return -1;  // not implemented
-    }
-    return -1;
+    return std::make_pair(sim_tp1, sim_tp2);
   };
 
   auto get_time = [](float time) {
@@ -451,22 +443,7 @@ void NtupleMaker::process() {
   prepare_sim_tp();  // must be called before calling get_sim_tp1() and get_sim_tp2()
 
   for (const auto& hit : emuHits_) {
-    // Hack 'bend'
-    // For RPC, use cluster width
-    int bend = hit.Bend();
-    if (hit.Subsystem() == TriggerPrimitive::kRPC) {
-      bend = (hit.Strip_hi() - hit.Strip_low() + 1);
-      bool is_irpc = hit.Is_RPC() && ((hit.Station() == 3 || hit.Station() == 4) && (hit.Ring() == 1));
-      if (!is_irpc)
-        bend *= 3;
-    }
-
-    // Hack 'time'
-    // For CSC/GEM, set to 0
-    int time = get_time(hit.Time());
-    if (hit.Subsystem() == TriggerPrimitive::kCSC || hit.Subsystem() == TriggerPrimitive::kGEM) {
-      time = 0;
-    }
+    const std::pair<int,int>& sim_tp_pair = get_sim_tp_matches(hit);
 
     vh_endcap     ->push_back(hit.Endcap());
     vh_station    ->push_back(hit.Station());
@@ -484,21 +461,20 @@ void NtupleMaker::process() {
     vh_roll       ->push_back(hit.Roll());
     vh_pattern    ->push_back(hit.Pattern());
     vh_quality    ->push_back(hit.Quality());
-    vh_bend       ->push_back(bend);
-    vh_time       ->push_back(time);
+    vh_bend       ->push_back(hit.Bend());
+    vh_time       ->push_back(get_time(hit.Time()));
     vh_fr         ->push_back(isFront(hit));
     //
     vh_emtf_phi   ->push_back(hit.Phi_fp());
     vh_emtf_theta ->push_back(hit.Theta_fp());
-    vh_comp_digis ->push_back(hit.Comp_digis());
     //
     vh_sim_phi    ->push_back(hit.Phi_sim());
     vh_sim_theta  ->push_back(hit.Theta_sim());
     vh_sim_eta    ->push_back(hit.Eta_sim());
     vh_sim_r      ->push_back(hit.Rho_sim());
     vh_sim_z      ->push_back(hit.Z_sim());
-    vh_sim_tp1    ->push_back(get_sim_tp1(hit));
-    vh_sim_tp2    ->push_back(get_sim_tp2(hit));
+    vh_sim_tp1    ->push_back(sim_tp_pair.first);
+    vh_sim_tp2    ->push_back(sim_tp_pair.second);
   }
   (*vh_size) = emuHits_.size();
 
@@ -515,8 +491,8 @@ void NtupleMaker::process() {
     vt_eta        ->push_back(trk.Eta());
     vt_theta      ->push_back(trk.Theta());
     vt_q          ->push_back(trk.Charge());
-    vt_address    ->push_back(ptlut_data.address);
     //
+    vt_address    ->push_back(ptlut_data.address);
     vt_mode       ->push_back(trk.Mode());
     vt_endcap     ->push_back(trk.Endcap());
     vt_sector     ->push_back(trk.Sector());
@@ -594,7 +570,6 @@ void NtupleMaker::process() {
   //
   vh_emtf_phi   ->clear();
   vh_emtf_theta ->clear();
-  vh_comp_digis ->clear();
   //
   vh_sim_phi    ->clear();
   vh_sim_theta  ->clear();
@@ -613,8 +588,8 @@ void NtupleMaker::process() {
   vt_eta        ->clear();
   vt_theta      ->clear();
   vt_q          ->clear();
-  vt_address    ->clear();
   //
+  vt_address    ->clear();
   vt_mode       ->clear();
   vt_endcap     ->clear();
   vt_sector     ->clear();
@@ -680,7 +655,6 @@ void NtupleMaker::makeTree() {
   //
   vh_emtf_phi   .reset(new std::vector<int32_t >());
   vh_emtf_theta .reset(new std::vector<int32_t >());
-  vh_comp_digis .reset(new std::vector<uint64_t>());
   //
   vh_sim_phi    .reset(new std::vector<float   >());
   vh_sim_theta  .reset(new std::vector<float   >());
@@ -699,8 +673,8 @@ void NtupleMaker::makeTree() {
   vt_eta        .reset(new std::vector<float   >());
   vt_theta      .reset(new std::vector<float   >());
   vt_q          .reset(new std::vector<int16_t >());
-  vt_address    .reset(new std::vector<uint64_t>());
   //
+  vt_address    .reset(new std::vector<uint64_t>());
   vt_mode       .reset(new std::vector<int16_t >());
   vt_endcap     .reset(new std::vector<int16_t >());
   vt_sector     .reset(new std::vector<int16_t >());
@@ -750,7 +724,6 @@ void NtupleMaker::makeTree() {
   //
   tree->Branch("vh_emtf_phi"  , &(*vh_emtf_phi  ));
   tree->Branch("vh_emtf_theta", &(*vh_emtf_theta));
-  tree->Branch("vh_comp_digis", &(*vh_comp_digis));
   //
   tree->Branch("vh_sim_phi"   , &(*vh_sim_phi   ));
   tree->Branch("vh_sim_theta" , &(*vh_sim_theta ));
@@ -769,8 +742,8 @@ void NtupleMaker::makeTree() {
   tree->Branch("vt_eta"       , &(*vt_eta       ));
   tree->Branch("vt_theta"     , &(*vt_theta     ));
   tree->Branch("vt_q"         , &(*vt_q         ));
-  tree->Branch("vt_address"   , &(*vt_address   ));
   //
+  tree->Branch("vt_address"   , &(*vt_address   ));
   tree->Branch("vt_mode"      , &(*vt_mode      ));
   tree->Branch("vt_endcap"    , &(*vt_endcap    ));
   tree->Branch("vt_sector"    , &(*vt_sector    ));
