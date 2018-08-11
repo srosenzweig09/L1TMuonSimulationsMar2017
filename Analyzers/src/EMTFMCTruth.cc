@@ -15,18 +15,55 @@ EMTFMCTruth::EMTFMCTruth(const edm::ParameterSet& iConfig, edm::ConsumesCollecto
     rpcDigiSimLinksTag_ (iConfig.getParameter<edm::InputTag>("rpcDigiSimLinksTag")),
     gemSimHitsTag_      (iConfig.getParameter<edm::InputTag>("gemSimHitsTag")),
     gemSimHitsXFTag_    (iConfig.getParameter<edm::InputTag>("gemSimHitsXFTag")),
-    gemDigiSimLinksTag_ (iConfig.getParameter<edm::InputTag>("gemDigiSimLinksTag"))
+    gemDigiSimLinksTag_ (iConfig.getParameter<edm::InputTag>("gemDigiSimLinksTag")),
+    gemStripSimLinksTag_(iConfig.getParameter<edm::InputTag>("gemStripSimLinksTag")),
+    me0SimHitsTag_      (iConfig.getParameter<edm::InputTag>("me0SimHitsTag")),
+    me0SimHitsXFTag_    (iConfig.getParameter<edm::InputTag>("me0SimHitsXFTag")),
+    me0DigiSimLinksTag_ (iConfig.getParameter<edm::InputTag>("me0DigiSimLinksTag")),
+    me0StripSimLinksTag_(iConfig.getParameter<edm::InputTag>("me0StripSimLinksTag")),
+    dtSimHitsTag_       (iConfig.getParameter<edm::InputTag>("dtSimHitsTag")),
+    dtSimHitsXFTag_     (iConfig.getParameter<edm::InputTag>("dtSimHitsXFTag")),
+    dtDigiSimLinksTag_  (iConfig.getParameter<edm::InputTag>("dtDigiSimLinksTag")),
+    crossingFrame_      (iConfig.getParameter<bool>         ("crossingFrame"))
 {
-  cscSimHitsToken_       = iConsumes.consumes<edm::PSimHitContainer>     (cscSimHitsTag_);
-  cscSimHitsXFToken_     = iConsumes.consumes<CrossingFrame<PSimHit> >   (cscSimHitsXFTag_);
+  if (!crossingFrame_) {
+    cscSimHitsToken_     = iConsumes.consumes<edm::PSimHitContainer>     (cscSimHitsTag_);
+  } else {
+    cscSimHitsXFToken_   = iConsumes.consumes<CrossingFrame<PSimHit> >   (cscSimHitsXFTag_);
+  }
   cscStripSimLinksToken_ = iConsumes.consumes<StripDigiSimLinks>         (cscStripSimLinksTag_);
   cscWireSimLinksToken_  = iConsumes.consumes<WireDigiSimLinks>          (cscWireSimLinksTag_);
-  rpcSimHitsToken_       = iConsumes.consumes<edm::PSimHitContainer>     (rpcSimHitsTag_);
-  rpcSimHitsXFToken_     = iConsumes.consumes<CrossingFrame<PSimHit> >   (rpcSimHitsXFTag_);
+
+  if (!crossingFrame_) {
+    rpcSimHitsToken_     = iConsumes.consumes<edm::PSimHitContainer>     (rpcSimHitsTag_);
+  } else {
+    rpcSimHitsXFToken_   = iConsumes.consumes<CrossingFrame<PSimHit> >   (rpcSimHitsXFTag_);
+  }
   rpcDigiSimLinksToken_  = iConsumes.consumes<RPCDigiSimLinks>           (rpcDigiSimLinksTag_);
-  gemSimHitsToken_       = iConsumes.consumes<edm::PSimHitContainer>     (gemSimHitsTag_);
-  gemSimHitsXFToken_     = iConsumes.consumes<CrossingFrame<PSimHit> >   (gemSimHitsXFTag_);
+
+  if (!crossingFrame_) {
+    gemSimHitsToken_     = iConsumes.consumes<edm::PSimHitContainer>     (gemSimHitsTag_);
+  } else {
+    gemSimHitsXFToken_   = iConsumes.consumes<CrossingFrame<PSimHit> >   (gemSimHitsXFTag_);
+  }
   gemDigiSimLinksToken_  = iConsumes.consumes<GEMDigiSimLinks>           (gemDigiSimLinksTag_);
+  gemStripSimLinksToken_ = iConsumes.consumes<StripDigiSimLinks>         (gemStripSimLinksTag_);
+
+  if (!crossingFrame_) {
+    me0SimHitsToken_     = iConsumes.consumes<edm::PSimHitContainer>     (me0SimHitsTag_);
+  } else {
+    me0SimHitsXFToken_   = iConsumes.consumes<CrossingFrame<PSimHit> >   (me0SimHitsXFTag_);
+  }
+  me0DigiSimLinksToken_  = iConsumes.consumes<ME0DigiSimLinks>           (me0DigiSimLinksTag_);
+  me0StripSimLinksToken_ = iConsumes.consumes<StripDigiSimLinks>         (me0StripSimLinksTag_);
+
+  if (!crossingFrame_) {
+    dtSimHitsToken_      = iConsumes.consumes<edm::PSimHitContainer>     (dtSimHitsTag_);
+  } else {
+    dtSimHitsXFToken_    = iConsumes.consumes<CrossingFrame<PSimHit> >   (dtSimHitsXFTag_);
+  }
+  dtDigiSimLinksToken_   = iConsumes.consumes<DTDigiSimLinks>            (dtDigiSimLinksTag_);
+
 }
 
 EMTFMCTruth::~EMTFMCTruth() {}
@@ -68,6 +105,8 @@ void EMTFMCTruth::initEvent(const edm::Event& iEvent, const edm::EventSetup& iSe
   edm::Handle<WireDigiSimLinks>  cscWireSimLinks_handle;
   edm::Handle<RPCDigiSimLinks>   rpcDigiSimLinks_handle;
   edm::Handle<GEMDigiSimLinks>   gemDigiSimLinks_handle;
+  edm::Handle<ME0DigiSimLinks>   me0DigiSimLinks_handle;
+  edm::Handle<DTDigiSimLinks>    dtDigiSimLinks_handle;
 
   if (!iEvent.isRealData()) {
     if (cscStripSimLinksTag_.encode() != "") {
@@ -105,13 +144,32 @@ void EMTFMCTruth::initEvent(const edm::Event& iEvent, const edm::EventSetup& iSe
         edm::LogError("EMTFMCTruth") << "Cannot get the product: " << gemDigiSimLinksTag_;
       }
     }
+
+    if (me0DigiSimLinksTag_.encode() != "") {
+      if (!me0DigiSimLinksToken_.isUninitialized()) {
+        iEvent.getByToken(me0DigiSimLinksToken_, me0DigiSimLinks_handle);
+      }
+      if (!me0DigiSimLinks_handle.isValid()) {
+        edm::LogError("EMTFMCTruth") << "Cannot get the product: " << me0DigiSimLinksTag_;
+      }
+    }
+
+    if (dtDigiSimLinksTag_.encode() != "") {
+      if (!dtDigiSimLinksToken_.isUninitialized()) {
+        iEvent.getByToken(dtDigiSimLinksToken_, dtDigiSimLinks_handle);
+      }
+      if (!dtDigiSimLinks_handle.isValid()) {
+        edm::LogError("EMTFMCTruth") << "Cannot get the product: " << dtDigiSimLinksTag_;
+      }
+    }
   }
 
   cscStripSimLinksPtr_ = cscStripSimLinks_handle.product();
   cscWireSimLinksPtr_  = cscWireSimLinks_handle.product();
   rpcDigiSimLinksPtr_  = rpcDigiSimLinks_handle.product();
   gemDigiSimLinksPtr_  = gemDigiSimLinks_handle.product();
-
+  me0DigiSimLinksPtr_  = me0DigiSimLinks_handle.product();
+  dtDigiSimLinksPtr_   = dtDigiSimLinks_handle.product();
 }
 
 void EMTFMCTruth::makeTrackingParticleLinks(const TrackingParticleCollection& trkPartColl) {
@@ -127,20 +185,22 @@ void EMTFMCTruth::makeTrackingParticleLinks(const TrackingParticleCollection& tr
     }
   }
 
+  return;
 }
 
 
 int EMTFMCTruth::findCSCStripSimLink(const l1t::EMTFHit& hit, const std::vector<TrackingParticle>& trkPartColl) const {
-  std::map<SimHitIdpr, int> matches;
+  std::map<SimHitIdpr, float> matches;
+
+  int strip0 = hit.Strip();
+  int strip1 = (strip0 - 1)/2 + 1;  // different convention used in CSC StripDigiSimLink (full-strip)
 
   // Check all 6 CSC layers. Each layer has a distinct detId
-  for (unsigned csclayer = 0; csclayer < 6; ++csclayer) {
-    CSCDetId cscDetId0 = hit.CSC_DetId();
-    CSCDetId cscDetId1(cscDetId0.endcap(), cscDetId0.station(), cscDetId0.ring(), cscDetId0.chamber(), csclayer+1);
-    int strip0 = hit.Strip();
-    int strip1 = (strip0 - 1)/2 + 1;  // different convention used in CSC StripDigiSimLink
+  for (unsigned ilayer = 0; ilayer < 6; ++ilayer) {
+    CSCDetId detId0 = hit.CSC_DetId();
+    CSCDetId detId1(detId0.endcap(), detId0.station(), detId0.ring(), detId0.chamber(), ilayer+1);
 
-    StripDigiSimLinks::const_iterator cscStripLayerLinks = cscStripSimLinksPtr_->find(cscDetId1);
+    StripDigiSimLinks::const_iterator cscStripLayerLinks = cscStripSimLinksPtr_->find(detId1);
     if (cscStripLayerLinks != cscStripSimLinksPtr_->end()) {
       for (LayerLinks::const_iterator linkItr = cscStripLayerLinks->begin(); linkItr != cscStripLayerLinks->end(); ++linkItr) {
         unsigned int channel = linkItr->channel();
@@ -148,9 +208,10 @@ int EMTFMCTruth::findCSCStripSimLink(const l1t::EMTFHit& hit, const std::vector<
         EncodedEventId eventId = linkItr->eventId();
         float fraction = linkItr->fraction();
 
-        if (fraction > 0.1 && std::abs(int(strip1) - int(channel)) <= 3) {  // allow +/-3
+        if (std::abs(int(strip1) - int(channel)) <= 3) {  // allow +/-3
           SimHitIdpr matchId(simTrackId, eventId);
-          ++matches[matchId];
+          if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
+          matches[matchId] += fraction;
         }
       }
     }
@@ -160,16 +221,17 @@ int EMTFMCTruth::findCSCStripSimLink(const l1t::EMTFHit& hit, const std::vector<
 }
 
 int EMTFMCTruth::findCSCWireSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const {
-  std::map<SimHitIdpr, int> matches;
+  std::map<SimHitIdpr, float> matches;
+
+  int wire0 = hit.Wire();
+  int wire1 = (wire0 + 100) + 1;  // different convention used in CSC StripDigiSimLink
 
   // Check all 6 CSC layers. Each layer has a distinct detId
-  for (unsigned csclayer = 0; csclayer < 6; ++csclayer) {
-    CSCDetId cscDetId0 = hit.CSC_DetId();
-    CSCDetId cscDetId1(cscDetId0.endcap(), cscDetId0.station(), cscDetId0.ring(), cscDetId0.chamber(), csclayer+1);
-    int wire0 = hit.Wire();
-    int wire1 = (wire0 + 100) + 1;  // different convention used in CSC StripDigiSimLink
+  for (unsigned ilayer = 0; ilayer < 6; ++ilayer) {
+    CSCDetId detId0 = hit.CSC_DetId();
+    CSCDetId detId1(detId0.endcap(), detId0.station(), detId0.ring(), detId0.chamber(), ilayer+1);
 
-    WireDigiSimLinks::const_iterator cscWireLayerLinks = cscWireSimLinksPtr_->find(cscDetId1);
+    WireDigiSimLinks::const_iterator cscWireLayerLinks = cscWireSimLinksPtr_->find(detId1);
     if (cscWireLayerLinks != cscWireSimLinksPtr_->end()) {
       for (LayerLinks::const_iterator linkItr = cscWireLayerLinks->begin(); linkItr != cscWireLayerLinks->end(); ++linkItr) {
         unsigned int channel = linkItr->channel();
@@ -177,9 +239,10 @@ int EMTFMCTruth::findCSCWireSimLink(const l1t::EMTFHit& hit, const TrackingParti
         EncodedEventId eventId = linkItr->eventId();
         float fraction = linkItr->fraction();
 
-        if (fraction > 0.1 && std::abs(int(wire1) - int(channel)) <= 3) {  // allow +/-3
+        if (std::abs(int(wire1) - int(channel)) <= 3) {  // allow +/-3
           SimHitIdpr matchId(simTrackId, eventId);
-          ++matches[matchId];
+          if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
+          matches[matchId] += fraction;
         }
       }
     }
@@ -189,17 +252,17 @@ int EMTFMCTruth::findCSCWireSimLink(const l1t::EMTFHit& hit, const TrackingParti
 }
 
 int EMTFMCTruth::findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const {
-  std::map<SimHitIdpr, int> matches;
+  std::map<SimHitIdpr, float> matches;
 
   // Check all strips in the RPC cluster
-  RPCDetId rpcDetId = hit.RPC_DetId();
+  RPCDetId detId0 = hit.RPC_DetId();
   int stripA = hit.Strip_low();
   int stripB = hit.Strip_hi();
   int bx     = hit.BX();
 
 #if 0
   // This is giving me an error: Assertion `std::distance(p.first, p.second) == 1' failed.
-  RPCDigiSimLinks::const_iterator rpcDigiLayerLinks = rpcDigiSimLinksPtr_->find(rpcDetId);
+  RPCDigiSimLinks::const_iterator rpcDigiLayerLinks = rpcDigiSimLinksPtr_->find(detId0);
   if (rpcDigiLayerLinks != rpcDigiSimLinksPtr_->end()) {
     for (RPCLayerLinks::const_iterator linkItr = rpcDigiLayerLinks->begin(); linkItr != rpcDigiLayerLinks->end(); ++linkItr) {
       unsigned int simStrip = linkItr->getStrip();
@@ -207,10 +270,11 @@ int EMTFMCTruth::findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
       unsigned int simTrackId = linkItr->getTrackId();
       EncodedEventId eventId = linkItr->getEventId();
 
-      for (int strip1 = stripA; strip1 < stripB+1; ++strip1) {
-        if ((std::abs(int(strip1) - int(simStrip)) <= 1) && ((int) simBX == bx)) {
+      for (int strip0 = stripA; strip0 < stripB+1; ++strip0) {
+        if ((std::abs(int(strip0) - int(simStrip)) <= 1) && ((int) simBX == bx)) {  // allow +/-1
           SimHitIdpr matchId(simTrackId, eventId);
-          ++matches[matchId];
+          if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
+          matches[matchId] += 1.0;
         }
       }
     }
@@ -225,12 +289,12 @@ int EMTFMCTruth::findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
       unsigned int simTrackId = linkItr->getTrackId();
       EncodedEventId eventId = linkItr->getEventId();
 
-      if (detUnitId == rpcDetId.rawId()) {
+      if (detUnitId == detId0.rawId()) {
         for (int strip0 = stripA; strip0 < stripB+1; ++strip0) {
-          int strip1 = strip0;  // same convention
-          if ((std::abs(int(strip1) - int(simStrip)) <= 1) && ((int) simBX == bx)) {
+          if ((std::abs(int(strip0) - int(simStrip)) <= 1) && ((int) simBX == bx)) {  // allow +/-1
             SimHitIdpr matchId(simTrackId, eventId);
-            ++matches[matchId];
+            if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
+            matches[matchId] += 1.0;
           }
         }
       }
@@ -242,28 +306,37 @@ int EMTFMCTruth::findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
 }
 
 int EMTFMCTruth::findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const {
-  std::map<SimHitIdpr, int> matches;
+  std::map<SimHitIdpr, float> matches;
 
   // Check all strips in the GEM cluster
-  // FIXME: check both GEM layers
-  GEMDetId gemDetId = hit.GEM_DetId();
   int stripA = hit.Strip_low();
   int stripB = hit.Strip_hi();
   int bx     = hit.BX();
 
-  GEMDigiSimLinks::const_iterator gemDigiLayerLinks = gemDigiSimLinksPtr_->find(gemDetId);
-  if (gemDigiLayerLinks != gemDigiSimLinksPtr_->end()) {
-    for (GEMLayerLinks::const_iterator linkItr = gemDigiLayerLinks->begin(); linkItr != gemDigiLayerLinks->end(); ++linkItr) {
-      unsigned int simStrip = linkItr->getStrip();
-      unsigned int simBX = linkItr->getBx();
-      unsigned int simTrackId = linkItr->getTrackId();
-      EncodedEventId eventId = linkItr->getEventId();
+  for (unsigned gemlayer = 0; gemlayer < 2; ++gemlayer) {  // check both GEM layers
+    GEMDetId detId0 = hit.GEM_DetId();
+    GEMDetId detId1(detId0.region(), detId0.ring(), detId0.station(), gemlayer+1, detId0.chamber(), detId0.roll());
 
-      for (int strip0 = stripA; strip0 < stripB+1; ++strip0) {
-        int strip1 = strip0 * 2;  // different convention used in GEMDigiSimLink
-        if ((std::abs(int(strip1) - int(simStrip)) <= 1) && ((int) simBX == bx)) {
-          SimHitIdpr matchId(simTrackId, eventId);
-          ++matches[matchId];
+    GEMDigiSimLinks::const_iterator gemDigiLayerLinks = gemDigiSimLinksPtr_->find(detId1);
+    if (gemDigiLayerLinks != gemDigiSimLinksPtr_->end()) {
+      for (GEMLayerLinks::const_iterator linkItr = gemDigiLayerLinks->begin(); linkItr != gemDigiLayerLinks->end(); ++linkItr) {
+        unsigned int simStrip = linkItr->getStrip();
+        unsigned int simBX = linkItr->getBx();
+        unsigned int simTrackId = linkItr->getTrackId();
+        EncodedEventId eventId = linkItr->getEventId();
+
+        //int simPad = 1 + static_cast<int>(p->padOfStrip(simStrip));
+        unsigned int simPad = (simStrip+1)/2;
+
+        for (int strip0 = stripA; strip0 < stripB+1; ++strip0) {
+          if ((detId1.station() == 1) && (std::abs(int(strip0) - int(simPad)) <= 2) && ((int) simBX == bx)) {  // allow +/-2
+            SimHitIdpr matchId(simTrackId, eventId);
+            matches[matchId] += 1.0;
+          } else if ((detId1.station() == 2) && (std::abs(int(strip0) - int(simPad)) <= 1) && ((int) simBX == bx)) {  // allow +/-1
+            SimHitIdpr matchId(simTrackId, eventId);
+            if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
+            matches[matchId] += 1.0;
+          }
         }
       }
     }
@@ -272,13 +345,47 @@ int EMTFMCTruth::findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
   return findTrackingParticle(matches, trkPartColl);
 }
 
-int EMTFMCTruth::findTrackingParticle(const std::map<SimHitIdpr, int>& matches, const TrackingParticleCollection& trkPartColl) const {
+int EMTFMCTruth::findME0DigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const {
+  std::map<SimHitIdpr, float> matches;
+
+  int strip0 = hit.Strip();
+  int bx     = hit.BX();
+
+  // Check all 6 ME0 layers.
+  for (unsigned ilayer = 0; ilayer < 6; ++ilayer) {
+    ME0DetId detId0 = hit.ME0_DetId();
+    ME0DetId detId1(detId0.region(), ilayer+1, detId0.chamber(), detId0.roll());
+
+    ME0DigiSimLinks::const_iterator me0DigiLayerLinks = me0DigiSimLinksPtr_->find(detId1);
+    if (me0DigiLayerLinks != me0DigiSimLinksPtr_->end()) {
+      for (ME0LayerLinks::const_iterator linkItr = me0DigiLayerLinks->begin(); linkItr != me0DigiLayerLinks->end(); ++linkItr) {
+        unsigned int simStrip = linkItr->getStrip();
+        unsigned int simBX = linkItr->getBx();
+        unsigned int simTrackId = linkItr->getTrackId();
+        EncodedEventId eventId = linkItr->getEventId();
+
+        //int simPad = 1 + static_cast<int>(p->padOfStrip(simStrip));
+        unsigned int simPad = (simStrip+1)/2;
+
+        if ((std::abs(int(strip0) - int(simPad)) <= 3) && ((int) simBX == bx)) {  // allow +/-3
+          SimHitIdpr matchId(simTrackId, eventId);
+          if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
+          matches[matchId] += 1.0;
+        }
+      }
+    }
+  }
+
+  return findTrackingParticle(matches, trkPartColl);
+}
+
+int EMTFMCTruth::findTrackingParticle(const std::map<SimHitIdpr, float>& matches, const TrackingParticleCollection& trkPartColl) const {
 
 #if 0
   // Return highest pT
   int best_tp = -1;  // index of the tp
   double highest_pt = 0.;
-  for (std::map<SimHitIdpr, int>::const_iterator it_match = matches.begin(); it_match != matches.end(); ++it_match) {
+  for (std::map<SimHitIdpr, float>::const_iterator it_match = matches.begin(); it_match != matches.end(); ++it_match) {
     auto found = trackingParticleLinks_.find(it_match->first);
     if (found != trackingParticleLinks_.end()) {
       int tp = found->second;
@@ -293,8 +400,8 @@ int EMTFMCTruth::findTrackingParticle(const std::map<SimHitIdpr, int>& matches, 
 #else
   // Return majority
   int best_tp = -1;  // index of the tp
-  int majority = 0;
-  for (std::map<SimHitIdpr, int>::const_iterator it_match = matches.begin(); it_match != matches.end(); ++it_match) {
+  float majority = 0.;
+  for (std::map<SimHitIdpr, float>::const_iterator it_match = matches.begin(); it_match != matches.end(); ++it_match) {
     auto found = trackingParticleLinks_.find(it_match->first);
     if (found != trackingParticleLinks_.end()) {
       int tp = found->second;

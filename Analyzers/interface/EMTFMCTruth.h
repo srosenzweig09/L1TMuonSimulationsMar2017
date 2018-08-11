@@ -22,6 +22,9 @@
 #include "SimDataFormats/TrackerDigiSimLink/interface/StripDigiSimLink.h"
 #include "SimDataFormats/RPCDigiSimLink/interface/RPCDigiSimLink.h"
 #include "SimDataFormats/GEMDigiSimLink/interface/GEMDigiSimLink.h"
+#include "SimDataFormats/GEMDigiSimLink/interface/ME0DigiSimLink.h"
+#include "SimDataFormats/DigiSimLinks/interface/DTDigiSimLink.h"
+#include "SimDataFormats/DigiSimLinks/interface/DTDigiSimLinkCollection.h"
 
 //#include "SimDataFormats/Track/interface/SimTrack.h"
 //#include "SimDataFormats/Track/interface/SimTrackContainer.h"
@@ -48,6 +51,10 @@ public:
   typedef edm::DetSet<RPCDigiSimLink>         RPCLayerLinks;
   typedef edm::DetSetVector<GEMDigiSimLink>   GEMDigiSimLinks;
   typedef edm::DetSet<GEMDigiSimLink>         GEMLayerLinks;
+  typedef edm::DetSetVector<ME0DigiSimLink>   ME0DigiSimLinks;
+  typedef edm::DetSet<ME0DigiSimLink>         ME0LayerLinks;
+  typedef DTDigiSimLinkCollection             DTDigiSimLinks;
+
   typedef std::pair<uint32_t, EncodedEventId> SimHitIdpr;
 
   // Constructor
@@ -68,14 +75,18 @@ public:
   int findCSCWireSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const;
   int findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const;
   int findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const;
+  int findME0DigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const;
 
 
 private:
-  int findTrackingParticle(const std::map<SimHitIdpr, int>& matches, const TrackingParticleCollection& trkPartColl) const;
+  int findTrackingParticle(const std::map<SimHitIdpr, float>& matches, const TrackingParticleCollection& trkPartColl) const;
 
-  const edm::InputTag   cscSimHitsTag_, cscSimHitsXFTag_, cscStripSimLinksTag_, cscWireSimLinksTag_;
-  const edm::InputTag   rpcSimHitsTag_, rpcSimHitsXFTag_, rpcDigiSimLinksTag_;
-  const edm::InputTag   gemSimHitsTag_, gemSimHitsXFTag_, gemDigiSimLinksTag_;
+  const edm::InputTag cscSimHitsTag_, cscSimHitsXFTag_, cscStripSimLinksTag_, cscWireSimLinksTag_;
+  const edm::InputTag rpcSimHitsTag_, rpcSimHitsXFTag_, rpcDigiSimLinksTag_;
+  const edm::InputTag gemSimHitsTag_, gemSimHitsXFTag_, gemDigiSimLinksTag_, gemStripSimLinksTag_;
+  const edm::InputTag me0SimHitsTag_, me0SimHitsXFTag_, me0DigiSimLinksTag_, me0StripSimLinksTag_;
+  const edm::InputTag dtSimHitsTag_, dtSimHitsXFTag_, dtDigiSimLinksTag_;
+  const bool crossingFrame_;
 
   edm::EDGetTokenT<edm::PSimHitContainer>       cscSimHitsToken_;
   edm::EDGetTokenT<CrossingFrame<PSimHit> >     cscSimHitsXFToken_;
@@ -87,6 +98,14 @@ private:
   edm::EDGetTokenT<edm::PSimHitContainer>       gemSimHitsToken_;
   edm::EDGetTokenT<CrossingFrame<PSimHit> >     gemSimHitsXFToken_;
   edm::EDGetTokenT<GEMDigiSimLinks>             gemDigiSimLinksToken_;
+  edm::EDGetTokenT<StripDigiSimLinks>           gemStripSimLinksToken_;
+  edm::EDGetTokenT<edm::PSimHitContainer>       me0SimHitsToken_;
+  edm::EDGetTokenT<CrossingFrame<PSimHit> >     me0SimHitsXFToken_;
+  edm::EDGetTokenT<ME0DigiSimLinks>             me0DigiSimLinksToken_;
+  edm::EDGetTokenT<StripDigiSimLinks>           me0StripSimLinksToken_;
+  edm::EDGetTokenT<edm::PSimHitContainer>       dtSimHitsToken_;
+  edm::EDGetTokenT<CrossingFrame<PSimHit> >     dtSimHitsXFToken_;
+  edm::EDGetTokenT<DTDigiSimLinks>              dtDigiSimLinksToken_;
 
   const edm::PSimHitContainer *     cscSimHitsPtr_;
   const CrossingFrame<PSimHit> *    cscSimHitsXFPtr_;
@@ -98,6 +117,14 @@ private:
   const edm::PSimHitContainer *     gemSimHitsPtr_;
   const CrossingFrame<PSimHit> *    gemSimHitsXFPtr_;
   const GEMDigiSimLinks*            gemDigiSimLinksPtr_;
+  const StripDigiSimLinks*          gemStripSimLinksPtr_;
+  const edm::PSimHitContainer *     me0SimHitsPtr_;
+  const CrossingFrame<PSimHit> *    me0SimHitsXFPtr_;
+  const ME0DigiSimLinks*            me0DigiSimLinksPtr_;
+  const StripDigiSimLinks*          me0StripSimLinksPtr_;
+  const edm::PSimHitContainer *     dtSimHitsPtr_;
+  const CrossingFrame<PSimHit> *    dtSimHitsXFPtr_;
+  const DTDigiSimLinks*             dtDigiSimLinksPtr_;
 
   std::map<SimHitIdpr, int> trackingParticleLinks_;
 };
