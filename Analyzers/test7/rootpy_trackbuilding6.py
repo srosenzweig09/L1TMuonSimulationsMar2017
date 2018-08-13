@@ -200,8 +200,9 @@ class EMTFBend(object):
 
   def get(self, hit):
     if hit.type == kCSC:
-      clct = int(hit.pattern)
-      bend = self.lut[clct]
+      #clct = int(hit.pattern)
+      #bend = self.lut[clct]
+      bend = hit.bend
       bend *= hit.endcap
     elif hit.type == kGEM:
       bend = hit.bend
@@ -463,7 +464,7 @@ class PatternRecognition(object):
 
       # Create a hit (for output)
       hit_id = (hit.type, hit.station, hit.ring, hit.fr)
-      hit_sim_tp = ((hit.sim_tp1 == 0 and hit.sim_tp2 == 0) or hit.type == kME0)
+      hit_sim_tp = (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)
       myhit = Hit(hit_id, hit.bx, hit_lay, hit.emtf_phi, hit.emtf_theta, emtf_bend(hit), hit.time, hit_sim_tp)
 
       # Associate hits to road ids
@@ -490,17 +491,17 @@ class PatternRecognition(object):
             road_mode_csconly |= (1 << (4 - station))
           tmp_road_hits.append(hit)
 
-      if not (emtf_is_singlemu(road_mode) and emtf_is_muopen(road_mode_csconly)):
-        # Try BX window (0,+1)
-        road_mode = 0
-        tmp_road_hits = []
-        for hit in road_hits:
-          if hit.bx in (0,+1):
-            (_type, station, ring, fr) = hit.id
-            road_mode |= (1 << (4 - station))
-            if _type == kCSC:
-              road_mode_csconly |= (1 << (4 - station))
-            tmp_road_hits.append(hit)
+      #if not (emtf_is_singlemu(road_mode) and emtf_is_muopen(road_mode_csconly)):
+      #  # Try BX window (0,+1)
+      #  road_mode = 0
+      #  tmp_road_hits = []
+      #  for hit in road_hits:
+      #    if hit.bx in (0,+1):
+      #      (_type, station, ring, fr) = hit.id
+      #      road_mode |= (1 << (4 - station))
+      #      if _type == kCSC:
+      #        road_mode_csconly |= (1 << (4 - station))
+      #      tmp_road_hits.append(hit)
 
       if (emtf_is_singlemu(road_mode) and emtf_is_muopen(road_mode_csconly)):
         (endcap, sector, ipt, ieta, iphi) = road_id
@@ -515,7 +516,7 @@ class PatternRecognition(object):
 
     fake_modes = np.zeros(12, dtype=np.int32)  # provide early exit
     for ihit, hit in enumerate(hits):
-      if hit.bx in (-1,0,+1):
+      if hit.bx in (-1,0):
         hit.endsec = find_endsec(hit.endcap, hit.sector)
         hit.lay = emtf_layer(hit)
         assert(hit.lay != -99)
@@ -537,7 +538,7 @@ class PatternRecognition(object):
         iphi_range = xrange(4928/16)  # divide by 'doublestrip' unit (2 * 8)
 
         # Hits
-        sector_hits = [hit for hit in hits if hit.bx in (-1,0,+1) and hit.endsec == endsec]
+        sector_hits = [hit for hit in hits if hit.bx in (-1,0) and hit.endsec == endsec]
 
         # Remove all RPC hits
         #sector_hits = [hit for hit in sector_hits if hit.type != kRPC]
@@ -547,7 +548,7 @@ class PatternRecognition(object):
           part.ipt = find_pt_bin(part.invpt)
           part.ieta = find_eta_bin(part.eta)
           if part.ipt != find_pt_bin(0.):  # don't use MC info at the highest pT because of muon showering
-            sector_hits = [hit for hit in hits if hit.bx in (-1,0,+1) and hit.endsec == endsec and ((hit.sim_tp1 == 0 and hit.sim_tp2 == 0) or hit.type == kME0)]
+            sector_hits = [hit for hit in hits if hit.bx in (-1,0) and hit.endsec == endsec and (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)]
           #ipt_range = [x for x in xrange(part.ipt-1, part.ipt+1+1) if 0 <= x < len(pt_bins)-1]
           ipt_range = xrange(0,(len(pt_bins)-1)//2+1) if part.q < 0 else xrange((len(pt_bins)-1)//2, len(pt_bins)-1)
           ieta_range = [x for x in xrange(part.ieta-1, part.ieta+1+1) if 0 <= x < len(eta_bins)-1]
@@ -1056,7 +1057,7 @@ infile_r = None  # input file handle
 
 def load_pgun():
   global infile_r
-  infile = 'ntuple_SingleMuon_Toy_2GeV_add.5.root'
+  infile = 'ntuple_SingleMuon_Toy_2GeV_add.6.root'
   if use_condor:
     infile = 'root://cmsio5.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/'+infile
   infile_r = root_open(infile)
@@ -1077,8 +1078,8 @@ def load_pgun_batch(j):
   jj = np.split(np.arange(2000), 200)[j]
   infiles = []
   for j in jj:
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/ParticleGuns/CRAB3/180719_123205/%04i/ntuple_SingleMuon_Toy_%i.root' % ((j+1)/1000, (j+1)))
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy2_2GeV/ParticleGuns/CRAB3/180719_123320/%04i/ntuple_SingleMuon_Toy2_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/ParticleGuns/CRAB3/180811_213005/%04i/ntuple_SingleMuon_Toy_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy2_2GeV/ParticleGuns/CRAB3/180811_213115/%04i/ntuple_SingleMuon_Toy2_%i.root' % ((j+1)/1000, (j+1)))
 
   tree = TreeChain('ntupler/tree', infiles)
   print('[INFO] Opening file: %s' % ' '.join(infiles))
@@ -1091,7 +1092,7 @@ def load_pgun_batch(j):
 
 def load_minbias_batch(j):
   global infile_r
-  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180719_210355/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
+  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180811_211810/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
   infile = pufiles[j]
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
@@ -1198,7 +1199,7 @@ elif analysis == 'training':
       if ievt < 20:
         print(".. hit {0} type: {1} st: {2} ri: {3} fr: {4} lay: {5} sec: {6} ph: {7} th: {8}".format(ihit, hit.type, hit.station, hit.ring, hit.fr, hit_lay, hit.sector, hit.emtf_phi, hit.emtf_theta))
 
-      if hit.endcap == part.endcap and hit.sector == part.sector and ((hit.sim_tp1 == 0 and hit.sim_tp2 == 0) or hit.type == kME0):
+      if hit.endcap == part.endcap and hit.sector == part.sector and (hit.sim_tp1 == 0 and hit.sim_tp2 == 0):
         the_patterns_phi[hit_lay].append(hit.emtf_phi - part.emtf_phi)
         if part.pt >= 3.:
           the_patterns_theta[hit_lay].append(hit.emtf_theta)
@@ -1217,7 +1218,7 @@ elif analysis == 'training':
       pairings = dict([(0,2), (1,2), (2,1), (3,1), (4,1), (5,1), (6,2), (7,3), (8,4), (9,1), (10,2), (11,1)])
 
     for ihit, hit in enumerate(evt.hits):
-      if hit.endcap == part.endcap and hit.sector == part.sector and ((hit.sim_tp1 == 0 and hit.sim_tp2 == 0) or hit.type == kME0):
+      if hit.endcap == part.endcap and hit.sector == part.sector and (hit.sim_tp1 == 0 and hit.sim_tp2 == 0):
         hit_lay = hit.lay
         hit_lay_p = pairings[hit_lay]
         if hit_lay_p in cached_hits:
