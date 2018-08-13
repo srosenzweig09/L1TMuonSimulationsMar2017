@@ -15,7 +15,7 @@ discr_pt_cut = 14.
 
 reg_pt_scale = 100.
 
-discr_loss_weight = 10.
+discr_loss_weight = 20.
 
 add_noise = True
 
@@ -23,9 +23,9 @@ l1_reg = 0.0
 
 l2_reg = 0.0
 
-infile_muon = '../test7/histos_tba.16.npz'
+infile_muon = '../test7/histos_tba.17.npz'
 
-infile_pileup = '../test7/histos_tbd.16.npz'
+infile_pileup = '../test7/histos_tbd.17.npz'
 
 
 # ______________________________________________________________________________
