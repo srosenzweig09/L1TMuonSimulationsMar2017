@@ -27,6 +27,8 @@ def use_fs_trackcounting(process):
 ntupler = cms.EDAnalyzer('NtupleMaker',
     emuHitTag = cms.InputTag('simEmtfDigis'),
     emuTrackTag = cms.InputTag('simEmtfDigis'),
+    tkTrackTag = cms.InputTag('TTTracksFromTracklet', 'Level1TTTracks'),
+    tkTrackAssocTag = cms.InputTag('TTTrackAssociatorFromPixelDigis', 'Level1TTTracks'),
     genPartTag = cms.InputTag('genParticles'),
     trkPartTag = cms.InputTag('mix', 'MergedTrackTruth'),
 
