@@ -19,12 +19,12 @@ TH1.AddDirectory(False)
 kDT, kCSC, kRPC, kGEM, kME0 = 0, 1, 2, 3, 4
 
 # Globals
-eta_bins = (1.2, 1.4, 1.6, 1.8, 2.0, 2.15, 2.5)
+eta_bins = (1.2, 1.4, 1.55, 1.7, 1.8, 1.98, 2.15, 2.5)
 eta_bins = eta_bins[::-1]
 pt_bins = (-0.50, -0.333333, -0.25, -0.20, -0.15, -0.10, -0.05, 0.05, 0.10, 0.15, 0.20, 0.25, 0.333333, 0.50)
 nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
 
-assert(len(eta_bins) == 6+1)
+assert(len(eta_bins) == 7+1)
 assert(len(pt_bins) == 13+1)
 
 
@@ -303,7 +303,7 @@ class EMTFExtrapolation(object):
         self.loaded = True
     index = (self._find_eta_bin(part), self._find_pt_bin(part))
     c = self.lut[index]
-    dphi = c * (part.invpt * np.sinh(1.8) / np.sinh(abs(part.eta)))
+    dphi = c * (part.invpt * np.sinh(1.8587) / np.sinh(abs(part.eta)))
     exphi = part.phi + dphi  # in radians
     return exphi
 
@@ -712,7 +712,7 @@ class RoadSlimming(object):
     for road in roads:
       road_id = road.id
       ipt, ieta, iphi = road_id[2:]
-      if ieta <= 3:
+      if ieta <= 4:
         pairings = dict([(0,2), (1,2), (2,0), (3,0), (4,0), (5,0), (6,2), (7,3), (8,4), (9,0), (10,2), (11,0)])
       else:
         pairings = dict([(0,2), (1,2), (2,1), (3,1), (4,1), (5,1), (6,2), (7,3), (8,4), (9,1), (10,2), (11,1)])
@@ -843,21 +843,21 @@ class TrackProducer(object):
     self.s_max = 60.
     self.s_nbins = 120
     self.s_step = (self.s_max - self.s_min)/self.s_nbins
-    self.s_lut =[ 1.7822,  1.5017,  1.5567,  1.8140,  2.1903,  2.6407,  3.1506,  3.7038,
-                  4.2855,  4.8892,  5.5135,  6.1538,  6.8062,  7.4675,  8.1358,  8.8129,
-                  9.5006, 10.1893, 10.8752, 11.5731, 12.2918, 13.0238, 13.7528, 14.4833,
-                 15.2289, 15.9930, 16.7752, 17.5625, 18.3535, 19.1416, 19.9296, 20.7557,
-                 21.6340, 22.5020, 23.2818, 23.9860, 24.6808, 25.4054, 26.2238, 27.0751,
-                 27.9190, 28.8167, 29.8185, 30.8708, 31.7760, 32.5681, 33.4202, 34.3624,
-                 35.3410, 36.2845, 37.2035, 38.1359, 38.9998, 39.7940, 40.5750, 41.4005,
-                 42.2826, 43.2236, 44.3138, 45.5656, 46.9730, 48.6543, 50.0740, 51.0015,
-                 51.8566, 52.6991, 53.5378, 54.3748, 55.2111, 56.0469, 56.8824, 57.7177,
-                 58.5530, 59.3881, 60.2232, 61.0583, 61.8933, 62.7283, 63.5633, 64.3982,
-                 65.2332, 66.0681, 66.9030, 67.7380, 68.5729, 69.4078, 70.2427, 71.0777,
-                 71.9126, 72.7475, 73.5824, 74.4173, 75.2522, 76.0871, 76.9220, 77.7569,
-                 78.5918, 79.4267, 80.2616, 81.0965, 81.9314, 82.7663, 83.6012, 84.4361,
-                 85.2710, 86.1059, 86.9408, 87.7757, 88.6106, 89.4455, 90.2804, 91.1153,
-                 91.9502, 92.7851, 93.6200, 94.4549, 95.2898, 96.1247, 96.9595, 97.7944]
+    self.s_lut =[ 1.8151,  1.5335,  1.5789,  1.8240,  2.1861,  2.6183,  3.1042,  3.6294,
+                  4.1792,  4.7452,  5.3268,  5.9235,  6.5334,  7.1533,  7.7817,  8.4175,
+                  9.0597,  9.7078, 10.3633, 11.0241, 11.6916, 12.3667, 13.0459, 13.7334,
+                 14.4331, 15.1461, 15.8693, 16.5964, 17.3138, 18.0287, 18.7503, 19.4854,
+                 20.2645, 21.0666, 21.8188, 22.5034, 23.1755, 23.8487, 24.4955, 25.1794,
+                 25.9303, 26.7599, 27.6680, 28.6531, 29.6361, 30.5284, 31.3552, 32.1809,
+                 33.0649, 34.0923, 35.1211, 35.9916, 36.8043, 37.7539, 38.8677, 39.9350,
+                 40.9828, 42.0565, 43.1531, 44.3023, 45.6835, 47.1717, 48.6953, 49.8991,
+                 50.8168, 51.6717, 52.5015, 53.3255, 54.1475, 54.9686, 55.7893, 56.6097,
+                 57.4299, 58.2500, 59.0700, 59.8899, 60.7097, 61.5296, 62.3494, 63.1692,
+                 63.9889, 64.8087, 65.6284, 66.4481, 67.2679, 68.0876, 68.9073, 69.7270,
+                 70.5467, 71.3664, 72.1861, 73.0058, 73.8255, 74.6451, 75.4648, 76.2845,
+                 77.1042, 77.9239, 78.7436, 79.5633, 80.3829, 81.2026, 82.0223, 82.8420,
+                 83.6617, 84.4813, 85.3010, 86.1207, 86.9404, 87.7600, 88.5797, 89.3994,
+                 90.2191, 91.0388, 91.8584, 92.6781, 93.4978, 94.3175, 95.1371, 95.9568]
     #self.s_lut = np.linspace(self.s_min, self.s_max, num=self.s_nbins+1)[:-1]
 
   def run(self, slim_roads, variables, predictions, other_vars):
@@ -872,7 +872,7 @@ class TrackProducer(object):
     for myroad, myvars, mypreds, myother in izip(slim_roads, variables, predictions, other_vars):
       # Unpack variables
       assert(len(myvars.shape) == 1)
-      assert(myvars.shape[0] == (nlayers * 6) + 8)
+      assert(myvars.shape[0] == (nlayers * 6) + 8 + 2)
 
       x = myvars
       ndof = np.asscalar(myother)
@@ -903,7 +903,7 @@ class TrackProducer(object):
     return tracks
 
   def get_trigger_pt(self, x, y_meas):
-    #zone = int(x[(nlayers*6) + 1] * 5)
+    #zone = int(x[(nlayers*6) + 1] * 6)
 
     xml_pt = np.abs(1.0/y_meas)
     if xml_pt <= 2.:
@@ -953,7 +953,7 @@ class TrackProducer(object):
           #trigger = (y_discr > 0.9999)  # 95% coverage
         else:
           #trigger = (y_discr > 0.5393)
-          trigger = (y_discr > 0.9041) # 98.5% coverage
+          trigger = (y_discr > 0.9500) # 98.5% coverage
           #trigger = (y_discr > 0.9929) # 99% coverage
       else:
         trigger = (y_discr >= 0.)  # True
@@ -1028,12 +1028,12 @@ use_condor = ('CONDOR_EXEC' in os.environ)
 
 # Analysis mode
 #analysis = 'verbose'
-#analysis = 'training'
+analysis = 'training'
 #analysis = 'application'
 #analysis = 'rates'
 #analysis = 'effie'
 #analysis = 'mixing'
-analysis = 'images'
+#analysis = 'images'
 if use_condor:
   analysis = sys.argv[1]
 
@@ -1049,9 +1049,9 @@ print('[INFO] Using analysis mode : %s' % analysis)
 print('[INFO] Using job id        : %s' % jobid)
 
 # Other stuff
-bankfile = 'histos_tb.16.npz'
+bankfile = 'histos_tb.17.npz'
 
-kerasfile = ['model.16.json', 'model_weights.16.h5']
+kerasfile = ['model.17.json', 'model_weights.17.h5']
 
 infile_r = None  # input file handle
 
@@ -1078,8 +1078,8 @@ def load_pgun_batch(j):
   jj = np.split(np.arange(2000), 200)[j]
   infiles = []
   for j in jj:
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/ParticleGuns/CRAB3/180811_213005/%04i/ntuple_SingleMuon_Toy_%i.root' % ((j+1)/1000, (j+1)))
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy2_2GeV/ParticleGuns/CRAB3/180811_213115/%04i/ntuple_SingleMuon_Toy2_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/ParticleGuns/CRAB3/180813_212614/%04i/ntuple_SingleMuon_Toy_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy2_2GeV/ParticleGuns/CRAB3/180813_212740/%04i/ntuple_SingleMuon_Toy2_%i.root' % ((j+1)/1000, (j+1)))
 
   tree = TreeChain('ntupler/tree', infiles)
   print('[INFO] Opening file: %s' % ' '.join(infiles))
@@ -1092,7 +1092,7 @@ def load_pgun_batch(j):
 
 def load_minbias_batch(j):
   global infile_r
-  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180811_211810/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
+  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180813_210720/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
   infile = pufiles[j]
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
@@ -1201,18 +1201,18 @@ elif analysis == 'training':
 
       if hit.endcap == part.endcap and hit.sector == part.sector and (hit.sim_tp1 == 0 and hit.sim_tp2 == 0):
         the_patterns_phi[hit_lay].append(hit.emtf_phi - part.emtf_phi)
-        if part.pt >= 3.:
+        if part.pt >= 4.:  # use >=4 GeV muons for theta windows
           the_patterns_theta[hit_lay].append(hit.emtf_theta)
         if hit_lay not in cached_hits:
           cached_hits[hit_lay] = hit
 
         if hit.type == kCSC and hit.station == 2:  # extrapolation to EMTF using ME2
           dphi = delta_phi(np.deg2rad(hit.sim_phi), part.phi)
-          dphi /= (part.invpt * np.sinh(1.8) / np.sinh(abs(part.eta)))
+          dphi /= (part.invpt * np.sinh(1.8587) / np.sinh(abs(part.eta)))
           the_patterns_exphi.append(dphi)
 
     # Find pairs of hits
-    if part.ieta <= 3:
+    if part.ieta <= 4:
       pairings = dict([(0,2), (1,2), (2,0), (3,0), (4,0), (5,0), (6,2), (7,3), (8,4), (9,0), (10,2), (11,0)])
     else:
       pairings = dict([(0,2), (1,2), (2,1), (3,1), (4,1), (5,1), (6,2), (7,3), (8,4), (9,1), (10,2), (11,1)])
@@ -1291,8 +1291,9 @@ elif analysis == 'training':
 
     # Mask layers by (ieta, lay)
     valid_layers = [
+      (6,1), (6,2), (6,3), (6,4), (6,5), (6,6), (6,7), (6,8),
       (5,1), (5,2), (5,3), (5,4), (5,5), (5,6), (5,7), (5,8),
-      (4,1), (4,2), (4,3), (4,4), (4,5), (4,6), (4,7), (4,8),
+      (4,0), (4,1), (4,2), (4,3), (4,4), (4,7), (4,8), (4,9), (4,10),
       (3,0), (3,2), (3,3), (3,4), (3,7), (3,8), (3,9), (3,10),
       (2,0), (2,2), (2,3), (2,4), (2,7), (2,8), (2,9), (2,10),
       (1,0), (1,2), (1,3), (1,4), (1,7), (1,8), (1,9), (1,10), (1,11),
