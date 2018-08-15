@@ -12,7 +12,8 @@ nparameters_input = 3
 # ______________________________________________________________________________
 class Encoder(object):
 
-  def __init__(self, x, y, adjust_scale=0, reg_pt_scale=1.0):
+  def __init__(self, x, y, adjust_scale=0, reg_pt_scale=1.0,
+               drop_ge11=False, drop_ge21=False, drop_me0=False, drop_irpc=False):
     if x is not None and y is not None:
       assert(x.shape[1] == nvariables_input)
       assert(y.shape[1] == nparameters_input)
@@ -25,6 +26,9 @@ class Encoder(object):
       self.y_copy  = y.copy()
 
       # Get views
+      # Each layer has 6 sets of features (phi, theta, bend, time, ring, fr) and 1 set of mask
+      # Additionally, each road has 3 more features.
+      # Some inputs are not actually used.
       self.x_phi   = self.x_copy[:, nlayers*0:nlayers*1]
       self.x_theta = self.x_copy[:, nlayers*1:nlayers*2]
       self.x_bend  = self.x_copy[:, nlayers*2:nlayers*3]
@@ -36,6 +40,28 @@ class Encoder(object):
       self.y_pt    = self.y_copy[:, 0]  # q/pT
       self.y_phi   = self.y_copy[:, 1]
       self.y_eta   = self.y_copy[:, 2]
+
+      # Drop detectors
+      x_dropit = self.x_mask
+      if drop_ge11:
+        x_dropit[:, 9] = 1  # 9: GE1/1
+      if drop_ge21:
+        x_dropit[:, 10] = 1 # 10: GE2/1
+      if drop_me0:
+        x_dropit[:, 11] = 1 # 11: ME0
+      if drop_irpc:
+        x_ring_tmp = self.x_ring.astype(np.int32)
+        x_ring_tmp = (x_ring_tmp == 2) | (x_ring_tmp == 3)
+        x_dropit[~x_ring_tmp[:,7], 7] = 1  # 7: RE3, neither ring2 nor ring3
+        x_dropit[~x_ring_tmp[:,8], 8] = 1  # 8: RE4, neither ring2 nor ring3
+
+      self.x_phi  [x_dropit] = np.nan
+      self.x_theta[x_dropit] = np.nan
+      self.x_bend [x_dropit] = np.nan
+      self.x_time [x_dropit] = np.nan
+      self.x_ring [x_dropit] = np.nan
+      self.x_fr   [x_dropit] = np.nan
+      self.x_mask [x_dropit] = 1.0
 
       # Make event weight
       #self.w       = np.ones(self.y_pt.shape, dtype=np.float32)
@@ -164,8 +190,16 @@ class Encoder(object):
     return x
 
   def get_x(self):
-    #x_new = self.x_phi
-    x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend, self.x_time, self.x_ring, self.x_fr, self.x_straightness, self.x_zone, self.x_theta_median, self.x_mode_vars, self.x_gem_csc_bend))
+    # Drop input nodes
+    x_valid = np.ones((nlayers,), dtype=np.bool)
+    #x_valid[9]  = 0  # 9: GE1/1
+    #x_valid[10] = 0  # 10: GE2/1
+    #x_valid[11] = 0  # 11: ME0
+
+    x_new = np.hstack((self.x_phi[:,x_valid], self.x_theta[:,x_valid], self.x_bend[:,x_valid],
+                       self.x_time[:,x_valid], self.x_ring[:,x_valid], self.x_fr[:,x_valid],
+                       self.x_straightness, self.x_zone, self.x_theta_median, self.x_mode_vars,
+                       self.x_gem_csc_bend))
     return x_new
 
   def get_x_mask(self):
