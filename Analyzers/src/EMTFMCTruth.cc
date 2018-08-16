@@ -295,6 +295,14 @@ int EMTFMCTruth::findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
             SimHitIdpr matchId(simTrackId, eventId);
             if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
             matches[matchId] += 1.0;
+
+            //// Debug
+            //std::cout << "Dump RPCDigiSimLink - strip " << linkItr->getStrip() << " bx " << linkItr->getBx()
+            //          << " entry " << linkItr->getEntryPoint() << " p4 " << linkItr->getMomentumAtEntry()
+            //          << " tof " << linkItr->getTimeOfFlight() << " eloss " << linkItr->getEnergyLoss()
+            //          << " pdg " << linkItr->getParticleType() << " process " << linkItr->getProcessType()
+            //          << " trackId " << linkItr->getTrackId() << " eventId " << linkItr->getEventId().bunchCrossing() << "," << linkItr->getEventId().event()
+            //          << std::endl;
           }
         }
       }
@@ -331,7 +339,16 @@ int EMTFMCTruth::findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
         for (int strip0 = stripA; strip0 < stripB+1; ++strip0) {
           if ((detId1.station() == 1) && (std::abs(int(strip0) - int(simPad)) <= 2) && ((int) simBX == bx)) {  // allow +/-2
             SimHitIdpr matchId(simTrackId, eventId);
+            if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
             matches[matchId] += 1.0;
+
+            //// Debug
+            //std::cout << "Dump GEMDigiSimLink - strip " << linkItr->getStrip() << " bx " << linkItr->getBx()
+            //          << " entry " << linkItr->getEntryPoint() << " p4 " << linkItr->getMomentumAtEntry()
+            //          << " tof " << linkItr->getTimeOfFlight() << " eloss " << linkItr->getEnergyLoss()
+            //          << " pdg " << linkItr->getParticleType() << " process " << linkItr->getProcessType()
+            //          << " trackId " << linkItr->getTrackId() << " eventId " << linkItr->getEventId().bunchCrossing() << "," << linkItr->getEventId().event()
+            //          << std::endl;
           } else if ((detId1.station() == 2) && (std::abs(int(strip0) - int(simPad)) <= 1) && ((int) simBX == bx)) {  // allow +/-1
             SimHitIdpr matchId(simTrackId, eventId);
             if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
