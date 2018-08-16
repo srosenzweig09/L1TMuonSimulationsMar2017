@@ -1,5 +1,7 @@
 import numpy as np
 
+import contextlib
+
 from scipy.stats import beta
 
 def find_sumw2_errors(y, w):
@@ -32,3 +34,14 @@ def find_efficiency_errors(total_array, passed_array, level=0.682689492137):
     lower_array[i] = eff - l
     upper_array[i] = u - eff
   return np.vstack((lower_array, upper_array))
+
+
+# Answer from https://stackoverflow.com/a/2891805
+@contextlib.contextmanager
+def np_printoptions(*args, **kwargs):
+    original = np.get_printoptions()
+    np.set_printoptions(*args, **kwargs)
+    try:
+        yield
+    finally:
+        np.set_printoptions(**original)

@@ -7,7 +7,7 @@ import tensorflow as tf
 
 from keras import backend as K
 from keras.models import Sequential, Model, clone_model, load_model, model_from_json
-from keras.layers import Dense, Activation, Dropout, Input, BatchNormalization
+from keras.layers import Dense, Activation, Dropout, Input, Concatenate, BatchNormalization
 from keras.callbacks import LearningRateScheduler, TerminateOnNaN, ModelCheckpoint
 from keras.regularizers import Regularizer
 from keras.constraints import Constraint
@@ -15,6 +15,7 @@ from keras import initializers, regularizers, optimizers, losses
 
 import h5py
 import json
+import functools
 
 
 # ______________________________________________________________________________
@@ -28,6 +29,11 @@ def NewTanh(x):
   return K.tanh(x)
   #return 1.7159 * K.tanh(x * 2./3.)
   #return K.clip(x, -1., 1.)
+
+# ______________________________________________________________________________
+# New elu
+def NewElu(x, alpha=1.0):
+  return K.elu(x, alpha) + alpha*1.0 + 1e-15
 
 # ______________________________________________________________________________
 class LCountParams(Regularizer):
@@ -142,6 +148,7 @@ def update_keras_custom_objects():
     'masked_binary_crossentropy': masked_binary_crossentropy,
     'NewLeakyReLU': NewLeakyReLU,
     'NewTanh': NewTanh,
+    'NewElu': NewElu,
     'LCountParams': LCountParams,
     'ZeroSomeWeights': ZeroSomeWeights,
   }
@@ -220,7 +227,9 @@ def create_model_bn(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr
   return model
 
 # ______________________________________________________________________________
-def create_model_pruned(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0, l1_reg=0.0, l2_reg=0.0, use_bn=True, constraint1=None, constraint2=None, constraint3=None):
+def create_model_pruned(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0,
+                        l1_reg=0.0, l2_reg=0.0, use_bn=True,
+                        constraint1=None, constraint2=None, constraint3=None):
   regularizer = None  # disable
   inputs = Input(shape=(nvariables,), dtype='float32')
 
@@ -239,8 +248,7 @@ def create_model_pruned(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, d
   regr = Dense(1, activation='linear', kernel_initializer='glorot_uniform', name='regr')(x)
   discr = Dense(1, activation='sigmoid', kernel_initializer='glorot_uniform', name='discr')(x)
 
-  # This creates a model that includes
-  # the Input layer, three Dense layers and the Output layer
+  # Create model
   model = Model(inputs=inputs, outputs=[regr, discr])
 
   # Set loss and optimizers
@@ -254,6 +262,67 @@ def create_model_pruned(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, d
     #metrics={'regr': ['acc', 'mse', 'mae'], 'discr': ['acc',]}
     )
   return model
+
+# ______________________________________________________________________________
+def log_prob_normal(x, loc=0.0, scale=1.0):
+  y = (x - loc) / scale
+  y = -0.5*K.square(y) - 0.5*K.log(2*np.pi) - K.log(scale)
+  return y
+
+def log_prob_softmax(x):
+  return tf.nn.log_softmax(K.clip(x,K.epsilon(),1.0))
+
+def log_prob(x, mus, sigmas, pi):
+  distribution_log_probs = log_prob_normal(x, mus, sigmas)
+  #cat_log_probs = log_prob_softmax(pi)
+  cat_log_probs = K.log(pi)
+  final_log_probs = tf.add(distribution_log_probs, cat_log_probs)
+  result = tf.reduce_logsumexp(final_log_probs, axis=-1)
+  return result
+
+def mixture_loss(y_true, y_pred, mus, sigmas, pi):
+  loss = -log_prob(y_true, mus, sigmas, pi)
+  return K.mean(loss, axis=-1)
+
+def mixture_loss_for_keras(mus, sigmas, pi):
+  @functools.wraps(mixture_loss)
+  def loss(y_true, y_pred):
+    return mixture_loss(y_true, y_pred, mus, sigmas, pi)
+  return loss
+
+def create_model_mdn(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, mixture=16, discr_loss_weight=1.0,
+                     l1_reg=0.0, l2_reg=0.0, use_bn=True,
+                     constraint1=None, constraint2=None, constraint3=None):
+  regularizer = None  # disable
+  inputs = Input(shape=(nvariables,), dtype='float32')
+
+  x = Dense(nodes1, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, kernel_constraint=constraint1, use_bias=False)(inputs)
+  if use_bn: x = BatchNormalization(center=True, scale=True, epsilon=1e-4, momentum=0.9)(x)
+  x = Activation('tanh')(x)
+  if nodes2:
+    x = Dense(nodes2, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, kernel_constraint=constraint2, use_bias=False)(x)
+    if use_bn: x = BatchNormalization(center=True, scale=True, epsilon=1e-4, momentum=0.9)(x)
+    x = Activation('tanh')(x)
+    if nodes3:
+      x = Dense(nodes3, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, kernel_constraint=constraint3, use_bias=False)(x)
+      if use_bn: x = BatchNormalization(center=True, scale=True, epsilon=1e-4, momentum=0.9)(x)
+      x = Activation('tanh')(x)
+
+  mus = Dense(mixture, activation=None, kernel_initializer='glorot_uniform', name='mus')(x)  # the means
+  sigmas = Dense(mixture, activation=NewElu, kernel_initializer='glorot_uniform', name='sigmas')(x)  # the variance
+  pi = Dense(mixture, activation='softmax', kernel_initializer='glorot_uniform', name='pi')(x)  # the mixture components
+
+  outputs = Concatenate(axis=1)([pi, mus, sigmas])
+
+  # Create model
+  model = Model(inputs=inputs, outputs=outputs)
+
+  # Set loss and optimizers
+  adam = optimizers.Adam(lr=lr)
+  keras_loss = mixture_loss_for_keras(mus=mus, sigmas=sigmas, pi=pi)
+  model.compile(optimizer=adam, loss=keras_loss)
+  return model
+
 
 # ______________________________________________________________________________
 def create_model_sequential(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, l1_reg=0.0, l2_reg=0.0):

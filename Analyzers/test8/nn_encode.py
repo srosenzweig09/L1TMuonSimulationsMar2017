@@ -2,7 +2,7 @@ import numpy as np
 
 nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
 
-nvariables = (nlayers * 6) + 8 + 2
+nvariables = (nlayers * 6) + 8
 
 nvariables_input = (nlayers * 7) + 3
 
@@ -198,8 +198,7 @@ class Encoder(object):
 
     x_new = np.hstack((self.x_phi[:,x_valid], self.x_theta[:,x_valid], self.x_bend[:,x_valid],
                        self.x_time[:,x_valid], self.x_ring[:,x_valid], self.x_fr[:,x_valid],
-                       self.x_straightness, self.x_zone, self.x_theta_median, self.x_mode_vars,
-                       self.x_gem_csc_bend))
+                       self.x_straightness, self.x_zone, self.x_theta_median, self.x_mode_vars))
     return x_new
 
   def get_x_mask(self):

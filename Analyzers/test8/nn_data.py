@@ -21,6 +21,8 @@ def muon_data(filename, adjust_scale=0, reg_pt_scale=1.0, correct_for_eta=False)
   except:
     logger.error('Failed to load data from file: {0}'.format(filename))
 
+  assert(the_variables.shape[0] == the_parameters.shape[0])
+
   encoder = Encoder(the_variables, the_parameters, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale)
   if correct_for_eta:
     x, y, w, x_mask = encoder.get_x(), encoder.get_y_corrected_for_eta(), encoder.get_w(), encoder.get_x_mask()
@@ -61,6 +63,7 @@ def pileup_data(filename, adjust_scale=0, reg_pt_scale=1.0):
   except:
     logger.error('Failed to load data from file: {0}'.format(filename))
 
+  assert(the_variables.shape[0] == the_auxiliaries.shape[0])
   assert(the_auxiliaries.shape[1] == 4)  # jobid, ievt, highest_part_pt, highest_track_pt
 
   encoder = Encoder(the_variables, the_parameters, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale)

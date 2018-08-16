@@ -19,6 +19,8 @@ discr_loss_weight = 20.
 
 add_noise = True
 
+mixture = 6
+
 l1_reg = 0.0
 
 l2_reg = 0.0
@@ -26,6 +28,8 @@ l2_reg = 0.0
 infile_muon = '../test7/histos_tba.17.npz'
 
 infile_pileup = '../test7/histos_tbd.17.npz'
+
+infile_images = '../test7/histos_tbe.17.npz'
 
 
 # ______________________________________________________________________________
