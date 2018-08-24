@@ -1,0 +1,1 @@
+tensorboard --logdir=mnist_model/ --port=8888
