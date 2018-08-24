@@ -1226,7 +1226,6 @@ elif analysis == 'training':
           hit_p = cached_hits[hit_lay_p]
           the_patterns_match[hit_lay].append(hit.emtf_phi - hit_p.emtf_phi)
 
-
   # End loop over events
   unload_tree()
 
@@ -1918,12 +1917,12 @@ elif analysis == 'images':
       t_lut[3,1] = 16,26  # ME1/1 (F)
       t_lut[3,2] = 24,37  # ME1/1 (F)
       t_lut[3,3] = 34,43  # ME1/1 (F)
-      t_lut[3,4] = 41,53  # ME1/1 (F)
+      t_lut[3,4] = 40,53  # ME1/1 (F)
       t_lut[4,0] = 4,17   # ME1/1 (R)
       t_lut[4,1] = 16,26  # ME1/1 (R)
       t_lut[4,2] = 24,37  # ME1/1 (R)
       t_lut[4,3] = 34,43  # ME1/1 (R)
-      t_lut[4,4] = 41,53  # ME1/1 (R)
+      t_lut[4,4] = 40,53  # ME1/1 (R)
       #
       t_lut[0,4] = 46,54  # ME1/2 (F)
       t_lut[0,5] = 52,67  # ME1/2 (F)
@@ -1988,6 +1987,9 @@ elif analysis == 'images':
                     1.000000,  1.000000,  1.000000, -0.515074, -0.599277, -0.073872,]
       self.s_bend_lut = np.array(s_bend_lut, dtype=np.float32)
 
+      s_bend_sign_lut = np.sign(self.s_bend_lut)
+      self.s_bend_sign_lut = np.array(s_bend_sign_lut, dtype=np.float32)
+
       s_bend_max_lut = [28, 40, 12, 20, 20, 0, 0, 0, 0, 3, 1, 18]
       self.s_bend_max_lut = np.array(s_bend_max_lut, dtype=np.float32)
 
@@ -2029,12 +2031,13 @@ elif analysis == 'images':
       lay = self.get_layer(hit)
       #s = self.s_bend_lut[lay]
       #bend *= s
-      s = self.s_bend_max_lut[lay]
-      if s == 0:
+      bend_sign = self.s_bend_sign_lut[lay]
+      bend_max = self.s_bend_max_lut[lay]
+      if bend_max == 0:
         bend = 0.5
       else:
-        bend = np.clip(float(bend), -s, s)
-        bend = 0.5 + bend/(2 * s)
+        bend = np.clip(float(bend), -bend_max, bend_max)
+        bend = 0.5 + (bend_sign * bend)/(2 * bend_max)
       return bend
 
     def get_chn_theta(self, hit):
@@ -2112,7 +2115,7 @@ elif analysis == 'images':
       # sector 1 starts at 15 deg
       loc = glob - 15. - (60. * (sector-1))
       # but here I'm assuming sector 1 centers at 40 deg
-      center = 40.
+      center = 40. - 15.
       dphi = delta_phi(loc, center)
       return dphi
 
@@ -2203,12 +2206,28 @@ elif analysis == 'images':
     labels = assign_emtf_label(part, best_sector)
     out_labels.append(labels)
 
-    parameters = np.asarray((np.true_divide(part.q, part.pt), part.phi, part.eta), dtype=np.float32)
+    parameters = np.asarray((np.true_divide(part.q, part.pt), part.phi, part.eta, best_sector), dtype=np.float32)
     out_parameters.append(parameters)
+
+    if ievt < 40 and part.pt > 5.:
+      print("evt {0}".format(ievt))
+      # Hits
+      for ihit, hit in enumerate(sector_hits):
+        print(".. hit  {0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10} {11}".format(ihit, hit.bx, hit.type, hit.station, hit.ring, hit.sector, hit.fr, hit.emtf_phi, hit.emtf_theta, hit.time, hit.sim_tp1, hit.sim_tp2))
+      # Gen particles
+      for ipart, part in enumerate(evt.particles):
+        print(".. part {0} {1} {2} {3} {4} {5}".format(ipart, part.pt, part.phi, part.eta, part.theta, part.q))
+      # Zones
+      n_zones = make_emtf_image.zone_size
+      n_rows = make_emtf_image.m_size
+      for zone in xrange(n_zones):
+        # Count hits in zone
+        rows = [px[0] for px in image_pixels if px[0] != -99 and (zone*n_rows) <= px[0] < ((zone+1)*n_rows)]
+        print(".. zone {0} {1}/{2}".format(zone, len(rows), len(sector_hits)))
+      print(".. zone info", map(make_emtf_image.get_zones, sector_hits))
 
   # End loop over events
   unload_tree()
-
 
 
   # ____________________________________________________________________________
