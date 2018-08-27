@@ -11,11 +11,13 @@ superstrip_size = 16
 
 n_zones = 7
 
-n_rows = n_zones * 11
+rows_per_zone = 11
+
+n_rows = n_zones * rows_per_zone
 
 n_columns = 5040 // superstrip_size
 
-n_channels = 3
+n_channels = 2
 
 n_classes = 21
 
@@ -28,20 +30,21 @@ learning_rate = 1e-3
 def parse_image_fn(pixels, channels):
   n = pixels.shape[0]
   assert(pixels.shape == (n,2))
-  assert(channels.shape == (n,n_channels))
+  #assert(channels.shape == (n,n_channels))
 
   bad_pixel = -99
   mask = tf.not_equal(pixels[:,0], bad_pixel)
 
   indices = tf.boolean_mask(pixels, mask)
   updates = tf.boolean_mask(channels, mask)
+  updates = tf.stack([updates[:,0], 1-updates[:,0]], axis=1)
   image_shape = (n_rows, n_columns, n_channels)
   image = tf.scatter_nd(indices, updates, image_shape)
   return image
 
 def parse_label_fn(labels):
   assert(labels.shape == (3,))
-  lb = labels[:1]
+  lb = labels[0]
   return lb
 
 
@@ -76,45 +79,74 @@ def create_model(params={}):
     assert data_format == 'channels_last'
     input_shape = [n_rows, n_columns, n_channels]
 
+  # ____________________________________________________________________________
   l = tf.keras.layers
 
-  # The model consists of a sequential chain of layers, so tf.keras.Sequential
-  # (a subclass of tf.keras.Model) makes for a compact description.
-  model = tf.keras.Sequential(
-      [
-          #l.Reshape(
-          #    target_shape=input_shape,
-          #    input_shape=(n_rows * n_columns,)),
-          l.Conv2D(
-              32,
-              5,
-              input_shape=input_shape,
-              padding='same',
-              data_format=data_format,
-              activation=tf.nn.relu),
-          l.MaxPooling2D(
-              (2, 2),
-              (2, 2),
-              padding='same',
-              data_format=data_format),
-          l.Conv2D(
-              64,
-              5,
-              padding='same',
-              data_format=data_format,
-              activation=tf.nn.relu),
-          l.MaxPooling2D(
-              (2, 2),
-              (2, 2),
-              padding='same',
-              data_format=data_format),
-          l.Flatten(),
-          l.Dense(1024, activation=tf.nn.relu),
-          #l.Dropout(dropout),
-          l.Dense(n_classes),
-      ])
+  inputs = l.Input(shape=input_shape, dtype='float32')
 
-  model.summary()
+  inputs_zone0 = l.Lambda(lambda x: x[:, 0*rows_per_zone:(0+1)*rows_per_zone])(inputs)
+  inputs_zone1 = l.Lambda(lambda x: x[:, 1*rows_per_zone:(1+1)*rows_per_zone])(inputs)
+  inputs_zone2 = l.Lambda(lambda x: x[:, 2*rows_per_zone:(2+1)*rows_per_zone])(inputs)
+  inputs_zone3 = l.Lambda(lambda x: x[:, 3*rows_per_zone:(3+1)*rows_per_zone])(inputs)
+  inputs_zone4 = l.Lambda(lambda x: x[:, 4*rows_per_zone:(4+1)*rows_per_zone])(inputs)
+  inputs_zone5 = l.Lambda(lambda x: x[:, 5*rows_per_zone:(5+1)*rows_per_zone])(inputs)
+  inputs_zone6 = l.Lambda(lambda x: x[:, 6*rows_per_zone:(6+1)*rows_per_zone])(inputs)
+
+  def first_conv2d_layer_fn(inputs):
+    x = l.Conv2D(
+            12,
+            (11,63),
+            strides=(11,4),
+            padding='same',
+            activation='relu')(inputs)
+    return x
+
+  x_zone0 = first_conv2d_layer_fn(inputs_zone0)
+  x_zone1 = first_conv2d_layer_fn(inputs_zone1)
+  x_zone2 = first_conv2d_layer_fn(inputs_zone2)
+  x_zone3 = first_conv2d_layer_fn(inputs_zone3)
+  x_zone4 = first_conv2d_layer_fn(inputs_zone4)
+  x_zone5 = first_conv2d_layer_fn(inputs_zone5)
+  x_zone6 = first_conv2d_layer_fn(inputs_zone6)
+
+  x_all_zones = [x_zone0, x_zone1, x_zone2, x_zone3, x_zone4, x_zone5, x_zone6]
+  x = l.Concatenate()(x_all_zones)
+
+  x = l.Conv2D(
+          48,
+          (5,5),
+          strides=(1,1),
+          padding='same',
+          activation='relu')(x)
+  #x = l.BatchNormalization(momentum=0.9,epsilon=1e-4)(x)
+  x = l.MaxPooling2D(
+          (1,5),
+          strides=(1,3),
+          padding='valid')(x)
+  x = l.MaxPooling2D(
+          (1,3),
+          strides=(1,2),
+          padding='valid')(x)
+  x = l.Flatten()(x)
+  x = l.Dense(40, use_bias=False)(x)
+  #x = l.BatchNormalization(momentum=0.9,epsilon=1e-4)(x)
+  x = l.Activation('relu')(x)
+  #x = l.Dropout(dropout)(x)
+  x = l.Dense(12, use_bias=False)(x)
+  #x = l.BatchNormalization(momentum=0.9,epsilon=1e-4)(x)
+  x = l.Activation('relu')(x)
+  #x = l.Dropout(dropout)(x)
+  x = l.Dense(n_classes)(x)
+
+  outputs = x
+
+  model = tf.keras.Model(inputs=inputs, outputs=outputs)
+
+  #model.compile(optimizer=tf.keras.optimizers.Adam(lr=learning_rate),
+  #              loss='categorical_crossentropy',
+  #              metrics=['accuracy'])
+
+  #model.summary()
   return model
 
 
@@ -161,7 +193,8 @@ def model_fn(features, labels, mode, params):
     except TypeError:  # no keyword argument 'training' in tensorflow 1.5
       tf.keras.backend.set_learning_phase(True)
       logits = model(image)
-    loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
+    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=logits)
+    loss = tf.reduce_mean(loss)
     accuracy = tf.metrics.accuracy(
         labels=labels, predictions=tf.argmax(logits, axis=1))
 
@@ -185,7 +218,8 @@ def model_fn(features, labels, mode, params):
     except TypeError:  # no keyword argument 'training' in tensorflow 1.5
       tf.keras.backend.set_learning_phase(False)
       logits = model(image)
-    loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
+    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=logits)
+    loss = tf.reduce_mean(loss)
     accuracy = tf.metrics.accuracy(
         labels=labels, predictions=tf.argmax(logits, axis=1))
 
@@ -263,7 +297,7 @@ def define_reiam_flags():
   set_defaults(data_dir='./reiam_data',
                model_dir='./reiam_model',
                batch_size=50,  # use 32?
-               num_epochs=1)
+               num_epochs=10)
 
 
 # ______________________________________________________________________________
@@ -315,6 +349,17 @@ def run_reiam(flags_obj, data):
     data_format = ('channels_first'
                    if tf.test.is_built_with_cuda() else 'channels_last')
 
+  params = {
+      'data_format': data_format,
+      'multi_gpu': multi_gpu,
+      'n_rows': n_rows,
+      'n_columns': n_columns,
+      'n_channels': n_channels,
+      'n_classes': n_classes,
+      'dropout': dropout,
+      'learning_rate': learning_rate,
+  }
+
   # Create Estimator
   sess_config = tf.ConfigProto(
       log_device_placement=flags_obj.log_device_placement,
@@ -333,16 +378,7 @@ def run_reiam(flags_obj, data):
       model_fn=model_function,
       model_dir=flags_obj.model_dir,
       config=model_config,
-      params={
-          'data_format': data_format,
-          'multi_gpu': multi_gpu,
-          'n_rows': n_rows,
-          'n_columns': n_columns,
-          'n_channels': n_channels,
-          'n_classes': n_classes,
-          'dropout': dropout,
-          'learning_rate': learning_rate,
-      })
+      params=params)
 
   # Set up training and evaluation input functions.
   def get_train_input_fn_and_hook():
@@ -369,7 +405,7 @@ def run_reiam(flags_obj, data):
         dataset = dataset.batch(batch_size=flags_obj.batch_size)
         if flags_obj.prefetch:
           dataset = dataset.prefetch(buffer_size=flags_obj.prefetch_buffer_size)
-        dataset = dataset.repeat(flags_obj.num_epochs)
+        dataset = dataset.repeat(flags_obj.epochs_between_evals)
         return dataset
     return input_fn, feed_fn_hook
 
@@ -397,7 +433,7 @@ def run_reiam(flags_obj, data):
         dataset = dataset.batch(batch_size=flags_obj.batch_size)
         if flags_obj.prefetch:
           dataset = dataset.prefetch(buffer_size=flags_obj.prefetch_buffer_size)
-        dataset = dataset.repeat(flags_obj.num_epochs)
+        dataset = dataset.repeat(flags_obj.epochs_between_evals)
         return dataset
     return input_fn, feed_fn_hook
 
@@ -414,7 +450,9 @@ def run_reiam(flags_obj, data):
 
   # Patch the function _get_features_and_labels_from_input_fn()
   import types
+  reiam_classifier.train_input_fn = train_input_fn
   reiam_classifier.train_input_hook = train_input_hook
+  reiam_classifier.eval_input_fn = eval_input_fn
   reiam_classifier.eval_input_hook = eval_input_hook
   reiam_classifier._get_features_and_labels_from_input_fn = types.MethodType(_get_features_and_labels_from_input_fn, reiam_classifier)
 
@@ -422,17 +460,53 @@ def run_reiam(flags_obj, data):
   for epoch in range(flags_obj.num_epochs // flags_obj.epochs_between_evals):
     reiam_classifier.train(input_fn=train_input_fn, hooks=train_hooks)
     eval_results = reiam_classifier.evaluate(input_fn=eval_input_fn, hooks=eval_hooks)
-    print('Epoch %i/%i Evaluation results:\n\t%s\n' % (epoch+1, flags_obj.num_epochs, eval_results))
+    print('Epoch %i/%i evaluation results:\n\t%s\n' % (epoch+1, flags_obj.num_epochs, eval_results))
 
     if model_helpers.past_stop_threshold(flags_obj.stop_threshold,
                                          eval_results['accuracy']):
       break
 
+  #train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, hooks=train_hooks, max_steps=None)
+  #eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn, hooks=eval_hooks, steps=None)
+  #for epoch in range(flags_obj.num_epochs):
+  #  tf.estimator.train_and_evaluate(reiam_classifier, train_spec, eval_spec)
+
+  # ____________________________________________________________________________
   # Export the model
-  if flags_obj.export_dir is not None:
-    image = tf.placeholder(tf.float32, [None, n_rows, n_columns])
-    input_fn = tf.estimator.export.build_raw_serving_input_receiver_fn({
-        'image': image,
-    })
-    reiam_classifier.export_savedmodel(flags_obj.export_dir, input_fn)
-  return
+  from tensorflow.python.training import saver as saver_lib
+  checkpoint_path = saver_lib.latest_checkpoint(reiam_classifier._model_dir)
+  if not checkpoint_path:
+    raise ValueError('Could not find trained model in model_dir: {}.'.
+                     format(reiam_classifier._model_dir))
+  reader = tf.train.NewCheckpointReader(checkpoint_path)
+
+  #keys = []
+  #for key in reader.get_variable_to_shape_map():
+  #  if key == 'global_step':
+  #    continue
+  #  keys.append(key)
+  #print len(keys), keys
+
+  keras_model = create_model(params)
+  names = [weight.name for layer in keras_model.layers for weight in layer.weights]
+  weights = keras_model.get_weights()
+  assert(len(names) == len(weights))
+
+  for i, (name, weight) in enumerate(zip(names, weights)):
+    key = str(name).strip(':0')
+    arr = reader.get_tensor(key)
+    assert(weights[i].shape == arr.shape)
+    weights[i] = arr
+  keras_model.set_weights(weights)
+
+  from nn_models import save_my_model
+  save_my_model(keras_model, name='model_cnn')
+
+  ## Export the model
+  #if flags_obj.export_dir is not None:
+  #  image = tf.placeholder(tf.float32, [None, n_rows, n_columns, n_channels])
+  #  input_fn = tf.estimator.export.build_raw_serving_input_receiver_fn({
+  #      'image': image,
+  #  })
+  #  reiam_classifier.export_savedmodel(flags_obj.export_dir, input_fn)
+  return reiam_classifier

@@ -188,6 +188,7 @@ def create_model(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr_lo
     loss_weights={'regr': 1.0, 'discr': discr_loss_weight},
     #metrics={'regr': ['acc', 'mse', 'mae'], 'discr': ['acc',]}
     )
+  model.summary()
   return model
 
 # ______________________________________________________________________________
@@ -224,6 +225,7 @@ def create_model_bn(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr
     loss_weights={'regr': 1.0, 'discr': discr_loss_weight},
     #metrics={'regr': ['acc', 'mse', 'mae'], 'discr': ['acc',]}
     )
+  model.summary()
   return model
 
 # ______________________________________________________________________________
@@ -261,6 +263,7 @@ def create_model_pruned(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, d
     loss_weights={'regr': 1.0, 'discr': discr_loss_weight},
     #metrics={'regr': ['acc', 'mse', 'mae'], 'discr': ['acc',]}
     )
+  model.summary()
   return model
 
 # ______________________________________________________________________________
@@ -321,6 +324,7 @@ def create_model_mdn(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, mixt
   adam = optimizers.Adam(lr=lr)
   keras_loss = mixture_loss_for_keras(mus=mus, sigmas=sigmas, pi=pi)
   model.compile(optimizer=adam, loss=keras_loss)
+  model.summary()
   return model
 
 
@@ -342,6 +346,7 @@ def create_model_sequential(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=1
 
   adam = optimizers.Adam(lr=lr)
   model.compile(loss=huber_loss, optimizer=adam, metrics=['acc'])
+  model.summary()
   return model
 
 # ______________________________________________________________________________
@@ -363,13 +368,14 @@ def create_model_sequential_regularized(nvariables, lr=0.001, nodes1=64, nodes2=
 
   adam = optimizers.Adam(lr=lr)
   model.compile(loss=huber_loss, optimizer=adam, metrics=['acc'])
+  model.summary()
   return model
 
 # ______________________________________________________________________________
 # Save/Load models
 def save_my_model(model, name='model'):
   # Store model to file
-  model.summary()
+  #model.summary()
   model.save(name + '.h5')
   model.save_weights(name + '_weights.h5')
   # Store model to json
@@ -380,6 +386,9 @@ def save_my_model(model, name='model'):
 def load_my_model(name='model', weights_name='model_weights'):
   with open(name + '.json', 'r') as f:
     json_string = json.dumps(json.load(f))
+    json_string = json_string.replace('"axis": [3]', '"axis": 3')  # dirty hack
+    json_string = json_string.replace('"axis": [2]', '"axis": 2')  # dirty hack
+    json_string = json_string.replace('"axis": [1]', '"axis": 1')  # dirty hack
     model = model_from_json(json_string)
   #model = load_model(name + '.h5')
   model.load_weights(weights_name + '.h5')
