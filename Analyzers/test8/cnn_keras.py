@@ -62,31 +62,59 @@ def create_model(params={}):
           #    target_shape=input_shape,
           #    input_shape=(n_rows * n_columns,)),
           l.Conv2D(
-              32,
-              5,
+              48,
+              (11,19),
+              strides=(11,2),
               input_shape=input_shape,
               padding='same',
-              data_format=data_format,
               activation='relu'),
-          l.MaxPooling2D(
-              (2, 2),
-              (2, 2),
-              padding='same',
-              data_format=data_format),
+          #l.BatchNormalization(),
+          #l.MaxPooling2D(
+          #    (1,3),
+          #    strides=(1,4),
+          #    padding='valid'),
           l.Conv2D(
               64,
-              5,
+              (5,5),
+              strides=(1,1),
               padding='same',
-              data_format=data_format,
               activation='relu'),
-          l.MaxPooling2D(
-              (2, 2),
-              (2, 2),
+          l.BatchNormalization(),
+          l.Conv2D(
+              32,
+              (3,3),
+              strides=(1,1),
               padding='same',
-              data_format=data_format),
+              activation='relu'),
+          l.BatchNormalization(),
+          l.MaxPooling2D(
+              (1,5),
+              strides=(1,3),
+              padding='valid'),
+          l.MaxPooling2D(
+              (1,5),
+              strides=(1,3),
+              padding='valid'),
+          l.MaxPooling2D(
+              (1,3),
+              strides=(1,2),
+              padding='valid'),
+          #l.GlobalMaxPooling2D(),
+          l.SeparableConv2D(
+              64,
+              (7,7),
+              strides=(1,1),
+              depth_multiplier=1,
+              padding='valid'),
           l.Flatten(),
-          l.Dense(1024, activation='relu'),
-          #l.Dropout(dropout),
+          l.Dense(48, use_bias=False),
+          l.BatchNormalization(),
+          l.Activation('relu'),
+          l.Dropout(dropout),
+          l.Dense(48, use_bias=False),
+          l.BatchNormalization(),
+          l.Activation('relu'),
+          l.Dropout(dropout),
           l.Dense(n_classes, activation='softmax'),  # in Keras, get softmax outputs instead of logits
       ])
 
@@ -106,8 +134,8 @@ def define_reiam_flags():
   define_reiam_base_flags()
   set_defaults(data_dir='./reiam_data',
                model_dir='./reiam_model',
-               batch_size=50,  # use 32?
-               num_epochs=1)
+               batch_size=50,
+               num_epochs=20)
 
 
 # ______________________________________________________________________________
@@ -116,6 +144,9 @@ def run_reiam(flags_obj, data):
   Args:
     flags_obj: An object containing parsed flag values.
   """
+
+  assert(tf.keras.backend.backend() == 'tensorflow')
+  assert(tf.keras.backend.image_data_format() == 'channels_last')
 
   (images_px_train, images_px_test, images_ch_train, images_ch_test, labels_train, labels_test, parameters_train, parameters_test) = data
 
@@ -155,7 +186,7 @@ def run_reiam(flags_obj, data):
   log = TrainingLog()
   sys.stdout = log
 
-  history = model.fit(images, labels, epochs=flags_obj.num_epochs, batch_size=flags_obj.batch_size, verbose=1)
+  history = model.fit(images, labels, epochs=flags_obj.num_epochs, batch_size=flags_obj.batch_size, validation_split=0.1, verbose=1)
 
   # Restore sys.stdout
   sys.stdout = log.stdout
