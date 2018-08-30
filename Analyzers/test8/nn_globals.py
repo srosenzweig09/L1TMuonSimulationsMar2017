@@ -39,7 +39,7 @@ import sys
 os.environ['KERAS_BACKEND'] = 'tensorflow'
 OLD_STDOUT = sys.stdout
 
-logger.info('Using cmssw {0}'.format(os.environ['CMSSW_VERSION']))
+logger.info('Using cmssw {0}'.format(os.environ['CMSSW_VERSION'] if 'CMSSW_VERSION' in os.environ else 'n/a'))
 
 import numpy as np
 np.random.seed(2023)

@@ -116,9 +116,9 @@ class Encoder(object):
         #x_theta_tmp   = np.abs(x_theta_tmp) > theta_cuts
         self.x_bend[:, 5:9] = 0  # do not use RPC bend
         x_ring_tmp    = self.x_ring.astype(np.int32)
-        x_ring_tmp    = (x_ring_tmp == 2) | (x_ring_tmp == 3)
-        self.x_ring[x_ring_tmp] = 1  # ring 2,3 -> 1
-        self.x_ring[~x_ring_tmp] = 0 # ring 1,4 -> 0
+        x_ring_tmp    = (x_ring_tmp == 2) | (x_ring_tmp == 3) | (x_ring_tmp == 4)
+        self.x_ring[x_ring_tmp] = 1  # ring 2,3,4 -> 1; also differentiate ring 4 (ME1/1a) from ring 1 (ME1/1b)
+        self.x_ring[~x_ring_tmp] = 0 # ring 1 -> 0
         x_fr_tmp      = self.x_fr.astype(np.int32)
         x_fr_tmp      = (x_fr_tmp == 1)
         self.x_fr[x_fr_tmp] = 1   # front chamber -> 1
