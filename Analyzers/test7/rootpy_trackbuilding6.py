@@ -844,21 +844,21 @@ class TrackProducer(object):
     self.s_max = 60.
     self.s_nbins = 120
     self.s_step = (self.s_max - self.s_min)/self.s_nbins
-    self.s_lut =[ 1.7735,  1.4907,  1.5448,  1.7995,  2.1694,  2.6076,  3.1008,  3.6336,
-                  4.1887,  4.7578,  5.3386,  5.9338,  6.5453,  7.1688,  7.8041,  8.4512,
-                  9.1112,  9.7853, 10.4714, 11.1732, 11.8939, 12.6312, 13.3879, 14.1624,
-                 14.9124, 15.6381, 16.3544, 17.0820, 17.8456, 18.6531, 19.4701, 20.2475,
-                 20.9810, 21.7350, 22.5501, 23.3048, 23.9189, 24.4705, 25.0511, 25.7179,
-                 26.4861, 27.3111, 28.1933, 29.0985, 30.0049, 30.9373, 31.8868, 32.9006,
-                 34.0259, 35.1165, 36.1163, 37.1042, 38.1683, 39.2137, 40.2477, 41.2547,
-                 42.2844, 43.4362, 44.8745, 46.4813, 48.3087, 49.6675, 50.5817, 51.4416,
-                 52.2907, 53.1361, 53.9798, 54.8228, 55.6652, 56.5074, 57.3494, 58.1913,
-                 59.0331, 59.8748, 60.7165, 61.5581, 62.3997, 63.2413, 64.0829, 64.9244,
-                 65.7659, 66.6075, 67.4490, 68.2905, 69.1320, 69.9735, 70.8150, 71.6565,
-                 72.4980, 73.3395, 74.1810, 75.0225, 75.8640, 76.7055, 77.5470, 78.3885,
-                 79.2299, 80.0714, 80.9129, 81.7544, 82.5959, 83.4374, 84.2788, 85.1203,
-                 85.9618, 86.8033, 87.6448, 88.4862, 89.3277, 90.1692, 91.0107, 91.8522,
-                 92.6936, 93.5351, 94.3766, 95.2181, 96.0596, 96.9010, 97.7425, 98.5840]
+    self.s_lut =[ 1.7853,  1.5027,  1.5574,  1.8155,  2.1936,  2.6472,  3.1624,  3.7206,
+                  4.3027,  4.8995,  5.5093,  6.1326,  6.7689,  7.4205,  8.0813,  8.7488,
+                  9.4279, 10.1220, 10.8260, 11.5353, 12.2540, 12.9852, 13.7325, 14.4821,
+                 15.2012, 15.8887, 16.5648, 17.2636, 18.0066, 18.7857, 19.5877, 20.3778,
+                 21.1679, 21.9853, 22.8181, 23.5398, 24.1110, 24.6645, 25.2634, 25.9459,
+                 26.6901, 27.5156, 28.4434, 29.4158, 30.3920, 31.4043, 32.4676, 33.6175,
+                 34.7532, 35.6829, 36.4836, 37.3002, 38.2338, 39.2428, 40.2624, 41.2518,
+                 42.2865, 43.5182, 44.8428, 46.2075, 47.7733, 49.3895, 50.4630, 51.3384,
+                 52.1898, 53.0350, 53.8779, 54.7197, 55.5609, 56.4018, 57.2424, 58.0829,
+                 58.9233, 59.7637, 60.6039, 61.4442, 62.2844, 63.1246, 63.9647, 64.8049,
+                 65.6450, 66.4852, 67.3253, 68.1654, 69.0055, 69.8457, 70.6858, 71.5259,
+                 72.3660, 73.2061, 74.0462, 74.8862, 75.7263, 76.5664, 77.4065, 78.2466,
+                 79.0867, 79.9268, 80.7669, 81.6070, 82.4470, 83.2871, 84.1272, 84.9673,
+                 85.8074, 86.6475, 87.4876, 88.3276, 89.1677, 90.0078, 90.8479, 91.6880,
+                 92.5281, 93.3681, 94.2082, 95.0483, 95.8884, 96.7285, 97.5686, 98.4087]
     #self.s_lut = np.linspace(self.s_min, self.s_max, num=self.s_nbins+1)[:-1]
 
   def run(self, slim_roads, variables, predictions, other_vars):
@@ -907,7 +907,7 @@ class TrackProducer(object):
     #zone = int(x[(nlayers*6) + 1] * 6)
 
     xml_pt = np.abs(1.0/y_meas)
-    if xml_pt <= 2.:
+    if xml_pt <= 2.:  # do not use the LUT if below 2 GeV
       return xml_pt
 
     def digitize(x, bins=(self.s_nbins, self.s_min, self.s_max)):
@@ -950,11 +950,11 @@ class TrackProducer(object):
       if np.abs(1.0/y_meas) > discr_pt_cut:
         if ndof <= 3:
           #trigger = (y_discr > 0.8)
-          trigger = (y_discr > 0.9945)  # 90% coverage
+          trigger = (y_discr > 0.9953)  # 90% coverage
           #trigger = (y_discr > 0.9999)  # 95% coverage
         else:
           #trigger = (y_discr > 0.5393)
-          trigger = (y_discr > 0.9503) # 98.5% coverage
+          trigger = (y_discr > 0.9642) # 98.5% coverage
           #trigger = (y_discr > 0.9929) # 99% coverage
       else:
         trigger = (y_discr >= 0.)  # True
@@ -1008,7 +1008,9 @@ for m in ("emtf", "emtf2023"):
       hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
       histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
       hname = "%s_eff_vs_geneta_l1pt%i_%s" % (m,l,k)
-      histograms[hname] = Hist(70, 1.1, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > %i GeV}" % (l), type='F')
+      histograms[hname] = Hist(70, 1.1, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
+      hname = "%s_eff_vs_geneta_genpt30_l1pt%i_%s" % (m,l,k)
+      histograms[hname] = Hist(70, 1.1, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 30 GeV}", type='F')
 
   hname = "%s_l1pt_vs_genpt" % m
   histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -0.5, 0.5, name=hname, title="; gen 1/p_{T} [1/GeV]; 1/p_{T} [1/GeV]", type='F')
@@ -1618,7 +1620,6 @@ elif analysis == 'rates':
 
 # ______________________________________________________________________________
 # Analysis: effie
-
 elif analysis == 'effie':
   #tree = load_pgun()
   tree = load_pgun_batch(jobid)
@@ -1693,6 +1694,9 @@ elif analysis == 'effie':
       if part.pt > 20.:
         hname = "emtf_eff_vs_geneta_l1pt%i" % (l)
         fill_efficiency_eta()
+      if part.pt > 30.:
+        hname = "emtf_eff_vs_geneta_genpt30_l1pt%i" % (l)
+        fill_efficiency_eta()
       if l == 0:
         hname1 = "emtf_l1pt_vs_genpt"
         hname2 = "emtf_l1ptres_vs_genpt"
@@ -1705,6 +1709,9 @@ elif analysis == 'effie':
       fill_efficiency_pt()
       if part.pt > 20.:
         hname = "emtf2023_eff_vs_geneta_l1pt%i" % (l)
+        fill_efficiency_eta()
+      if part.pt > 30.:
+        hname = "emtf2023_eff_vs_geneta_genpt30_l1pt%i" % (l)
         fill_efficiency_eta()
       if l == 0:
         hname1 = "emtf2023_l1pt_vs_genpt"
@@ -1725,6 +1732,8 @@ elif analysis == 'effie':
           hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
           hnames.append(hname)
           hname = "%s_eff_vs_geneta_l1pt%i_%s" % (m,l,k)
+          hnames.append(hname)
+          hname = "%s_eff_vs_geneta_genpt30_l1pt%i_%s" % (m,l,k)
           hnames.append(hname)
       hname = "%s_l1pt_vs_genpt" % m
       hnames.append(hname)
@@ -2023,6 +2032,10 @@ elif analysis == 'images':
       if hit.type == kCSC:
         bend = hit.bend
         bend *= hit.endcap
+        # Special case for ME1/1a:
+        # rescale the bend to be the same as ME1/1b
+        if hit.station == 1 and hit.ring == 4:
+          bend *= 0.026331/0.014264
       elif hit.type == kGEM:
         bend = hit.bend
         bend *= hit.endcap
