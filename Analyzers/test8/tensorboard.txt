@@ -1,1 +1,3 @@
-tensorboard --logdir=mnist_model/ --port=8888
+tensorboard --logdir=reiam_model/ --port=8889
+
+# Browse localhost:8889
