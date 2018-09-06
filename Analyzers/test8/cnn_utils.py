@@ -3,17 +3,19 @@ import tensorflow as tf
 # ______________________________________________________________________________
 # from tensorflow/models: official/utils/flags/core.py
 
-#from absl import flags
 flags = tf.flags
 
 def register_key_flags_in_core(f):
   """Defines a function in core.py, and registers its key flags.
+
   absl uses the location of a flags.declare_key_flag() to determine the context
   in which a flag is key. By making all declares in core, this allows model
   main functions to call flags.adopt_module_key_flags() on core and correctly
   chain key flags.
+
   Args:
     f:  The function to be wrapped
+
   Returns:
     The "core-defined" version of the input function.
   """
@@ -177,6 +179,30 @@ def define_reiam_base_flags():
                      "depend on the seed."))
   key_flags.append("tf_random_seed")
 
+  flags.DEFINE_enum(
+      name="benchmark_logger_type", default="BaseBenchmarkLogger",
+      enum_values=["BaseBenchmarkLogger", "BenchmarkFileLogger",
+                   "BenchmarkBigQueryLogger"],
+      help=help_wrap("The type of benchmark logger to use. Defaults to using "
+                     "BaseBenchmarkLogger which logs to STDOUT. Different "
+                     "loggers will require other flags to be able to work."))
+  key_flags.append("benchmark_logger_type")
+
+  flags.DEFINE_string(
+      name="benchmark_test_id", short_name="bti", default=None,
+      help=help_wrap("The unique test ID of the benchmark run. It could be the "
+                     "combination of key parameters. It is hardware "
+                     "independent and could be used compare the performance "
+                     "between different test runs. This flag is designed for "
+                     "human consumption, and does not have any impact within "
+                     "the system."))
+  key_flags.append("benchmark_test_id")
+
+  flags.DEFINE_string(
+      name="benchmark_log_dir", short_name="bld", default=None,
+      help=help_wrap("The location of the benchmark logging."))
+  key_flags.append("benchmark_log_dir")
+
   return key_flags
 
 def clear_flags():
@@ -192,14 +218,15 @@ def set_defaults(**kwargs):
     flags.FLAGS.set_default(name=key, value=value)
 
 
-
 # ______________________________________________________________________________
-# from tensorflow/models: official/utils/misc/hooks_helpers.py
+# from tensorflow/models: official/utils/logs/hooks_helper.py
 
 from cnn_hooks import ExamplesPerSecondHook, LoggingMetricHook
+from cnn_benchmark import get_benchmark_logger
 
 def get_train_hooks(name_list, use_tpu=False, **kwargs):
   """Factory for getting a list of TensorFlow hooks for training by name.
+
   Args:
     name_list: a list of strings to name desired hook classes. Allowed:
       LoggingTensorHook, ProfilerHook, ExamplesPerSecondHook, which are defined
@@ -207,8 +234,10 @@ def get_train_hooks(name_list, use_tpu=False, **kwargs):
     use_tpu: Boolean of whether computation occurs on a TPU. This will disable
       hooks altogether.
     **kwargs: a dictionary of arguments to the hooks.
+
   Returns:
     list of instantiated hooks, ready to be used in a classifier.train call.
+
   Raises:
     ValueError: if an unrecognized name is passed.
   """
@@ -234,12 +263,14 @@ def get_train_hooks(name_list, use_tpu=False, **kwargs):
 
 def get_logging_tensor_hook(every_n_iter=100, tensors_to_log=None, **kwargs):  # pylint: disable=unused-argument
   """Function to get LoggingTensorHook.
+
   Args:
     every_n_iter: `int`, print the values of `tensors` once every N local
       steps taken on the current worker.
     tensors_to_log: List of tensor names or dictionary mapping labels to tensor
       names. If not set, log _TENSORS_TO_LOG by default.
     **kwargs: a dictionary of arguments to LoggingTensorHook.
+
   Returns:
     Returns a LoggingTensorHook with a standard set of tensors that will be
     printed to stdout.
@@ -254,22 +285,27 @@ def get_logging_tensor_hook(every_n_iter=100, tensors_to_log=None, **kwargs):  #
 
 def get_profiler_hook(model_dir, save_steps=1000, **kwargs):  # pylint: disable=unused-argument
   """Function to get ProfilerHook.
+
   Args:
     model_dir: The directory to save the profile traces to.
     save_steps: `int`, print profile traces every N steps.
     **kwargs: a dictionary of arguments to ProfilerHook.
+
   Returns:
     Returns a ProfilerHook that writes out timelines that can be loaded into
     profiling tools like chrome://tracing.
   """
-  return tf.train.ProfilerHook(save_steps=save_steps, output_dir=model_dir)
+  return tf.train.ProfilerHook(
+      save_steps=save_steps, output_dir=model_dir,
+      show_dataflow=True, show_memory=True)
 
 
-def get_examples_per_second_hook(every_n_steps=100,
+def get_examples_per_second_hook(every_n_secs=600,
                                  batch_size=128,
                                  warm_steps=5,
                                  **kwargs):  # pylint: disable=unused-argument
   """Function to get ExamplesPerSecondHook.
+
   Args:
     every_n_steps: `int`, print current and average examples per second every
       N steps.
@@ -277,24 +313,27 @@ def get_examples_per_second_hook(every_n_steps=100,
       global time.
     warm_steps: skip this number of steps before logging and running average.
     **kwargs: a dictionary of arguments to ExamplesPerSecondHook.
+
   Returns:
     Returns a ProfilerHook that writes out timelines that can be loaded into
     profiling tools like chrome://tracing.
   """
   return ExamplesPerSecondHook(
-      batch_size=batch_size, every_n_steps=every_n_steps,
-      warm_steps=warm_steps, metric_logger=logger.get_benchmark_logger())
+      batch_size=batch_size, every_n_secs=every_n_secs,
+      warm_steps=warm_steps, metric_logger=get_benchmark_logger())
 
 
 def get_logging_metric_hook(tensors_to_log=None,
                             every_n_secs=600,
                             **kwargs):  # pylint: disable=unused-argument
   """Function to get LoggingMetricHook.
+
   Args:
     tensors_to_log: List of tensor names or dictionary mapping labels to tensor
       names. If not set, log _TENSORS_TO_LOG by default.
     every_n_secs: `int`, the frequency for logging the metric. Default to every
       10 mins.
+
   Returns:
     Returns a LoggingMetricHook that saves tensor values in a JSON format.
   """
@@ -302,15 +341,17 @@ def get_logging_metric_hook(tensors_to_log=None,
     tensors_to_log = _TENSORS_TO_LOG
   return LoggingMetricHook(
       tensors=tensors_to_log,
-      metric_logger=logger.get_benchmark_logger(),
+      metric_logger=get_benchmark_logger(),
       every_n_secs=every_n_secs)
 
 
 def get_nan_tensor_hook(loss_tensor, fail_on_nan_loss=True, **kwargs):  # pylint: disable=unused-argument
   """Function to get NanTensorHook.
+
   Args:
     loss_tensor: `Tensor`, the loss tensor.
     fail_on_nan_loss: `bool`, whether to raise exception when loss is NaN.
+
   Returns:
     Returns a NanTensorHook that monitors the loss tensor and stops training
     if loss is NaN.
@@ -330,6 +371,7 @@ _TENSORS_TO_LOG = {
     'learning_rate': 'learning_rate',
     'cross_entropy': 'cross_entropy',
     'train_accuracy': 'train_accuracy',
+    'train_accuracy_at_k': 'train_accuracy_at_k',
 }
 
 # A dictionary to map one hook name and its corresponding function
@@ -347,12 +389,15 @@ HOOKS = {
 
 def past_stop_threshold(stop_threshold, eval_metric):
   """Return a boolean representing whether a model should be stopped.
+
   Args:
     stop_threshold: float, the threshold above which a model should stop
       training.
     eval_metric: float, the current value of the relevant metric to check.
+
   Returns:
     True if training should stop, False otherwise.
+
   Raises:
     ValueError: if either stop_threshold or eval_metric is not a number
   """

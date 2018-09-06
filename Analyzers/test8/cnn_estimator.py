@@ -197,14 +197,18 @@ def model_fn(features, labels, mode, params):
     loss = tf.reduce_mean(loss)
     accuracy = tf.metrics.accuracy(
         labels=labels, predictions=tf.argmax(logits, axis=1))
+    accuracy_at_k = tf.metrics.mean(tf.to_float(tf.nn.in_top_k(
+        targets=labels, predictions=logits, k=2)))
 
     # Name tensors to be logged with LoggingTensorHook.
     tf.identity(learning_rate, 'learning_rate')
     tf.identity(loss, 'cross_entropy')
     tf.identity(accuracy[1], name='train_accuracy')
+    tf.identity(accuracy_at_k[1], name='train_accuracy_at_k')
 
     # Save accuracy scalar to Tensorboard output.
     tf.summary.scalar('train_accuracy', accuracy[1])
+    tf.summary.scalar('train_accuracy_at_k', accuracy_at_k[1])
 
     # For mode == ModeKeys.TRAIN: required fields are loss and train_op
     return tf.estimator.EstimatorSpec(
@@ -222,15 +226,18 @@ def model_fn(features, labels, mode, params):
     loss = tf.reduce_mean(loss)
     accuracy = tf.metrics.accuracy(
         labels=labels, predictions=tf.argmax(logits, axis=1))
+    accuracy_at_k = tf.metrics.mean(tf.to_float(tf.nn.in_top_k(
+        targets=labels, predictions=logits, k=2)))
 
     # Save accuracy scalar to Tensorboard output.
     tf.summary.scalar('eval_accuracy', accuracy[1])
+    tf.summary.scalar('eval_accuracy_at_k', accuracy_at_k[1])
 
     # For mode == ModeKeys.EVAL: required field is loss.
     return tf.estimator.EstimatorSpec(
         mode=tf.estimator.ModeKeys.EVAL,
         loss=loss,
-        eval_metric_ops={'accuracy': accuracy})
+        eval_metric_ops={'accuracy': accuracy, 'accuracy_at_k': accuracy_at_k})
 
 
 # ______________________________________________________________________________
@@ -294,10 +301,45 @@ def define_reiam_flags():
   from cnn_utils import define_reiam_base_flags, clear_flags, unparse_flags, set_defaults
 
   define_reiam_base_flags()
-  set_defaults(data_dir='./reiam_data',
+  set_defaults(batch_size=50,
+               num_epochs=5,
+               data_dir='./reiam_data',
                model_dir='./reiam_model',
-               batch_size=50,  # use 32?
-               num_epochs=10)
+               benchmark_logger_type='BenchmarkFileLogger',
+               benchmark_log_dir='./reiam_model',
+               hooks='LoggingTensorHook,ProfilerHook,ExamplesPerSecondHook,LoggingMetricHook')
+
+
+# ______________________________________________________________________________
+def save_model(reiam_classifier, model_name='model_cnn'):
+  from tensorflow.python.training import saver as saver_lib
+  checkpoint_path = saver_lib.latest_checkpoint(reiam_classifier._model_dir)
+  if not checkpoint_path:
+    raise ValueError('Could not find trained model in model_dir: {}.'.
+                     format(reiam_classifier._model_dir))
+  reader = tf.train.NewCheckpointReader(checkpoint_path)
+
+  #keys = []
+  #for key in reader.get_variable_to_shape_map():
+  #  if key == 'global_step':
+  #    continue
+  #  keys.append(key)
+  #print len(keys), keys
+
+  keras_model = reiam_classifier._keras_model
+  names = [weight.name for layer in keras_model.layers for weight in layer.weights]
+  weights = keras_model.get_weights()
+  assert(len(names) == len(weights))
+
+  for i, (name, weight) in enumerate(zip(names, weights)):
+    key = str(name).strip(':0')
+    arr = reader.get_tensor(key)
+    assert(weights[i].shape == arr.shape)
+    weights[i] = arr
+  keras_model.set_weights(weights)
+
+  from nn_models import save_my_model
+  save_my_model(keras_model, name=model_name)
 
 
 # ______________________________________________________________________________
@@ -380,6 +422,8 @@ def run_reiam(flags_obj, data):
       config=model_config,
       params=params)
 
+  reiam_classifier._keras_model = create_model(params)
+
   # Set up training and evaluation input functions.
   def get_train_input_fn_and_hook():
     feed_fn_hook = tf.train.FeedFnHook(feed_fn=None)
@@ -460,48 +504,17 @@ def run_reiam(flags_obj, data):
   for epoch in range(flags_obj.num_epochs // flags_obj.epochs_between_evals):
     reiam_classifier.train(input_fn=train_input_fn, hooks=train_hooks)
     eval_results = reiam_classifier.evaluate(input_fn=eval_input_fn, hooks=eval_hooks)
-    print('Epoch %i/%i evaluation results:\n\t%s\n' % (epoch+1, flags_obj.num_epochs, eval_results))
-
-    if model_helpers.past_stop_threshold(flags_obj.stop_threshold,
-                                         eval_results['accuracy']):
+    #print('Epoch %i/%i evaluation results:\n\t%s\n' % (epoch+1, flags_obj.num_epochs, eval_results))
+    if model_helpers.past_stop_threshold(flags_obj.stop_threshold, eval_results['accuracy']):
       break
 
+  ## Train and evaluate model.
   #train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, hooks=train_hooks, max_steps=None)
   #eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn, hooks=eval_hooks, steps=None)
-  #for epoch in range(flags_obj.num_epochs):
+  #for epoch in range(flags_obj.num_epochs // flags_obj.epochs_between_evals):
   #  tf.estimator.train_and_evaluate(reiam_classifier, train_spec, eval_spec)
 
   # ____________________________________________________________________________
-  # Export the model
-  from tensorflow.python.training import saver as saver_lib
-  checkpoint_path = saver_lib.latest_checkpoint(reiam_classifier._model_dir)
-  if not checkpoint_path:
-    raise ValueError('Could not find trained model in model_dir: {}.'.
-                     format(reiam_classifier._model_dir))
-  reader = tf.train.NewCheckpointReader(checkpoint_path)
-
-  #keys = []
-  #for key in reader.get_variable_to_shape_map():
-  #  if key == 'global_step':
-  #    continue
-  #  keys.append(key)
-  #print len(keys), keys
-
-  keras_model = create_model(params)
-  names = [weight.name for layer in keras_model.layers for weight in layer.weights]
-  weights = keras_model.get_weights()
-  assert(len(names) == len(weights))
-
-  for i, (name, weight) in enumerate(zip(names, weights)):
-    key = str(name).strip(':0')
-    arr = reader.get_tensor(key)
-    assert(weights[i].shape == arr.shape)
-    weights[i] = arr
-  keras_model.set_weights(weights)
-
-  from nn_models import save_my_model
-  save_my_model(keras_model, name='model_cnn')
-
   ## Export the model
   #if flags_obj.export_dir is not None:
   #  image = tf.placeholder(tf.float32, [None, n_rows, n_columns, n_channels])
@@ -509,4 +522,8 @@ def run_reiam(flags_obj, data):
   #      'image': image,
   #  })
   #  reiam_classifier.export_savedmodel(flags_obj.export_dir, input_fn)
+
+  # Export the model
+  save_model(reiam_classifier)
+
   return reiam_classifier

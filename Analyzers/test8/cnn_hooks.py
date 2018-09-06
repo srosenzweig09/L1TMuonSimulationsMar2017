@@ -5,6 +5,7 @@ import tensorflow as tf
 
 class ExamplesPerSecondHook(tf.train.SessionRunHook):
   """Hook to print out examples per second.
+
   Total time is tracked and then divided by the total number of steps
   to get the average step time and then batch_size is used to determine
   the running average of examples per second. The examples per second for the
@@ -18,6 +19,7 @@ class ExamplesPerSecondHook(tf.train.SessionRunHook):
                warm_steps=0,
                metric_logger=None):
     """Initializer for ExamplesPerSecondHook.
+
     Args:
       batch_size: Total batch size across all workers used to calculate
         examples/second from global time.
@@ -30,6 +32,7 @@ class ExamplesPerSecondHook(tf.train.SessionRunHook):
       metric_logger: instance of `BenchmarkLogger`, the benchmark logger that
           hook should use to write the log. If None, BaseBenchmarkLogger will
           be used.
+
     Raises:
       ValueError: if neither `every_n_steps` or `every_n_secs` is set, or
       both are set.
@@ -58,8 +61,10 @@ class ExamplesPerSecondHook(tf.train.SessionRunHook):
 
   def before_run(self, run_context):  # pylint: disable=unused-argument
     """Called before each call to run().
+
     Args:
       run_context: A SessionRunContext object.
+
     Returns:
       A SessionRunArgs object or None if never triggered.
     """
@@ -67,6 +72,7 @@ class ExamplesPerSecondHook(tf.train.SessionRunHook):
 
   def after_run(self, run_context, run_values):  # pylint: disable=unused-argument
     """Called after each call to run().
+
     Args:
       run_context: A SessionRunContext object.
       run_values: A SessionRunValues object.
@@ -104,10 +110,12 @@ class ExamplesPerSecondHook(tf.train.SessionRunHook):
 
 class LoggingMetricHook(tf.train.LoggingTensorHook):
   """Hook to log benchmark metric information.
+
   This hook is very similar as tf.train.LoggingTensorHook, which logs given
   tensors every N local steps, every N seconds, or at the end. The metric
   information will be logged to given log_dir or via metric_logger in JSON
   format, which can be consumed by data analysis pipeline later.
+
   Note that if `at_end` is True, `tensors` should not include any tensor
   whose evaluation produces a side effect such as consuming additional inputs.
   """
@@ -115,6 +123,7 @@ class LoggingMetricHook(tf.train.LoggingTensorHook):
   def __init__(self, tensors, metric_logger=None,
                every_n_iter=None, every_n_secs=None, at_end=False):
     """Initializer for LoggingMetricHook.
+
     Args:
       tensors: `dict` that maps string-valued tags to tensors/tensor names,
           or `iterable` of tensors/tensor names.
@@ -127,6 +136,7 @@ class LoggingMetricHook(tf.train.LoggingTensorHook):
           provided.
       at_end: `bool` specifying whether to print the values of `tensors` at the
           end of the run.
+
     Raises:
       ValueError:
         1. `every_n_iter` is non-positive, or

@@ -130,10 +130,13 @@ def define_reiam_flags():
   from cnn_utils import define_reiam_base_flags, clear_flags, unparse_flags, set_defaults
 
   define_reiam_base_flags()
-  set_defaults(data_dir='./reiam_data',
+  set_defaults(batch_size=50,
+               num_epochs=5,
+               data_dir='./reiam_data',
                model_dir='./reiam_model',
-               batch_size=50,
-               num_epochs=10)
+               benchmark_logger_type='BenchmarkFileLogger',
+               benchmark_log_dir='./reiam_model',
+               hooks='LoggingTensorHook,ProfilerHook,ExamplesPerSecondHook,LoggingMetricHook')
 
 
 # ______________________________________________________________________________
