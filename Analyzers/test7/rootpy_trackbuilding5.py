@@ -158,6 +158,12 @@ def weighted_percentile(data, percents, weights=None):
   y=np.interp(percents, p, d)
   return y
 
+def is_valid_for_run2(hit):
+  is_csc = (hit.type == kCSC)
+  is_rpc = (hit.type == kRPC)
+  is_irpc = (hit.type == kRPC) and ((hit.station == 3 or hit.station == 4) and hit.ring == 1)
+  return (is_csc or (is_rpc and not is_irpc))
+
 # Decide EMTF hit layer number
 class EMTFLayer(object):
   def __init__(self):
@@ -541,6 +547,11 @@ class PatternRecognition(object):
 
         # Remove all RPC hits
         #sector_hits = [hit for hit in sector_hits if hit.type != kRPC]
+
+        # Remove all non-Run 2 hits
+        only_use_run2 = False
+        if only_use_run2:
+          sector_hits = [hit for hit in sector_hits if is_valid_for_run2(hit)]
 
         # Cheat using gen particle info
         if part is not None:
