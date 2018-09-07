@@ -5,7 +5,7 @@ import tensorflow as tf
 
 from cnn_globals import rows_per_zone
 
-def create_model(params={}, use_cnn_keras=False):
+def create_model(params={}, training=None, use_cnn_keras=False, use_batch_normalization=False):
   """Model to recognize digits in the MNIST dataset.
 
   Network structure is equivalent to:
@@ -26,13 +26,14 @@ def create_model(params={}, use_cnn_keras=False):
   """
 
   # Set parameters
-  data_format = params.get('data_format', 'channels_last')
-  n_rows = params.get('n_rows', 28)
-  n_columns = params.get('n_columns', 28)
-  n_channels = params.get('n_channels', 1)
-  n_classes = params.get('n_classes', 10)
-  dropout = params.get('dropout', 0.4)
-  learning_rate = params.get('learning_rate', 0.01)
+  data_format   = params.get('data_format', 'channels_last')
+  n_rows        = params.get('n_rows', 28)
+  n_columns     = params.get('n_columns', 28)
+  n_channels    = params.get('n_channels', 1)
+  n_classes     = params.get('n_classes', 10)
+  dropout       = params.get('dropout', 0.4)
+  learning_rate = params.get('learning_rate', 0.001)
+  gradient_clip_norm = params.get('gradient_clip_norm', 10.)
 
   if data_format == 'channels_first':
     input_shape = [n_channels, n_rows, n_columns]
@@ -40,19 +41,10 @@ def create_model(params={}, use_cnn_keras=False):
     assert data_format == 'channels_last'
     input_shape = [n_rows, n_columns, n_channels]
 
-  if use_cnn_keras:
-    in_training_mode = None  # in Keras, it's figured out correctly.
-  else:
-    in_training_mode = True
-
   # ____________________________________________________________________________
   l = tf.keras.layers
 
-  xavier_init = tf.keras.initializers.glorot_uniform()
-  he_init = tf.keras.initializers.he_normal()
-
   inputs = l.Input(shape=input_shape, dtype='float32')
-
   inputs_zone0 = l.Lambda(lambda x: x[:, 0*rows_per_zone:(0+1)*rows_per_zone])(inputs)
   inputs_zone1 = l.Lambda(lambda x: x[:, 1*rows_per_zone:(1+1)*rows_per_zone])(inputs)
   inputs_zone2 = l.Lambda(lambda x: x[:, 2*rows_per_zone:(2+1)*rows_per_zone])(inputs)
@@ -67,6 +59,7 @@ def create_model(params={}, use_cnn_keras=False):
             (11,63),
             strides=(11,4),
             padding='same',
+            kernel_initializer='he_normal',
             activation='relu')(inputs)
     return x
 
@@ -86,8 +79,8 @@ def create_model(params={}, use_cnn_keras=False):
           (5,5),
           strides=(1,1),
           padding='same',
+          kernel_initializer='he_normal',
           activation='relu')(x)
-  #x = l.BatchNormalization(momentum=0.99, epsilon=1e-3)(x, training=in_training_mode)
   x = l.MaxPooling2D(
           (1,5),
           strides=(1,3),
@@ -97,14 +90,20 @@ def create_model(params={}, use_cnn_keras=False):
           strides=(1,2),
           padding='valid')(x)
   x = l.Flatten()(x)
-  x = l.Dense(40, use_bias=False, activation=None, kernel_initializer=he_init)(x)
-  x = l.BatchNormalization(momentum=0.99, epsilon=1e-3)(x, training=in_training_mode)
-  x = l.Activation('relu')(x)
-  #x = l.Dropout(dropout)(x)
-  x = l.Dense(12, use_bias=False, activation=None, kernel_initializer=he_init)(x)
-  x = l.BatchNormalization(momentum=0.99, epsilon=1e-3)(x, training=in_training_mode)
-  x = l.Activation('relu')(x)
-  #x = l.Dropout(dropout)(x)
+
+  if use_batch_normalization:
+    x = l.Dense(40, use_bias=False, activation=None)(x)
+    x = l.BatchNormalization(momentum=0.9, epsilon=1e-4)(x, training=training)
+    x = l.Activation('relu')(x)
+    #x = l.Dropout(dropout)(x, training=training)
+    x = l.Dense(20, use_bias=False, activation=None)(x)
+    x = l.BatchNormalization(momentum=0.9, epsilon=1e-4)(x, training=training)
+    x = l.Activation('relu')(x)
+    #x = l.Dropout(dropout)(x, training=training)
+  else:
+    x = l.Dense(40, activation='relu')(x)
+    x = l.Dense(20, activation='relu')(x)
+
   if use_cnn_keras:
     x = l.Dense(n_classes, activation='softmax')(x)  # in Keras, get softmax outputs instead of logits
   else:
@@ -116,7 +115,7 @@ def create_model(params={}, use_cnn_keras=False):
 
   if use_cnn_keras:
     # in Keras, compile with Keras optimizer and loss
-    model.compile(optimizer=tf.keras.optimizers.Adam(lr=learning_rate),
+    model.compile(optimizer=tf.keras.optimizers.Adam(lr=learning_rate, clipnorm=gradient_clip_norm),
                   loss='categorical_crossentropy',
                   metrics=['accuracy'])
     model.summary()
@@ -132,6 +131,19 @@ import h5py
 import json
 
 def save_my_model(model, name='model'):
+  def _rebuild(model):
+    previous_model = model
+    # all new operations will be in test mode from now on
+    tf.keras.backend.set_learning_phase(0)
+    # serialize the model and get its weights, for quick re-building
+    config = previous_model.get_config()
+    weights = previous_model.get_weights()
+    # re-build a model where the learning phase is now hard-coded to 0
+    new_model = tf.keras.Model.from_config(config)
+    new_model.set_weights(weights)
+    return new_model
+  model = _rebuild(model)
+
   # Store model to file
   #model.summary()
   model.save(name + '.h5')

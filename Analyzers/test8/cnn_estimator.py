@@ -4,7 +4,7 @@
 import numpy as np
 import tensorflow as tf
 
-from cnn_globals import (superstrip_size, n_zones, rows_per_zone, n_rows, n_columns, n_channels, n_classes, dropout, learning_rate)
+from cnn_globals import (superstrip_size, n_zones, rows_per_zone, n_rows, n_columns, n_channels, n_classes, dropout, learning_rate, gradient_clip_norm)
 
 from cnn_models import create_model, save_my_model
 
@@ -35,27 +35,39 @@ def parse_label_fn(labels):
 def model_fn(features, labels, mode, params):
   """The model_fn argument for creating an Estimator."""
 
-  # Get parameters
-  learning_rate = params['learning_rate']
+  def in_training_mode():
+    return mode == tf.estimator.ModeKeys.TRAIN
 
-  model = create_model(params)
+  if in_training_mode():
+    tf.keras.backend.set_learning_phase(1)
+  else:
+    tf.keras.backend.set_learning_phase(0)
+
+
+  # Build model
+  model = create_model(params, training=in_training_mode())
+
+  # Compute logits
   image = features
   if isinstance(image, dict):
     image = features['image']
 
-  # Prediction
+  try:
+    logits = model(image, training=in_training_mode())
+  except TypeError:  # no keyword argument 'training' in tensorflow 1.5
+    logits = model(image)
+
+
+  # Prediction mode
   if mode == tf.estimator.ModeKeys.PREDICT:
-    try:
-      logits = model(image, training=False)
-    except TypeError:  # no keyword argument 'training' in tensorflow 1.5
-      tf.keras.backend.set_learning_phase(False)
-      logits = model(image)
     predictions = {
-        'classes': tf.argmax(logits, axis=1),
+        'class_ids': tf.argmax(logits, axis=1),
+        'logits': logits,
         'probabilities': tf.nn.softmax(logits),
     }
     export_outputs = {
-        'classify': tf.estimator.export.PredictOutput(predictions)
+        tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+        tf.estimator.export.PredictOutput(predictions)
     }
     # For mode == ModeKeys.PREDICT: required fields are predictions.
     return tf.estimator.EstimatorSpec(
@@ -63,19 +75,22 @@ def model_fn(features, labels, mode, params):
         predictions=predictions,
         export_outputs=export_outputs)
 
-  # Training
-  in_training_mode = (mode == tf.estimator.ModeKeys.TRAIN)
-  try:
-    logits = model(image, training=in_training_mode)
-  except TypeError:  # no keyword argument 'training' in tensorflow 1.5
-    tf.keras.backend.set_learning_phase(in_training_mode)
-    logits = model(image)
+  # Training mode
   loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=logits)
   loss = tf.reduce_mean(loss)
   accuracy = tf.metrics.accuracy(
       labels=labels, predictions=tf.argmax(logits, axis=1))
   accuracy_at_k = tf.metrics.mean(tf.to_float(tf.nn.in_top_k(
       targets=labels, predictions=logits, k=2)))
+
+  learning_rate = params.get('learning_rate', 0.001)
+  learning_rate_w_decay = tf.train.exponential_decay(
+      learning_rate=learning_rate,
+      global_step=tf.train.get_or_create_global_step(),
+      decay_steps=10000,
+      decay_rate=0.96,
+      staircase=True)
+  gradient_clip_norm = params.get('gradient_clip_norm', 10.)
 
   if mode == tf.estimator.ModeKeys.TRAIN:
     # Name tensors to be logged with LoggingTensorHook.
@@ -89,7 +104,7 @@ def model_fn(features, labels, mode, params):
     tf.summary.scalar('train_accuracy_at_k', accuracy_at_k[1])
 
     # Create optimizer
-    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate_w_decay)
 
     # If we are running multi-GPU, we need to wrap the optimizer.
     if params.get('multi_gpu'):
@@ -105,7 +120,7 @@ def model_fn(features, labels, mode, params):
         loss=loss,
         train_op=train_op)
 
-  # Evaluation
+  # Evaluation mode
   if mode == tf.estimator.ModeKeys.EVAL:
     # Save accuracy scalar to Tensorboard output.
     tf.summary.scalar('eval_accuracy', accuracy[1])
@@ -140,21 +155,23 @@ class FeedFnHook(tf.train.SessionRunHook):
         fetches=None, feed_dict=self.feed_fn())
 
 # from tensorflow/python/estimator/estimator.py
+#      tensorflow/python/estimator/util.py
 class _DatasetInitializerHook(tf.train.SessionRunHook):
   """Creates a SessionRunHook that initializes the passed iterator."""
 
   def __init__(self, iterator, feed_fn):
     self._iterator = iterator
-    self.feed_fn = feed_fn
+    self._feed_fn = feed_fn
 
   def begin(self):
     self._initializer = self._iterator.initializer
 
   def after_create_session(self, session, coord):
     del coord
-    session.run(self._initializer, feed_dict=self.feed_fn())
+    session.run(self._initializer, feed_dict=self._feed_fn())
 
 # from tensorflow/python/estimator/estimator.py
+#      tensorflow/python/estimator/util.py
 def _get_features_and_labels_from_input_fn(self, input_fn, mode):
   """Extracts the `features` and labels from return values of `input_fn`."""
   result = self._call_input_fn(input_fn, mode)
@@ -181,7 +198,7 @@ def define_reiam_flags():
   from cnn_utils import define_reiam_base_flags, clear_flags, unparse_flags, set_defaults
 
   define_reiam_base_flags()
-  set_defaults(batch_size=50,
+  set_defaults(batch_size=100,
                num_epochs=5,
                data_dir='./reiam_data',
                model_dir='./reiam_model',
@@ -279,6 +296,7 @@ def run_reiam(flags_obj, data):
       'n_classes': n_classes,
       'dropout': dropout,
       'learning_rate': learning_rate,
+      'gradient_clip_norm': gradient_clip_norm,
   }
 
   # Create Estimator
@@ -301,7 +319,7 @@ def run_reiam(flags_obj, data):
       config=model_config,
       params=params)
 
-  reiam_classifier._keras_model = create_model(params)
+  reiam_classifier._keras_model = create_model(params, training=True) #FIXME
 
   # Set up training and evaluation input functions.
   def get_train_input_fn_and_hook():
@@ -379,6 +397,9 @@ def run_reiam(flags_obj, data):
   reiam_classifier.eval_input_hook = eval_input_hook
   reiam_classifier._get_features_and_labels_from_input_fn = types.MethodType(_get_features_and_labels_from_input_fn, reiam_classifier)
 
+  train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, hooks=train_hooks, max_steps=None)
+  eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn, hooks=eval_hooks, steps=None)
+
   # ____________________________________________________________________________
   # Train and evaluate model.
   import datetime
@@ -391,33 +412,13 @@ def run_reiam(flags_obj, data):
 
   with TrainingLog() as tlog:  # redirect sys.stdout
     for epoch in range(flags_obj.num_epochs):
-      reiam_classifier.train(input_fn=train_input_fn, hooks=train_hooks)
-      eval_results = reiam_classifier.evaluate(input_fn=eval_input_fn, hooks=eval_hooks)
+      eval_results, _ = tf.estimator.train_and_evaluate(reiam_classifier, train_spec, eval_spec)
       print('Epoch {0}/{1} - loss: {2} - global_step: {3} - accuracy: {4} - accuracy_at_k: {5}'.format(
           epoch+1, flags_obj.num_epochs, eval_results['loss'], eval_results['global_step'],
           eval_results['accuracy'], eval_results['accuracy_at_k']))
 
-      if model_helpers.past_stop_threshold(flags_obj.stop_threshold, eval_results['accuracy']):
-        break
-
   logger.info('Done training. Time elapsed: {0} sec'.format(str(datetime.datetime.now() - start_time)))
 
-  ## Train and evaluate model.
-  #train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, hooks=train_hooks, max_steps=None)
-  #eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn, hooks=eval_hooks, steps=None)
-  #for epoch in range(flags_obj.num_epochs):
-  #  tf.estimator.train_and_evaluate(reiam_classifier, train_spec, eval_spec)
-
-  # ____________________________________________________________________________
-  ## Export the model
-  #if flags_obj.export_dir is not None:
-  #  image = tf.placeholder(tf.float32, [None, n_rows, n_columns, n_channels])
-  #  input_fn = tf.estimator.export.build_raw_serving_input_receiver_fn({
-  #      'image': image,
-  #  })
-  #  reiam_classifier.export_savedmodel(flags_obj.export_dir, input_fn)
-
-  # Export the model
   save_keras_model(reiam_classifier, model_name='model_cnn')
 
   return reiam_classifier

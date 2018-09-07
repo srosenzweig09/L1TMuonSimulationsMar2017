@@ -22,6 +22,8 @@ dropout = 0.2
 
 learning_rate = 1e-3
 
+gradient_clip_norm = 10.
+
 infile_images = '../test7/histos_tbe.17.npz'
 
 
