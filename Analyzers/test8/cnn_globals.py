@@ -4,6 +4,24 @@ logger = getLogger()
 # ______________________________________________________________________________
 # Globals
 
+superstrip_size = 16
+
+n_zones = 7
+
+rows_per_zone = 11
+
+n_rows = n_zones * rows_per_zone
+
+n_columns = 5040 // superstrip_size
+
+n_channels = 2
+
+n_classes = 21
+
+dropout = 0.2
+
+learning_rate = 1e-3
+
 infile_images = '../test7/histos_tbe.17.npz'
 
 

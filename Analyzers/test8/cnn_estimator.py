@@ -4,26 +4,9 @@
 import numpy as np
 import tensorflow as tf
 
-# ______________________________________________________________________________
-# Globals
+from cnn_globals import (superstrip_size, n_zones, rows_per_zone, n_rows, n_columns, n_channels, n_classes, dropout, learning_rate)
 
-superstrip_size = 16
-
-n_zones = 7
-
-rows_per_zone = 11
-
-n_rows = n_zones * rows_per_zone
-
-n_columns = 5040 // superstrip_size
-
-n_channels = 2
-
-n_classes = 21
-
-dropout = 0.2
-
-learning_rate = 1e-3
+from cnn_models import create_model, save_my_model
 
 
 # ______________________________________________________________________________
@@ -49,112 +32,10 @@ def parse_label_fn(labels):
 
 
 # ______________________________________________________________________________
-def create_model(params={}):
-  """Model to recognize digits in the MNIST dataset.
-  Network structure is equivalent to:
-  https://github.com/tensorflow/tensorflow/blob/r1.5/tensorflow/examples/tutorials/mnist/mnist_deep.py
-  and
-  https://github.com/tensorflow/models/blob/master/tutorials/image/mnist/convolutional.py
-  But uses the tf.keras API.
-  Args:
-    data_format: Either 'channels_first' or 'channels_last'. 'channels_first' is
-      typically faster on GPUs while 'channels_last' is typically faster on
-      CPUs. See
-      https://www.tensorflow.org/performance/performance_guide#data_formats
-  Returns:
-    A tf.keras.Model.
-  """
-
-  # Set parameters
-  data_format = params.get('data_format', 'channels_last')
-  n_rows = params.get('n_rows', 28)
-  n_columns = params.get('n_columns', 28)
-  n_channels = params.get('n_channels', 1)
-  n_classes = params.get('n_classes', 10)
-  dropout = params.get('dropout', 0.4)
-
-  if data_format == 'channels_first':
-    input_shape = [n_channels, n_rows, n_columns]
-  else:
-    assert data_format == 'channels_last'
-    input_shape = [n_rows, n_columns, n_channels]
-
-  # ____________________________________________________________________________
-  l = tf.keras.layers
-
-  inputs = l.Input(shape=input_shape, dtype='float32')
-
-  inputs_zone0 = l.Lambda(lambda x: x[:, 0*rows_per_zone:(0+1)*rows_per_zone])(inputs)
-  inputs_zone1 = l.Lambda(lambda x: x[:, 1*rows_per_zone:(1+1)*rows_per_zone])(inputs)
-  inputs_zone2 = l.Lambda(lambda x: x[:, 2*rows_per_zone:(2+1)*rows_per_zone])(inputs)
-  inputs_zone3 = l.Lambda(lambda x: x[:, 3*rows_per_zone:(3+1)*rows_per_zone])(inputs)
-  inputs_zone4 = l.Lambda(lambda x: x[:, 4*rows_per_zone:(4+1)*rows_per_zone])(inputs)
-  inputs_zone5 = l.Lambda(lambda x: x[:, 5*rows_per_zone:(5+1)*rows_per_zone])(inputs)
-  inputs_zone6 = l.Lambda(lambda x: x[:, 6*rows_per_zone:(6+1)*rows_per_zone])(inputs)
-
-  def first_conv2d_layer_fn(inputs):
-    x = l.Conv2D(
-            12,
-            (11,63),
-            strides=(11,4),
-            padding='same',
-            activation='relu')(inputs)
-    return x
-
-  x_zone0 = first_conv2d_layer_fn(inputs_zone0)
-  x_zone1 = first_conv2d_layer_fn(inputs_zone1)
-  x_zone2 = first_conv2d_layer_fn(inputs_zone2)
-  x_zone3 = first_conv2d_layer_fn(inputs_zone3)
-  x_zone4 = first_conv2d_layer_fn(inputs_zone4)
-  x_zone5 = first_conv2d_layer_fn(inputs_zone5)
-  x_zone6 = first_conv2d_layer_fn(inputs_zone6)
-
-  x_all_zones = [x_zone0, x_zone1, x_zone2, x_zone3, x_zone4, x_zone5, x_zone6]
-  x = l.Concatenate()(x_all_zones)
-
-  x = l.Conv2D(
-          48,
-          (5,5),
-          strides=(1,1),
-          padding='same',
-          activation='relu')(x)
-  #x = l.BatchNormalization(momentum=0.9,epsilon=1e-4)(x)
-  x = l.MaxPooling2D(
-          (1,5),
-          strides=(1,3),
-          padding='valid')(x)
-  x = l.MaxPooling2D(
-          (1,3),
-          strides=(1,2),
-          padding='valid')(x)
-  x = l.Flatten()(x)
-  x = l.Dense(40, use_bias=False)(x)
-  #x = l.BatchNormalization(momentum=0.9,epsilon=1e-4)(x)
-  x = l.Activation('relu')(x)
-  #x = l.Dropout(dropout)(x)
-  x = l.Dense(12, use_bias=False)(x)
-  #x = l.BatchNormalization(momentum=0.9,epsilon=1e-4)(x)
-  x = l.Activation('relu')(x)
-  #x = l.Dropout(dropout)(x)
-  x = l.Dense(n_classes)(x)
-
-  outputs = x
-
-  model = tf.keras.Model(inputs=inputs, outputs=outputs)
-
-  #model.compile(optimizer=tf.keras.optimizers.Adam(lr=learning_rate),
-  #              loss='categorical_crossentropy',
-  #              metrics=['accuracy'])
-
-  #model.summary()
-  return model
-
-
-# ______________________________________________________________________________
 def model_fn(features, labels, mode, params):
   """The model_fn argument for creating an Estimator."""
 
-  # Set parameters
+  # Get parameters
   learning_rate = params['learning_rate']
 
   model = create_model(params)
@@ -162,6 +43,7 @@ def model_fn(features, labels, mode, params):
   if isinstance(image, dict):
     image = features['image']
 
+  # Prediction
   if mode == tf.estimator.ModeKeys.PREDICT:
     try:
       logits = model(image, training=False)
@@ -181,25 +63,21 @@ def model_fn(features, labels, mode, params):
         predictions=predictions,
         export_outputs=export_outputs)
 
+  # Training
+  in_training_mode = (mode == tf.estimator.ModeKeys.TRAIN)
+  try:
+    logits = model(image, training=in_training_mode)
+  except TypeError:  # no keyword argument 'training' in tensorflow 1.5
+    tf.keras.backend.set_learning_phase(in_training_mode)
+    logits = model(image)
+  loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=logits)
+  loss = tf.reduce_mean(loss)
+  accuracy = tf.metrics.accuracy(
+      labels=labels, predictions=tf.argmax(logits, axis=1))
+  accuracy_at_k = tf.metrics.mean(tf.to_float(tf.nn.in_top_k(
+      targets=labels, predictions=logits, k=2)))
+
   if mode == tf.estimator.ModeKeys.TRAIN:
-    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-
-    # If we are running multi-GPU, we need to wrap the optimizer.
-    if params.get('multi_gpu'):
-      optimizer = tf.contrib.estimator.TowerOptimizer(optimizer)
-
-    try:
-      logits = model(image, training=True)
-    except TypeError:  # no keyword argument 'training' in tensorflow 1.5
-      tf.keras.backend.set_learning_phase(True)
-      logits = model(image)
-    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=logits)
-    loss = tf.reduce_mean(loss)
-    accuracy = tf.metrics.accuracy(
-        labels=labels, predictions=tf.argmax(logits, axis=1))
-    accuracy_at_k = tf.metrics.mean(tf.to_float(tf.nn.in_top_k(
-        targets=labels, predictions=logits, k=2)))
-
     # Name tensors to be logged with LoggingTensorHook.
     tf.identity(learning_rate, 'learning_rate')
     tf.identity(loss, 'cross_entropy')
@@ -210,34 +88,36 @@ def model_fn(features, labels, mode, params):
     tf.summary.scalar('train_accuracy', accuracy[1])
     tf.summary.scalar('train_accuracy_at_k', accuracy_at_k[1])
 
+    # Create optimizer
+    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+
+    # If we are running multi-GPU, we need to wrap the optimizer.
+    if params.get('multi_gpu'):
+      optimizer = tf.contrib.estimator.TowerOptimizer(optimizer)
+
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    with tf.control_dependencies(update_ops):
+      train_op = optimizer.minimize(loss, global_step=tf.train.get_or_create_global_step())
+
     # For mode == ModeKeys.TRAIN: required fields are loss and train_op
     return tf.estimator.EstimatorSpec(
         mode=tf.estimator.ModeKeys.TRAIN,
         loss=loss,
-        train_op=optimizer.minimize(loss, global_step=tf.train.get_or_create_global_step()))
+        train_op=train_op)
 
+  # Evaluation
   if mode == tf.estimator.ModeKeys.EVAL:
-    try:
-      logits = model(image, training=False)
-    except TypeError:  # no keyword argument 'training' in tensorflow 1.5
-      tf.keras.backend.set_learning_phase(False)
-      logits = model(image)
-    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=logits)
-    loss = tf.reduce_mean(loss)
-    accuracy = tf.metrics.accuracy(
-        labels=labels, predictions=tf.argmax(logits, axis=1))
-    accuracy_at_k = tf.metrics.mean(tf.to_float(tf.nn.in_top_k(
-        targets=labels, predictions=logits, k=2)))
-
     # Save accuracy scalar to Tensorboard output.
     tf.summary.scalar('eval_accuracy', accuracy[1])
     tf.summary.scalar('eval_accuracy_at_k', accuracy_at_k[1])
+
+    eval_metric_ops = {'accuracy': accuracy, 'accuracy_at_k': accuracy_at_k}
 
     # For mode == ModeKeys.EVAL: required field is loss.
     return tf.estimator.EstimatorSpec(
         mode=tf.estimator.ModeKeys.EVAL,
         loss=loss,
-        eval_metric_ops={'accuracy': accuracy, 'accuracy_at_k': accuracy_at_k})
+        eval_metric_ops=eval_metric_ops)
 
 
 # ______________________________________________________________________________
@@ -311,7 +191,7 @@ def define_reiam_flags():
 
 
 # ______________________________________________________________________________
-def save_model(reiam_classifier, model_name='model_cnn'):
+def save_keras_model(reiam_classifier, model_name='model_cnn'):
   from tensorflow.python.training import saver as saver_lib
   checkpoint_path = saver_lib.latest_checkpoint(reiam_classifier._model_dir)
   if not checkpoint_path:
@@ -338,7 +218,6 @@ def save_model(reiam_classifier, model_name='model_cnn'):
     weights[i] = arr
   keras_model.set_weights(weights)
 
-  from nn_models import save_my_model
   save_my_model(keras_model, name=model_name)
 
 
@@ -392,8 +271,8 @@ def run_reiam(flags_obj, data):
                    if tf.test.is_built_with_cuda() else 'channels_last')
 
   params = {
-      'data_format': data_format,
-      'multi_gpu': multi_gpu,
+      #'data_format': data_format,
+      #'multi_gpu': multi_gpu,
       'n_rows': n_rows,
       'n_columns': n_columns,
       'n_channels': n_channels,
@@ -500,18 +379,33 @@ def run_reiam(flags_obj, data):
   reiam_classifier.eval_input_hook = eval_input_hook
   reiam_classifier._get_features_and_labels_from_input_fn = types.MethodType(_get_features_and_labels_from_input_fn, reiam_classifier)
 
+  # ____________________________________________________________________________
   # Train and evaluate model.
-  for epoch in range(flags_obj.num_epochs // flags_obj.epochs_between_evals):
-    reiam_classifier.train(input_fn=train_input_fn, hooks=train_hooks)
-    eval_results = reiam_classifier.evaluate(input_fn=eval_input_fn, hooks=eval_hooks)
-    #print('Epoch %i/%i evaluation results:\n\t%s\n' % (epoch+1, flags_obj.num_epochs, eval_results))
-    if model_helpers.past_stop_threshold(flags_obj.stop_threshold, eval_results['accuracy']):
-      break
+  import datetime
+  from nn_logging import getLogger
+  from nn_training import TrainingLog
+
+  start_time = datetime.datetime.now()
+  logger = getLogger()
+  logger.info('Begin training ...')
+
+  with TrainingLog() as tlog:  # redirect sys.stdout
+    for epoch in range(flags_obj.num_epochs):
+      reiam_classifier.train(input_fn=train_input_fn, hooks=train_hooks)
+      eval_results = reiam_classifier.evaluate(input_fn=eval_input_fn, hooks=eval_hooks)
+      print('Epoch {0}/{1} - loss: {2} - global_step: {3} - accuracy: {4} - accuracy_at_k: {5}'.format(
+          epoch+1, flags_obj.num_epochs, eval_results['loss'], eval_results['global_step'],
+          eval_results['accuracy'], eval_results['accuracy_at_k']))
+
+      if model_helpers.past_stop_threshold(flags_obj.stop_threshold, eval_results['accuracy']):
+        break
+
+  logger.info('Done training. Time elapsed: {0} sec'.format(str(datetime.datetime.now() - start_time)))
 
   ## Train and evaluate model.
   #train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, hooks=train_hooks, max_steps=None)
   #eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn, hooks=eval_hooks, steps=None)
-  #for epoch in range(flags_obj.num_epochs // flags_obj.epochs_between_evals):
+  #for epoch in range(flags_obj.num_epochs):
   #  tf.estimator.train_and_evaluate(reiam_classifier, train_spec, eval_spec)
 
   # ____________________________________________________________________________
@@ -524,6 +418,6 @@ def run_reiam(flags_obj, data):
   #  reiam_classifier.export_savedmodel(flags_obj.export_dir, input_fn)
 
   # Export the model
-  save_model(reiam_classifier)
+  save_keras_model(reiam_classifier, model_name='model_cnn')
 
   return reiam_classifier

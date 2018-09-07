@@ -386,9 +386,6 @@ def save_my_model(model, name='model'):
 def load_my_model(name='model', weights_name='model_weights'):
   with open(name + '.json', 'r') as f:
     json_string = json.dumps(json.load(f))
-    json_string = json_string.replace('"axis": [3]', '"axis": 3')  # dirty hack
-    json_string = json_string.replace('"axis": [2]', '"axis": 2')  # dirty hack
-    json_string = json_string.replace('"axis": [1]', '"axis": 1')  # dirty hack
     model = model_from_json(json_string)
   #model = load_model(name + '.h5')
   model.load_weights(weights_name + '.h5')
