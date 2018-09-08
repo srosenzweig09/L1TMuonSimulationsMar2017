@@ -5,6 +5,7 @@
 #include <iostream>
 #include <algorithm>
 #include <random>
+#include <cassert>
 #include <cstdint>
 
 #include "TString.h"
@@ -48,7 +49,7 @@ public:
 
 
 // _____________________________________________________________________________
-class NtupleMaker : public edm::one::EDAnalyzer<edm::one::SharedResources> {
+class NtupleMaker : public edm::one::EDAnalyzer<edm::one::SharedResources, edm::one::WatchRuns> {
 public:
   explicit NtupleMaker(const edm::ParameterSet& iConfig);
   ~NtupleMaker();
@@ -56,9 +57,12 @@ public:
   static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
 
 private:
-  virtual void beginJob() override;
-  virtual void analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) override;
-  virtual void endJob() override;
+  void beginJob() override;
+  void analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) override;
+  void endJob() override;
+
+  void beginRun(const edm::Run&, const edm::EventSetup&) override;
+  void endRun(const edm::Run&, const edm::EventSetup&) override;
 
   // Main functions
   void process();
@@ -83,6 +87,7 @@ private:
     return edm::Handle<T>();
   }
 
+  // Input parameters
   const edm::InputTag   emuHitTag_;
   const edm::InputTag   emuTrackTag_;
   const edm::InputTag   tkTrackTag_;
@@ -103,10 +108,12 @@ private:
 
   l1t::EMTFHitCollection        emuHits_;
   l1t::EMTFTrackCollection      emuTracks_;
-  L1TrackTriggerTrackCollection tkTracks_;
-  L1TrackTriggerTrackAssociator tkTrackAssoc_;
   reco::GenParticleCollection   genParts_;
   TrackingParticleCollection    trkParts_;
+
+  // For edm products
+  const L1TrackTriggerTrackCollection * tkTracks_;
+  const L1TrackTriggerTrackAssociator * tkTrackAssoc_;
 
   // TTree
   TTree* tree;
@@ -229,6 +236,10 @@ NtupleMaker::NtupleMaker(const edm::ParameterSet& iConfig) :
 
 NtupleMaker::~NtupleMaker() {}
 
+void NtupleMaker::beginRun(const edm::Run& iRun, const edm::EventSetup& iSetup) {}
+
+void NtupleMaker::endRun(const edm::Run& iRun, const edm::EventSetup& iSetup) {}
+
 void NtupleMaker::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
   getHandles(iEvent, iSetup);
   process();
@@ -259,14 +270,17 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
   }
 
   // Track trigger tracks
-  auto tkTracks_handle = make_handle(tkTracks_);
-  auto tkTrackAssoc_handle = make_handle(tkTrackAssoc_);
+  edm::Handle<L1TrackTriggerTrackCollection> tkTracks_handle;
+  edm::Handle<L1TrackTriggerTrackAssociator> tkTrackAssoc_handle;
 
   if (!tkTrackToken_.isUninitialized()) {
     iEvent.getByToken(tkTrackToken_, tkTracks_handle);
   }
   if (!tkTracks_handle.isValid()) {
     if (firstEvent_)  edm::LogError("NtupleMaker") << "Cannot get the product: " << tkTrackTag_;
+    tkTracks_ = nullptr;
+  } else {
+    tkTracks_ = tkTracks_handle.product();
   }
 
   if (!tkTrackAssocToken_.isUninitialized()) {
@@ -274,6 +288,9 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
   }
   if (!tkTrackAssoc_handle.isValid()) {
     if (firstEvent_)  edm::LogError("NtupleMaker") << "Cannot get the product: " << tkTrackAssocTag_;
+    tkTrackAssoc_ = nullptr;
+  } else {
+    tkTrackAssoc_ = tkTrackAssoc_handle.product();
   }
 
   // Gen particles
@@ -315,14 +332,6 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
     if (trk.BX() != 0)      continue;  // only BX=0
     //if (trk.Endcap() != 1)  continue;  // only positive endcap
     emuTracks_.push_back(trk);
-  }
-
-  if (tkTracks_handle.isValid()) {
-    tkTracks_ = *tkTracks_handle.product();
-  }
-
-  if (tkTrackAssoc_handle.isValid()) {
-    tkTrackAssoc_ = *tkTrackAssoc_handle.product();
   }
 
   genParts_.clear();
@@ -509,6 +518,8 @@ void NtupleMaker::process() {
 
 
   // ___________________________________________________________________________
+  if (firstEvent_)  edm::LogInfo("NtupleMaker") << "Ready to make ntuple.";
+
   bool please_use_trkParts = true;
 
   if (verbose_ > 0) {
@@ -580,66 +591,68 @@ void NtupleMaker::process() {
   (*vt_size) = emuTracks_.size();
 
   // L1TrackTrigger tracks
-  int itkTrack = 0;
-  auto tkTracks_handle = make_handle(tkTracks_);
+  if (tkTracks_) {
+    int itkTrack = 0;
+    edm::Handle<L1TrackTriggerTrackCollection> tkTracks_handle;
 
-  for (const auto& trk : tkTracks_) {
-    const GlobalVector& momentum = trk.getMomentum();
-    const GlobalPoint&  poca     = trk.getPOCA();
-    double              rinv     = trk.getRInv();
+    for (const auto& trk : *tkTracks_) {
+      const GlobalVector& momentum = trk.getMomentum();
+      const GlobalPoint&  poca     = trk.getPOCA();
+      double              rinv     = trk.getRInv();
 
-    vu_pt    ->push_back(momentum.perp());
-    vu_phi   ->push_back(momentum.phi());
-    vu_eta   ->push_back(momentum.eta());
-    vu_theta ->push_back(momentum.theta());
-    vu_vx    ->push_back(poca.x());
-    vu_vy    ->push_back(poca.y());
-    vu_vz    ->push_back(poca.z());
-    vu_q     ->push_back(rinv >= 0 ? 1 : -1);
-    vu_rinv  ->push_back(rinv);
-    vu_chi2  ->push_back(trk.getChi2());
-    vu_ndof  ->push_back(trk.getStubRefs().size()*2 - 4);  // nPar=4
-    vu_sector->push_back(trk.getSector());
+      vu_pt    ->push_back(momentum.perp());
+      vu_phi   ->push_back(momentum.phi());
+      vu_eta   ->push_back(momentum.eta());
+      vu_theta ->push_back(momentum.theta());
+      vu_vx    ->push_back(poca.x());
+      vu_vy    ->push_back(poca.y());
+      vu_vz    ->push_back(poca.z());
+      vu_q     ->push_back(rinv >= 0 ? 1 : -1);
+      vu_rinv  ->push_back(rinv);
+      vu_chi2  ->push_back(trk.getChi2());
+      vu_ndof  ->push_back(trk.getStubRefs().size()*2 - 4);  // nPar=4
+      vu_sector->push_back(trk.getSector());
 
-    float sim_pt    = 0.;
-    float sim_phi   = 0.;
-    float sim_eta   = 0.;
-    int   sim_tp    = -1;
-    int   sim_pdgid = 0;
-    int   sim_assoc = 0;
-    {
-      edm::Ptr<L1TrackTriggerTrack> trkPtr(tkTracks_handle, itkTrack);
-      edm::Ptr<TrackingParticle> tpPtr = tkTrackAssoc_.findTrackingParticlePtr(trkPtr);
-      if (tpPtr.isNonnull()) {
-        sim_pt    = tpPtr->pt();
-        sim_eta   = tpPtr->eta();
-        sim_phi   = tpPtr->phi();
-        sim_tp    = tpPtr.key();
-        sim_pdgid = tpPtr->pdgId();
+      float sim_pt    = 0.;
+      float sim_phi   = 0.;
+      float sim_eta   = 0.;
+      int   sim_tp    = -1;
+      int   sim_pdgid = 0;
+      int   sim_assoc = 0;
+      {
+        edm::Ptr<L1TrackTriggerTrack> trkPtr(tkTracks_handle, itkTrack);
+        edm::Ptr<TrackingParticle> tpPtr = tkTrackAssoc_->findTrackingParticlePtr(trkPtr);
+        if (tpPtr.isNonnull()) {
+          sim_pt    = tpPtr->pt();
+          sim_eta   = tpPtr->eta();
+          sim_phi   = tpPtr->phi();
+          sim_tp    = tpPtr.key();
+          sim_pdgid = tpPtr->pdgId();
+        }
+        if (tkTrackAssoc_->isGenuine(trkPtr)) {
+          sim_assoc = 0;
+        } else if (tkTrackAssoc_->isLooselyGenuine(trkPtr)) {
+          sim_assoc = 1;
+        } else if (tkTrackAssoc_->isCombinatoric(trkPtr)) {
+          sim_assoc = 2;
+        } else if (tkTrackAssoc_->isUnknown(trkPtr)) {
+          sim_assoc = 3;
+        } else {
+          sim_assoc = 4;
+        }
       }
-      if (tkTrackAssoc_.isGenuine(trkPtr)) {
-        sim_assoc = 0;
-      } else if (tkTrackAssoc_.isLooselyGenuine(trkPtr)) {
-        sim_assoc = 1;
-      } else if (tkTrackAssoc_.isCombinatoric(trkPtr)) {
-        sim_assoc = 2;
-      } else if (tkTrackAssoc_.isUnknown(trkPtr)) {
-        sim_assoc = 3;
-      } else {
-        sim_assoc = 4;
-      }
+
+      vu_sim_pt   ->push_back(sim_pt);
+      vu_sim_phi  ->push_back(sim_phi);
+      vu_sim_eta  ->push_back(sim_eta);
+      vu_sim_tp   ->push_back(sim_tp);
+      vu_sim_pdgid->push_back(sim_pdgid);
+      vu_sim_assoc->push_back(sim_assoc);
+
+      ++itkTrack;
     }
-
-    vu_sim_pt   ->push_back(sim_pt);
-    vu_sim_phi  ->push_back(sim_phi);
-    vu_sim_eta  ->push_back(sim_eta);
-    vu_sim_tp   ->push_back(sim_tp);
-    vu_sim_pdgid->push_back(sim_pdgid);
-    vu_sim_assoc->push_back(sim_assoc);
-
-    ++itkTrack;
   }
-  (*vu_size) = tkTracks_.size();
+  (*vu_size) = vu_pt->size();
 
   // ___________________________________________________________________________
   // Gen particles

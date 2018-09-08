@@ -69,3 +69,15 @@ minbiasmuonanalyzer = cms.EDAnalyzer('MinBiasMuonAnalyzer',
 def use_fs_minbiasmuonanalyzer(process):
     process.TFileService.fileName = process.minbiasmuonanalyzer.outFileName.value()
 
+ttstubntupler = cms.EDAnalyzer('TTStubNtupleMaker',
+    ttstubTag = cms.InputTag('TTStubsFromPhase2TrackerDigis', 'StubAccepted'),
+    ttstubAssocTag = cms.InputTag('TTStubAssociatorFromPixelDigis', 'StubAccepted'),
+    genPartTag = cms.InputTag('genParticles'),
+    trkPartTag = cms.InputTag('mix', 'MergedTrackTruth'),
+    outFileName = cms.string('ntuple.root'),
+    verbosity = cms.untracked.int32(0),
+)
+
+def use_fs_ttstubntupler(process):
+    process.TFileService.fileName = process.ttstubntupler.outFileName.value()
+
