@@ -159,6 +159,12 @@ def weighted_percentile(data, percents, weights=None):
   y=np.interp(percents, p, d)
   return y
 
+def is_valid_for_run2(hit):
+  is_csc = (hit.type == kCSC)
+  is_rpc = (hit.type == kRPC)
+  is_irpc = (hit.type == kRPC) and ((hit.station == 3 or hit.station == 4) and hit.ring == 1)
+  return (is_csc or (is_rpc and not is_irpc))
+
 # Decide EMTF hit layer number
 class EMTFLayer(object):
   def __init__(self):
@@ -544,6 +550,11 @@ class PatternRecognition(object):
         # Remove all RPC hits
         #sector_hits = [hit for hit in sector_hits if hit.type != kRPC]
 
+        # Remove all non-Run 2 hits
+        only_use_run2 = False
+        if only_use_run2:
+          sector_hits = [hit for hit in sector_hits if is_valid_for_run2(hit)]
+
         # Cheat using gen particle info
         if part is not None:
           part.ipt = find_pt_bin(part.invpt)
@@ -804,6 +815,8 @@ class PtAssignment(object):
     from nn_models import load_my_model, update_keras_custom_objects
     update_keras_custom_objects()
     self.loaded_model = load_my_model(model_file.replace('.json',''), model_weights_file.replace('.h5',''))
+    self.loaded_model.trainable = False
+    assert not self.loaded_model.updates
 
     def create_encoder(x):
       nentries = x.shape[0]
@@ -844,21 +857,21 @@ class TrackProducer(object):
     self.s_max = 60.
     self.s_nbins = 120
     self.s_step = (self.s_max - self.s_min)/self.s_nbins
-    self.s_lut =[ 1.7853,  1.5027,  1.5574,  1.8155,  2.1936,  2.6472,  3.1624,  3.7206,
-                  4.3027,  4.8995,  5.5093,  6.1326,  6.7689,  7.4205,  8.0813,  8.7488,
-                  9.4279, 10.1220, 10.8260, 11.5353, 12.2540, 12.9852, 13.7325, 14.4821,
-                 15.2012, 15.8887, 16.5648, 17.2636, 18.0066, 18.7857, 19.5877, 20.3778,
-                 21.1679, 21.9853, 22.8181, 23.5398, 24.1110, 24.6645, 25.2634, 25.9459,
-                 26.6901, 27.5156, 28.4434, 29.4158, 30.3920, 31.4043, 32.4676, 33.6175,
-                 34.7532, 35.6829, 36.4836, 37.3002, 38.2338, 39.2428, 40.2624, 41.2518,
-                 42.2865, 43.5182, 44.8428, 46.2075, 47.7733, 49.3895, 50.4630, 51.3384,
-                 52.1898, 53.0350, 53.8779, 54.7197, 55.5609, 56.4018, 57.2424, 58.0829,
-                 58.9233, 59.7637, 60.6039, 61.4442, 62.2844, 63.1246, 63.9647, 64.8049,
-                 65.6450, 66.4852, 67.3253, 68.1654, 69.0055, 69.8457, 70.6858, 71.5259,
-                 72.3660, 73.2061, 74.0462, 74.8862, 75.7263, 76.5664, 77.4065, 78.2466,
-                 79.0867, 79.9268, 80.7669, 81.6070, 82.4470, 83.2871, 84.1272, 84.9673,
-                 85.8074, 86.6475, 87.4876, 88.3276, 89.1677, 90.0078, 90.8479, 91.6880,
-                 92.5281, 93.3681, 94.2082, 95.0483, 95.8884, 96.7285, 97.5686, 98.4087]
+    self.s_lut =[  1.8001,  1.5061,  1.5533,  1.8039,  2.1714,  2.6079,  3.1022,  3.6403,
+                   4.2039,  4.7842,  5.3787,  5.9909,  6.6235,  7.2762,  7.9477,  8.6370,
+                   9.3504, 10.0934, 10.8721, 11.6946, 12.5557, 13.4203, 14.2373, 14.9889,
+                  15.6956, 16.3590, 17.0382, 17.7780, 18.5755, 19.4135, 20.2035, 20.9283,
+                  21.6253, 22.3527, 23.1098, 23.7308, 24.2632, 24.8080, 25.4359, 26.1762,
+                  26.9875, 27.8515, 28.7581, 29.7614, 30.8578, 31.9832, 33.1318, 34.2586,
+                  35.2303, 36.0346, 36.7887, 37.6733, 38.8758, 40.2935, 41.6736, 43.0472,
+                  44.3657, 45.6259, 46.8854, 48.2374, 49.6263, 50.7977, 51.7181, 52.5912,
+                  53.4564, 54.3191, 55.1807, 56.0418, 56.9025, 57.7631, 58.6235, 59.4838,
+                  60.3440, 61.2042, 62.0643, 62.9245, 63.7846, 64.6447, 65.5047, 66.3648,
+                  67.2248, 68.0849, 68.9449, 69.8049, 70.6650, 71.5250, 72.3850, 73.2450,
+                  74.1050, 74.9650, 75.8251, 76.6851, 77.5451, 78.4051, 79.2651, 80.1251,
+                  80.9851, 81.8451, 82.7051, 83.5651, 84.4251, 85.2851, 86.1451, 87.0051,
+                  87.8651, 88.7251, 89.5851, 90.4451, 91.3051, 92.1651, 93.0251, 93.8851,
+                  94.7451, 95.6051, 96.4651, 97.3251, 98.1851, 99.0451, 99.9051,100.7651]
     #self.s_lut = np.linspace(self.s_min, self.s_max, num=self.s_nbins+1)[:-1]
 
   def run(self, slim_roads, variables, predictions, other_vars):
@@ -950,11 +963,11 @@ class TrackProducer(object):
       if np.abs(1.0/y_meas) > discr_pt_cut:
         if ndof <= 3:
           #trigger = (y_discr > 0.8)
-          trigger = (y_discr > 0.9953)  # 90% coverage
+          trigger = (y_discr > 0.9960)  # 90% coverage
           #trigger = (y_discr > 0.9999)  # 95% coverage
         else:
           #trigger = (y_discr > 0.5393)
-          trigger = (y_discr > 0.9642) # 98.5% coverage
+          trigger = (y_discr > 0.9716) # 98.5% coverage
           #trigger = (y_discr > 0.9929) # 99% coverage
       else:
         trigger = (y_discr >= 0.)  # True
@@ -1052,9 +1065,9 @@ print('[INFO] Using analysis mode : %s' % analysis)
 print('[INFO] Using job id        : %s' % jobid)
 
 # Other stuff
-bankfile = 'histos_tb.17.npz'
+bankfile = 'histos_tb.18.npz'
 
-kerasfile = ['model.17.json', 'model_weights.17.h5']
+kerasfile = ['model.18.json', 'model_weights.18.h5']
 
 infile_r = None  # input file handle
 
