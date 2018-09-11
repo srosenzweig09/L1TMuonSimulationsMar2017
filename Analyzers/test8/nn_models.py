@@ -158,7 +158,7 @@ def update_keras_custom_objects():
 
 # ______________________________________________________________________________
 # Create models
-def create_model(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0, l1_reg=0.0, l2_reg=0.0):
+def create_model(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0, l1_reg=0.0, l2_reg=0.0):
   regularizer = regularizers.l1_l2(l1=l1_reg, l2=l2_reg)
   inputs = Input(shape=(nvariables,), dtype='float32')
 
@@ -182,17 +182,17 @@ def create_model(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr_lo
   #binary_crossentropy = losses.binary_crossentropy
   #mean_squared_error = losses.mean_squared_error
 
-  adam = optimizers.Adam(lr=lr)
+  adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
   model.compile(optimizer=adam,
     loss={'regr': masked_huber_loss, 'discr': masked_binary_crossentropy},
-    loss_weights={'regr': 1.0, 'discr': discr_loss_weight},
+    loss_weights={'regr': 1.0/discr_loss_weight, 'discr': 1.0},
     #metrics={'regr': ['acc', 'mse', 'mae'], 'discr': ['acc',]}
     )
   model.summary()
   return model
 
 # ______________________________________________________________________________
-def create_model_bn(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0, l1_reg=0.0, l2_reg=0.0, use_bn=True):
+def create_model_bn(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0, l1_reg=0.0, l2_reg=0.0, use_bn=True):
   regularizer = regularizers.L1L2(l1=l1_reg, l2=l2_reg)
   inputs = Input(shape=(nvariables,), dtype='float32')
 
@@ -219,17 +219,17 @@ def create_model_bn(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr
   #binary_crossentropy = losses.binary_crossentropy
   #mean_squared_error = losses.mean_squared_error
 
-  adam = optimizers.Adam(lr=lr)
+  adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
   model.compile(optimizer=adam,
     loss={'regr': masked_huber_loss, 'discr': masked_binary_crossentropy},
-    loss_weights={'regr': 1.0, 'discr': discr_loss_weight},
+    loss_weights={'regr': 1.0/discr_loss_weight, 'discr': 1.0},
     #metrics={'regr': ['acc', 'mse', 'mae'], 'discr': ['acc',]}
     )
   model.summary()
   return model
 
 # ______________________________________________________________________________
-def create_model_pruned(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0,
+def create_model_pruned(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0,
                         l1_reg=0.0, l2_reg=0.0, use_bn=True,
                         constraint1=None, constraint2=None, constraint3=None):
   regularizer = None  # disable
@@ -254,13 +254,10 @@ def create_model_pruned(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, d
   model = Model(inputs=inputs, outputs=[regr, discr])
 
   # Set loss and optimizers
-  #binary_crossentropy = losses.binary_crossentropy
-  #mean_squared_error = losses.mean_squared_error
-
-  adam = optimizers.Adam(lr=lr)
+  adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
   model.compile(optimizer=adam,
     loss={'regr': masked_huber_loss, 'discr': masked_binary_crossentropy},
-    loss_weights={'regr': 1.0, 'discr': discr_loss_weight},
+    loss_weights={'regr': 1.0/discr_loss_weight, 'discr': 1.0},
     #metrics={'regr': ['acc', 'mse', 'mae'], 'discr': ['acc',]}
     )
   model.summary()
@@ -293,7 +290,7 @@ def mixture_loss_for_keras(mus, sigmas, pi):
     return mixture_loss(y_true, y_pred, mus, sigmas, pi)
   return loss
 
-def create_model_mdn(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, mixture=16, discr_loss_weight=1.0,
+def create_model_mdn(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, nodes3=16, mixture=16, discr_loss_weight=1.0,
                      l1_reg=0.0, l2_reg=0.0, use_bn=True,
                      constraint1=None, constraint2=None, constraint3=None):
   regularizer = None  # disable
@@ -321,7 +318,7 @@ def create_model_mdn(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, mixt
   model = Model(inputs=inputs, outputs=outputs)
 
   # Set loss and optimizers
-  adam = optimizers.Adam(lr=lr)
+  adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
   keras_loss = mixture_loss_for_keras(mus=mus, sigmas=sigmas, pi=pi)
   model.compile(optimizer=adam, loss=keras_loss)
   model.summary()
@@ -329,7 +326,7 @@ def create_model_mdn(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, mixt
 
 
 # ______________________________________________________________________________
-def create_model_sequential(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, l1_reg=0.0, l2_reg=0.0):
+def create_model_sequential(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, nodes3=16, l1_reg=0.0, l2_reg=0.0):
   regularizer = regularizers.L1L2(l1=l1_reg, l2=l2_reg)
 
   model = Sequential()
@@ -344,13 +341,13 @@ def create_model_sequential(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=1
 
   model.add(Dense(1, activation='linear', kernel_initializer='glorot_uniform'))
 
-  adam = optimizers.Adam(lr=lr)
+  adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
   model.compile(loss=huber_loss, optimizer=adam, metrics=['acc'])
   model.summary()
   return model
 
 # ______________________________________________________________________________
-def create_model_sequential_regularized(nvariables, lr=0.001, nodes1=64, nodes2=32, nodes3=16, l1_reg=0.0, l2_reg=0.0):
+def create_model_sequential_regularized(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, nodes3=16, l1_reg=0.0, l2_reg=0.0):
   #regularizer = regularizers.L1L2(l1=l1_reg, l2=l2_reg)
   regularizer = LCountParams(l1=l1_reg, l2=l2_reg)
 
@@ -366,7 +363,7 @@ def create_model_sequential_regularized(nvariables, lr=0.001, nodes1=64, nodes2=
 
   model.add(Dense(1, activation='linear', kernel_initializer='glorot_uniform'))
 
-  adam = optimizers.Adam(lr=lr)
+  adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
   model.compile(loss=huber_loss, optimizer=adam, metrics=['acc'])
   model.summary()
   return model
