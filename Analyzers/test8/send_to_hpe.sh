@@ -4,4 +4,4 @@
 #scp histos_tba.17.npz histos_tbd.17.npz histos_tbe.17.npz jlow@15.226.54.11:/scratch/CMS/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/
 
 tar czf hpe_default.tgz nn_*.py mykeras6.ipynb tdrstyle.mplstyle model.h5 model.json model_weights.h5
-scp hpe_default.tgz jlow@15.226.54.11:/home/uf/jlow/jftest2/slurm/
+scp hpe_default.tgz jlow@15.226.54.11:/home/uf/jlow/jftest3/slurm/
