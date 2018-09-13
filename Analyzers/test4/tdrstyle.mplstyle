@@ -21,7 +21,7 @@ ytick.color: .15
 lines.solid_capstyle: round
 
 # Seaborn white parameters
-axes.grid: False
+#axes.grid: False
 axes.facecolor: white
 axes.edgecolor: .15
 axes.linewidth: 1.25
@@ -61,6 +61,7 @@ ytick.major.pad: 5.6
 ### FIGURE
 figure.figsize : 4.2, 4.2
 figure.dpi : 150
+savefig.dpi : 150
 figure.titleweight : 500
 
 ### IMAGES
@@ -72,9 +73,14 @@ font.family: sans-serif
 font.sans-serif : Helvetica, Arial, Liberation Sans, Bitstream Vera Sans, sans-serif
 
 ### AXES
+axes.grid: True
 axes.titlesize : large
 axes.labelsize : large
 axes.labelweight : 500
+
+#axes.autolimit_mode: round_numbers
+#axes.xmargin: 0
+#axes.ymargin: 0
 
 ### LINES
 #lines.linewidth : 2
