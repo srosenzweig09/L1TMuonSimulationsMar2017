@@ -310,7 +310,7 @@ def run_reiam(flags_obj, data):
       model_dir=flags_obj.model_dir,
       tf_random_seed=flags_obj.tf_random_seed,
       save_summary_steps=100,
-      save_checkpoints_secs=1200,
+      save_checkpoints_secs=30*60,
       session_config=sess_config)
 
   reiam_classifier = tf.estimator.Estimator(
@@ -371,7 +371,7 @@ def run_reiam(flags_obj, data):
 
         if flags_obj.shuffle:
           dataset = dataset.shuffle(buffer_size=flags_obj.shuffle_buffer_size)
-        dataset = dataset.batch(batch_size=flags_obj.batch_size)
+        dataset = dataset.batch(batch_size=flags_obj.batch_size*20)
         if flags_obj.prefetch:
           dataset = dataset.prefetch(buffer_size=flags_obj.prefetch_buffer_size)
         dataset = dataset.repeat(flags_obj.epochs_between_evals)
