@@ -976,6 +976,311 @@ class TrackProducer(object):
     return trigger
 
 
+# Make EMTF image
+# A m-by-n matrix has m rows and n columns
+class EMTFImage(object):
+  def __init__(self, superstrip_size):
+    self.superstrip_size = superstrip_size
+
+    self.sector_hits_capacity = 50
+
+    l_lut = np.zeros((5,5,5), dtype=np.int32) - 99  # (type, station, ring) -> layer
+    l_lut[1,1,4] = 0  # ME1/1a
+    l_lut[1,1,1] = 0  # ME1/1b
+    l_lut[1,1,2] = 1  # ME1/2
+    l_lut[1,1,3] = 1  # ME1/3
+    l_lut[1,2,1] = 2  # ME2/1
+    l_lut[1,2,2] = 2  # ME2/2
+    l_lut[1,3,1] = 3  # ME3/1
+    l_lut[1,3,2] = 3  # ME3/2
+    l_lut[1,4,1] = 4  # ME4/1
+    l_lut[1,4,2] = 4  # ME4/2
+    l_lut[2,1,2] = 1  # RE1/2
+    l_lut[2,2,2] = 2  # RE2/2
+    l_lut[2,3,1] = 3  # RE3/1
+    l_lut[2,3,2] = 3  # RE3/2
+    l_lut[2,3,3] = 3  # RE3/3
+    l_lut[2,4,1] = 4  # RE4/1
+    l_lut[2,4,2] = 4  # RE4/2
+    l_lut[2,4,3] = 4  # RE4/3
+    l_lut[3,1,1] = 0  # GE1/1
+    l_lut[3,2,1] = 2  # GE2/1
+    l_lut[4,1,1] = 0  # ME0
+    self.l_lut = l_lut
+    assert(self.l_lut.max() < nlayers)
+
+    m_lut = np.zeros((5,5,5,2), dtype=np.int32) - 99  # (type, station, ring, fr) -> row
+    m_lut[1,1,4,0] = 4  # ME1/1a (R)
+    m_lut[1,1,4,1] = 3  # ME1/1a (F)
+    m_lut[1,1,1,0] = 4  # ME1/1b (R)
+    m_lut[1,1,1,1] = 3  # ME1/1b (F)
+    m_lut[1,1,2,0] = 1  # ME1/2 (R)
+    m_lut[1,1,2,1] = 0  # ME1/2 (F)
+    m_lut[1,1,3,:] = 0  # ME1/3
+    m_lut[1,2,1,:] = 6  # ME2/1
+    m_lut[1,2,2,:] = 6  # ME2/2
+    m_lut[1,3,1,:] = 7  # ME3/1
+    m_lut[1,3,2,:] = 7  # ME3/2
+    m_lut[1,4,1,:] = 9  # ME4/1
+    m_lut[1,4,2,:] = 9  # ME4/2
+    m_lut[2,1,2,:] = 2  # RE1/2
+    m_lut[2,2,2,:] = 5  # RE2/2
+    m_lut[2,3,1,:] = 8  # RE3/1
+    m_lut[2,3,2,:] = 8  # RE3/2
+    m_lut[2,3,3,:] = 8  # RE3/3
+    m_lut[2,4,1,:] = 10 # RE4/1
+    m_lut[2,4,2,:] = 10 # RE4/2
+    m_lut[2,4,3,:] = 10 # RE4/3
+    m_lut[3,1,1,:] = 2  # GE1/1
+    m_lut[3,2,1,:] = 5  # GE2/1
+    m_lut[4,1,1,:] = 0  # ME0
+    self.m_lut = m_lut
+    self.m_size = 11
+    assert(self.m_lut.max() < self.m_size)
+
+    self.n_size = 5040 // self.superstrip_size
+
+    t_lut = np.zeros((11,7,2), dtype=np.int32) - 99  # (row,zone) -> (min theta, max theta)
+    t_lut[0,0] = 4,17   # ME0
+    t_lut[0,1] = 17,23  # ME0
+    t_lut[1,0] = 4,17   # ME0
+    t_lut[1,1] = 17,23  # ME0
+    t_lut[2,1] = 17,26  # GE1/1
+    t_lut[2,2] = 24,37  # GE1/1
+    t_lut[2,3] = 35,45  # GE1/1
+    t_lut[2,4] = 40,52  # GE1/1
+    t_lut[3,0] = 4,17   # ME1/1 (F)
+    t_lut[3,1] = 16,26  # ME1/1 (F)
+    t_lut[3,2] = 24,37  # ME1/1 (F)
+    t_lut[3,3] = 34,43  # ME1/1 (F)
+    t_lut[3,4] = 40,53  # ME1/1 (F)
+    t_lut[4,0] = 4,17   # ME1/1 (R)
+    t_lut[4,1] = 16,26  # ME1/1 (R)
+    t_lut[4,2] = 24,37  # ME1/1 (R)
+    t_lut[4,3] = 34,43  # ME1/1 (R)
+    t_lut[4,4] = 40,53  # ME1/1 (R)
+    #
+    t_lut[0,4] = 46,54  # ME1/2 (F)
+    t_lut[0,5] = 52,67  # ME1/2 (F)
+    t_lut[0,6] = 65,87  # ME1/2 (F)
+    t_lut[1,4] = 46,54  # ME1/2 (R)
+    t_lut[1,5] = 52,67  # ME1/2 (R)
+    t_lut[1,6] = 65,87  # ME1/2 (R)
+    t_lut[2,5] = 52,72  # RE1/2
+    t_lut[2,6] = 68,84  # RE1/2
+    #
+    t_lut[5,0] = 7,19   # GE2/1
+    t_lut[5,1] = 18,24  # GE2/1
+    t_lut[5,2] = 23,35  # GE2/1
+    t_lut[5,3] = 34,45  # GE2/1
+    t_lut[5,4] = 40,46  # GE2/1
+    t_lut[5,5] = 56,68  # RE2/2+3
+    t_lut[5,6] = 64,76  # RE2/2+3
+    t_lut[6,0] = 4,17   # ME2/1
+    t_lut[6,1] = 16,25  # ME2/1
+    t_lut[6,2] = 24,36  # ME2/1
+    t_lut[6,3] = 34,43  # ME2/1
+    t_lut[6,4] = 40,49  # ME2/1
+    t_lut[6,5] = 52,67  # ME2/2
+    t_lut[6,6] = 65,87  # ME2/2
+    #
+    t_lut[7,0] = 4,17   # ME3/1
+    t_lut[7,1] = 16,25  # ME3/1
+    t_lut[7,2] = 24,36  # ME3/1
+    t_lut[7,3] = 34,40  # ME3/1
+    t_lut[7,4] = 44,54  # ME3/2
+    t_lut[7,5] = 52,67  # ME3/2
+    t_lut[7,6] = 64,87  # ME3/2
+    t_lut[8,0] = 4,20   # RE3/1
+    t_lut[8,1] = 20,24  # RE3/1
+    t_lut[8,2] = 24,32  # RE3/1
+    t_lut[8,3] = 40,40  # RE3/2+3
+    t_lut[8,4] = 40,52  # RE3/2+3
+    t_lut[8,5] = 48,72  # RE3/2+3
+    t_lut[8,6] = 60,84  # RE3/2+3
+    #
+    t_lut[9,0] = 4,17   # ME4/1
+    t_lut[9,1] = 16,25  # ME4/1
+    t_lut[9,2] = 24,35  # ME4/1
+    t_lut[9,3] = 38,43  # ME4/2
+    t_lut[9,4] = 41,54  # ME4/2
+    t_lut[9,5] = 52,67  # ME4/2
+    t_lut[9,6] = 64,87  # ME4/2
+    t_lut[10,0] = 8,16  # RE4/1
+    t_lut[10,1] = 16,28 # RE4/1
+    t_lut[10,2] = 24,28 # RE4/1
+    t_lut[10,3] = 36,44 # RE4/2+3
+    t_lut[10,4] = 44,52 # RE4/2+3
+    t_lut[10,5] = 52,64 # RE4/2+3
+    t_lut[10,6] = 64,84 # RE4/2+3
+    self.t_lut = t_lut
+
+    self.zone_size = 7
+
+    # ME1/1, ME1/2, ME2, ME3, ME4, RE1
+    # RE2, RE3, RE4, GE1/1, GE2/1, ME0
+    s_bend_lut =[-0.059926, -0.065415, -0.149701,  0.086035,  0.108797,  1.000000,
+                  1.000000,  1.000000,  1.000000, -0.515074, -0.599277, -0.073872,]
+    self.s_bend_lut = np.array(s_bend_lut, dtype=np.float32)
+
+    s_bend_sign_lut = np.sign(self.s_bend_lut)
+    self.s_bend_sign_lut = np.array(s_bend_sign_lut, dtype=np.float32)
+
+    s_bend_max_lut = [28, 40, 12, 20, 20, 0, 0, 0, 0, 3, 1, 18]
+    self.s_bend_max_lut = np.array(s_bend_max_lut, dtype=np.float32)
+
+  def get_layer(self, hit):
+    index = (hit.type, hit.station, hit.ring)
+    lay = self.l_lut[index]
+    return lay
+
+  def get_row(self, hit):
+    index = (hit.type, hit.station, hit.ring, hit.fr)
+    m = self.m_lut[index]
+    assert(m < self.m_size)
+    return m
+
+  def get_col(self, hit):
+    hit_phi = np.asarray(hit.emtf_phi, dtype=np.int32)
+    n = hit_phi // self.superstrip_size
+    assert(n < self.n_size)
+    return n
+
+  def get_zones(self, hit):
+    m = self.get_row(hit)
+    t = self.t_lut[m]
+    hit_theta = np.asarray(hit.emtf_theta, dtype=np.int32)
+    zones = np.logical_and(t[:,0] <= hit_theta, hit_theta <= t[:,1])
+    zones = np.where(zones)[0]
+    assert((zones < self.zone_size).all())
+    return zones
+
+  def get_chn_bend(self, hit):
+    if hit.type == kCSC:
+      bend = hit.bend
+      bend *= hit.endcap
+      # Special case for ME1/1a:
+      # rescale the bend to be the same as ME1/1b
+      if hit.station == 1 and hit.ring == 4:
+        bend *= 0.026331/0.014264
+    elif hit.type == kGEM:
+      bend = hit.bend
+      bend *= hit.endcap
+    else:
+      bend = hit.bend
+    lay = self.get_layer(hit)
+    #s = self.s_bend_lut[lay]
+    #bend *= s
+    bend_sign = self.s_bend_sign_lut[lay]
+    bend_max = self.s_bend_max_lut[lay]
+    if bend_max == 0:
+      bend = 0.5
+    else:
+      bend = np.clip(float(bend), -bend_max, bend_max)
+      bend = 0.5 + (bend_sign * bend)/(2 * bend_max)
+    return bend
+
+  def get_chn_theta(self, hit):
+    theta = np.clip(float(hit.emtf_theta), 4., 86.)
+    theta = (theta - 3.)/83.
+    return theta
+
+  def get_chn_mphi(self, hit):
+    n = self.get_col(hit)
+    mphi = float(hit.emtf_phi) - (n * self.superstrip_size)
+    mphi /= self.superstrip_size
+    return mphi
+
+  def get_chn(self, hit):
+    chn = (self.get_chn_bend(hit),
+           self.get_chn_theta(hit),
+           self.get_chn_mphi(hit))
+    chn = np.asarray(chn, dtype=np.float32)
+    assert((0.0 <= chn).all())
+    assert((chn <= 1.0).all())
+    return chn
+
+  def is_intime(self, hit):
+    if hit.type == kCSC:
+      return hit.bx == -1 or hit.bx == 0
+    else:
+      return hit.bx == 0
+
+  def __call__(self, hits):
+    amap = {}
+    for ihit, hit in enumerate(hits):
+      if self.is_intime(hit):
+        m = self.get_row(hit)
+        n = self.get_col(hit)
+        zones = self.get_zones(hit)
+        for z in zones:
+          m_z = m + (z * self.m_size)
+          amap.setdefault((m_z,n), []).append(hit)
+
+    image_pixels = np.zeros((self.sector_hits_capacity,2), dtype=np.int32) - 99
+    image_channels = np.zeros((self.sector_hits_capacity,3), dtype=np.float32) + np.nan
+
+    i = 0
+    for k, v in amap.iteritems():
+      if i == self.sector_hits_capacity:
+        break
+      (m,n) = k
+      hits_mn = v
+      h = hits_mn[0]  # arbitrarily pick the first hit
+      chn = self.get_chn(h)
+
+      image_pixels[i] = (m,n)
+      image_channels[i] = chn
+      i += 1
+
+    return image_pixels, image_channels
+
+make_emtf_image = EMTFImage(superstrip_size=superstrip_size)
+
+
+# Assign EMTF label
+class EMTFLabel(object):
+  def __init__(self):
+    self.pt_bins = np.linspace(-0.525, 0.525, num=22)
+    self.eta_bins = eta_bins
+    self.phi_bins = np.linspace(-40, 40, num=129)  # uGMT uses 360./576
+
+  def find_pt_bin(self, part):
+    pt = np.true_divide(part.q, part.pt)
+    ipt = np.digitize((pt,), self.pt_bins[1:])[0]  # skip lowest edge
+    ipt = np.clip(ipt, 0, len(self.pt_bins)-2)
+    return ipt
+
+  def find_sector_phi(self, glob, sector):  # glob in deg, sector in [1,6]
+    # sector 1 starts at 15 deg
+    loc = glob - 15. - (60. * (sector-1))
+    # but here I'm assuming sector 1 centers at 40 deg
+    center = 40. - 15.
+    dphi = delta_phi(loc, center)
+    return dphi
+
+  def find_phi_bin(self, part, sector):
+    phi = self.find_sector_phi(np.rad2deg(part.phi), (sector%6)+1)
+    iphi = np.digitize((phi,), self.phi_bins[1:])[0]  # skip lowest edge
+    iphi = np.clip(iphi, 0, len(self.phi_bins)-2)
+    return iphi
+
+  def find_eta_bin(self, part):
+    eta = abs(part.eta)
+    ieta = np.digitize((eta,), self.eta_bins[1:])[0]  # skip lowest edge
+    ieta = np.clip(ieta, 0, len(self.eta_bins)-2)
+    return ieta
+
+  def __call__(self, part, sector):
+    label = (self.find_pt_bin(part),
+             self.find_phi_bin(part, sector),
+             self.find_eta_bin(part))
+    label = np.asarray(label, dtype=np.int32)
+    return label
+
+assign_emtf_label = EMTFLabel()
+
+
 # ______________________________________________________________________________
 # Book histograms
 histograms = {}
@@ -1861,313 +2166,7 @@ elif analysis == 'mixing':
 # ______________________________________________________________________________
 # Analysis: images
 elif analysis == 'images':
-
-  # Make EMTF image
-  # A m-by-n matrix has m rows and n columns
-  class EMTFImage(object):
-    def __init__(self, superstrip_size):
-      self.superstrip_size = superstrip_size
-
-      self.sector_hits_capacity = 50
-
-      l_lut = np.zeros((5,5,5), dtype=np.int32) - 99  # (type, station, ring) -> layer
-      l_lut[1,1,4] = 0  # ME1/1a
-      l_lut[1,1,1] = 0  # ME1/1b
-      l_lut[1,1,2] = 1  # ME1/2
-      l_lut[1,1,3] = 1  # ME1/3
-      l_lut[1,2,1] = 2  # ME2/1
-      l_lut[1,2,2] = 2  # ME2/2
-      l_lut[1,3,1] = 3  # ME3/1
-      l_lut[1,3,2] = 3  # ME3/2
-      l_lut[1,4,1] = 4  # ME4/1
-      l_lut[1,4,2] = 4  # ME4/2
-      l_lut[2,1,2] = 1  # RE1/2
-      l_lut[2,2,2] = 2  # RE2/2
-      l_lut[2,3,1] = 3  # RE3/1
-      l_lut[2,3,2] = 3  # RE3/2
-      l_lut[2,3,3] = 3  # RE3/3
-      l_lut[2,4,1] = 4  # RE4/1
-      l_lut[2,4,2] = 4  # RE4/2
-      l_lut[2,4,3] = 4  # RE4/3
-      l_lut[3,1,1] = 0  # GE1/1
-      l_lut[3,2,1] = 2  # GE2/1
-      l_lut[4,1,1] = 0  # ME0
-      self.l_lut = l_lut
-      assert(self.l_lut.max() < nlayers)
-
-      m_lut = np.zeros((5,5,5,2), dtype=np.int32) - 99  # (type, station, ring, fr) -> row
-      m_lut[1,1,4,0] = 4  # ME1/1a (R)
-      m_lut[1,1,4,1] = 3  # ME1/1a (F)
-      m_lut[1,1,1,0] = 4  # ME1/1b (R)
-      m_lut[1,1,1,1] = 3  # ME1/1b (F)
-      m_lut[1,1,2,0] = 1  # ME1/2 (R)
-      m_lut[1,1,2,1] = 0  # ME1/2 (F)
-      m_lut[1,1,3,:] = 0  # ME1/3
-      m_lut[1,2,1,:] = 6  # ME2/1
-      m_lut[1,2,2,:] = 6  # ME2/2
-      m_lut[1,3,1,:] = 7  # ME3/1
-      m_lut[1,3,2,:] = 7  # ME3/2
-      m_lut[1,4,1,:] = 9  # ME4/1
-      m_lut[1,4,2,:] = 9  # ME4/2
-      m_lut[2,1,2,:] = 2  # RE1/2
-      m_lut[2,2,2,:] = 5  # RE2/2
-      m_lut[2,3,1,:] = 8  # RE3/1
-      m_lut[2,3,2,:] = 8  # RE3/2
-      m_lut[2,3,3,:] = 8  # RE3/3
-      m_lut[2,4,1,:] = 10 # RE4/1
-      m_lut[2,4,2,:] = 10 # RE4/2
-      m_lut[2,4,3,:] = 10 # RE4/3
-      m_lut[3,1,1,:] = 2  # GE1/1
-      m_lut[3,2,1,:] = 5  # GE2/1
-      m_lut[4,1,1,:] = 0  # ME0
-      self.m_lut = m_lut
-      self.m_size = 11
-      assert(self.m_lut.max() < self.m_size)
-
-      self.n_size = 5040 // self.superstrip_size
-
-      t_lut = np.zeros((11,7,2), dtype=np.int32) - 99  # (row,zone) -> (min theta, max theta)
-      t_lut[0,0] = 4,17   # ME0
-      t_lut[0,1] = 17,23  # ME0
-      t_lut[1,0] = 4,17   # ME0
-      t_lut[1,1] = 17,23  # ME0
-      t_lut[2,1] = 17,26  # GE1/1
-      t_lut[2,2] = 24,37  # GE1/1
-      t_lut[2,3] = 35,45  # GE1/1
-      t_lut[2,4] = 40,52  # GE1/1
-      t_lut[3,0] = 4,17   # ME1/1 (F)
-      t_lut[3,1] = 16,26  # ME1/1 (F)
-      t_lut[3,2] = 24,37  # ME1/1 (F)
-      t_lut[3,3] = 34,43  # ME1/1 (F)
-      t_lut[3,4] = 40,53  # ME1/1 (F)
-      t_lut[4,0] = 4,17   # ME1/1 (R)
-      t_lut[4,1] = 16,26  # ME1/1 (R)
-      t_lut[4,2] = 24,37  # ME1/1 (R)
-      t_lut[4,3] = 34,43  # ME1/1 (R)
-      t_lut[4,4] = 40,53  # ME1/1 (R)
-      #
-      t_lut[0,4] = 46,54  # ME1/2 (F)
-      t_lut[0,5] = 52,67  # ME1/2 (F)
-      t_lut[0,6] = 65,87  # ME1/2 (F)
-      t_lut[1,4] = 46,54  # ME1/2 (R)
-      t_lut[1,5] = 52,67  # ME1/2 (R)
-      t_lut[1,6] = 65,87  # ME1/2 (R)
-      t_lut[2,5] = 52,72  # RE1/2
-      t_lut[2,6] = 68,84  # RE1/2
-      #
-      t_lut[5,0] = 7,19   # GE2/1
-      t_lut[5,1] = 18,24  # GE2/1
-      t_lut[5,2] = 23,35  # GE2/1
-      t_lut[5,3] = 34,45  # GE2/1
-      t_lut[5,4] = 40,46  # GE2/1
-      t_lut[5,5] = 56,68  # RE2/2+3
-      t_lut[5,6] = 64,76  # RE2/2+3
-      t_lut[6,0] = 4,17   # ME2/1
-      t_lut[6,1] = 16,25  # ME2/1
-      t_lut[6,2] = 24,36  # ME2/1
-      t_lut[6,3] = 34,43  # ME2/1
-      t_lut[6,4] = 40,49  # ME2/1
-      t_lut[6,5] = 52,67  # ME2/2
-      t_lut[6,6] = 65,87  # ME2/2
-      #
-      t_lut[7,0] = 4,17   # ME3/1
-      t_lut[7,1] = 16,25  # ME3/1
-      t_lut[7,2] = 24,36  # ME3/1
-      t_lut[7,3] = 34,40  # ME3/1
-      t_lut[7,4] = 44,54  # ME3/2
-      t_lut[7,5] = 52,67  # ME3/2
-      t_lut[7,6] = 64,87  # ME3/2
-      t_lut[8,0] = 4,20   # RE3/1
-      t_lut[8,1] = 20,24  # RE3/1
-      t_lut[8,2] = 24,32  # RE3/1
-      t_lut[8,3] = 40,40  # RE3/2+3
-      t_lut[8,4] = 40,52  # RE3/2+3
-      t_lut[8,5] = 48,72  # RE3/2+3
-      t_lut[8,6] = 60,84  # RE3/2+3
-      #
-      t_lut[9,0] = 4,17   # ME4/1
-      t_lut[9,1] = 16,25  # ME4/1
-      t_lut[9,2] = 24,35  # ME4/1
-      t_lut[9,3] = 38,43  # ME4/2
-      t_lut[9,4] = 41,54  # ME4/2
-      t_lut[9,5] = 52,67  # ME4/2
-      t_lut[9,6] = 64,87  # ME4/2
-      t_lut[10,0] = 8,16  # RE4/1
-      t_lut[10,1] = 16,28 # RE4/1
-      t_lut[10,2] = 24,28 # RE4/1
-      t_lut[10,3] = 36,44 # RE4/2+3
-      t_lut[10,4] = 44,52 # RE4/2+3
-      t_lut[10,5] = 52,64 # RE4/2+3
-      t_lut[10,6] = 64,84 # RE4/2+3
-      self.t_lut = t_lut
-
-      self.zone_size = 7
-
-      # ME1/1, ME1/2, ME2, ME3, ME4, RE1
-      # RE2, RE3, RE4, GE1/1, GE2/1, ME0
-      s_bend_lut =[-0.059926, -0.065415, -0.149701,  0.086035,  0.108797,  1.000000,
-                    1.000000,  1.000000,  1.000000, -0.515074, -0.599277, -0.073872,]
-      self.s_bend_lut = np.array(s_bend_lut, dtype=np.float32)
-
-      s_bend_sign_lut = np.sign(self.s_bend_lut)
-      self.s_bend_sign_lut = np.array(s_bend_sign_lut, dtype=np.float32)
-
-      s_bend_max_lut = [28, 40, 12, 20, 20, 0, 0, 0, 0, 3, 1, 18]
-      self.s_bend_max_lut = np.array(s_bend_max_lut, dtype=np.float32)
-
-    def get_layer(self, hit):
-      index = (hit.type, hit.station, hit.ring)
-      lay = self.l_lut[index]
-      return lay
-
-    def get_row(self, hit):
-      index = (hit.type, hit.station, hit.ring, hit.fr)
-      m = self.m_lut[index]
-      assert(m < self.m_size)
-      return m
-
-    def get_col(self, hit):
-      hit_phi = np.asarray(hit.emtf_phi, dtype=np.int32)
-      n = hit_phi // self.superstrip_size
-      assert(n < self.n_size)
-      return n
-
-    def get_zones(self, hit):
-      m = self.get_row(hit)
-      t = self.t_lut[m]
-      hit_theta = np.asarray(hit.emtf_theta, dtype=np.int32)
-      zones = np.logical_and(t[:,0] <= hit_theta, hit_theta <= t[:,1])
-      zones = np.where(zones)[0]
-      assert((zones < self.zone_size).all())
-      return zones
-
-    def get_chn_bend(self, hit):
-      if hit.type == kCSC:
-        bend = hit.bend
-        bend *= hit.endcap
-        # Special case for ME1/1a:
-        # rescale the bend to be the same as ME1/1b
-        if hit.station == 1 and hit.ring == 4:
-          bend *= 0.026331/0.014264
-      elif hit.type == kGEM:
-        bend = hit.bend
-        bend *= hit.endcap
-      else:
-        bend = hit.bend
-      lay = self.get_layer(hit)
-      #s = self.s_bend_lut[lay]
-      #bend *= s
-      bend_sign = self.s_bend_sign_lut[lay]
-      bend_max = self.s_bend_max_lut[lay]
-      if bend_max == 0:
-        bend = 0.5
-      else:
-        bend = np.clip(float(bend), -bend_max, bend_max)
-        bend = 0.5 + (bend_sign * bend)/(2 * bend_max)
-      return bend
-
-    def get_chn_theta(self, hit):
-      theta = np.clip(float(hit.emtf_theta), 4., 86.)
-      theta = (theta - 3.)/83.
-      return theta
-
-    def get_chn_mphi(self, hit):
-      n = self.get_col(hit)
-      mphi = float(hit.emtf_phi) - (n * self.superstrip_size)
-      mphi /= self.superstrip_size
-      return mphi
-
-    def get_chn(self, hit):
-      chn = (self.get_chn_bend(hit),
-             self.get_chn_theta(hit),
-             self.get_chn_mphi(hit))
-      chn = np.asarray(chn, dtype=np.float32)
-      assert((0.0 <= chn).all())
-      assert((chn <= 1.0).all())
-      return chn
-
-    def is_intime(self, hit):
-      if hit.type == kCSC:
-        return hit.bx == -1 or hit.bx == 0
-      else:
-        return hit.bx == 0
-
-    def __call__(self, hits):
-      amap = {}
-      for ihit, hit in enumerate(hits):
-        if self.is_intime(hit):
-          m = self.get_row(hit)
-          n = self.get_col(hit)
-          zones = self.get_zones(hit)
-          for z in zones:
-            m_z = m + (z * self.m_size)
-            amap.setdefault((m_z,n), []).append(hit)
-
-      image_pixels = np.zeros((self.sector_hits_capacity,2), dtype=np.int32) - 99
-      image_channels = np.zeros((self.sector_hits_capacity,3), dtype=np.float32) + np.nan
-
-      i = 0
-      for k, v in amap.iteritems():
-        if i == self.sector_hits_capacity:
-          break
-        (m,n) = k
-        hits_mn = v
-        h = hits_mn[0]  # arbitrarily pick the first hit
-        chn = self.get_chn(h)
-
-        image_pixels[i] = (m,n)
-        image_channels[i] = chn
-        i += 1
-
-      return image_pixels, image_channels
-
-  make_emtf_image = EMTFImage(superstrip_size=superstrip_size)
-
-
-  # Assign EMTF label
-  class EMTFLabel(object):
-    def __init__(self):
-      self.pt_bins = np.linspace(-0.525, 0.525, num=22)
-      self.eta_bins = eta_bins
-      self.phi_bins = np.linspace(-40, 40, num=129)  # uGMT uses 360./576
-
-    def find_pt_bin(self, part):
-      pt = np.true_divide(part.q, part.pt)
-      ipt = np.digitize((pt,), self.pt_bins[1:])[0]  # skip lowest edge
-      ipt = np.clip(ipt, 0, len(self.pt_bins)-2)
-      return ipt
-
-    def find_sector_phi(self, glob, sector):  # glob in deg, sector in [1,6]
-      # sector 1 starts at 15 deg
-      loc = glob - 15. - (60. * (sector-1))
-      # but here I'm assuming sector 1 centers at 40 deg
-      center = 40. - 15.
-      dphi = delta_phi(loc, center)
-      return dphi
-
-    def find_phi_bin(self, part, sector):
-      phi = self.find_sector_phi(np.rad2deg(part.phi), (sector%6)+1)
-      iphi = np.digitize((phi,), self.phi_bins[1:])[0]  # skip lowest edge
-      iphi = np.clip(iphi, 0, len(self.phi_bins)-2)
-      return iphi
-
-    def find_eta_bin(self, part):
-      eta = abs(part.eta)
-      ieta = np.digitize((eta,), self.eta_bins[1:])[0]  # skip lowest edge
-      ieta = np.clip(ieta, 0, len(self.eta_bins)-2)
-      return ieta
-
-    def __call__(self, part, sector):
-      label = (self.find_pt_bin(part),
-               self.find_phi_bin(part, sector),
-               self.find_eta_bin(part))
-      label = np.asarray(label, dtype=np.int32)
-      return label
-
-  assign_emtf_label = EMTFLabel()
-
-  # ____________________________________________________________________________
-  tree = load_pgun()  #FIXME
+  tree = load_pgun()
   #tree = load_pgun_batch(jobid)
 
   out_image_pixels = []
@@ -2176,8 +2175,7 @@ elif analysis == 'images':
   out_parameters = []
 
   # Event range
-  #n = -1
-  n = maxEvents  #FIXME
+  n = -1
 
   # ____________________________________________________________________________
   # Loop over events
@@ -2186,10 +2184,6 @@ elif analysis == 'images':
       break
 
     if (ievt % 1000 == 0):  print("Processing event: {0}".format(ievt))
-
-    # Skip events with very few hits
-    if not len(evt.hits) >= 4:
-      continue
 
     # Skip events without ME1 hits
     has_ME1 = False
@@ -2213,8 +2207,6 @@ elif analysis == 'images':
       sector_hits_array[ind] = []
 
     for ihit, hit in enumerate(evt.hits):
-      #print(".. hit  {0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10} {11}".format(ihit, hit.bx, hit.type, hit.station, hit.ring, hit.sector, hit.fr, hit.sim_phi, hit.sim_theta, hit.time, hit.sim_tp1, hit.sim_tp2))
-
       assert(hit.emtf_phi < 5040)  # 84*60
       endsec = find_endsec(hit.endcap, hit.sector)
       sector_cnt_array[endsec] += 1
