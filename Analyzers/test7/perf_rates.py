@@ -45,7 +45,7 @@ if __name__ == '__main__':
   gStyle.SetPadGridY(True)
   gROOT.ForceStyle()
 
-  infile = "histos_tbb_add.17.root"
+  infile = "histos_tbb_add.18.root"
   tfile = TFile.Open(infile)
 
   h_nevents = tfile.Get("nevents")
@@ -144,6 +144,7 @@ if __name__ == '__main__':
     draw_err_option = "e3"
 
     cc1_1.cd()
+    denom.SetStats(0)
     denom.Draw(draw_err_option)
     numer.Draw(draw_err_option + " same")
 
@@ -156,6 +157,7 @@ if __name__ == '__main__':
 
 
     cc1_2.cd()
+    ratio.SetStats(0)
     ratio.Draw(draw_err_option)
     xmin, xmax = ratio.GetXaxis().GetXmin(), ratio.GetXaxis().GetXmax()
     tline.DrawLine(xmin, 1.0, xmax, 1.0)

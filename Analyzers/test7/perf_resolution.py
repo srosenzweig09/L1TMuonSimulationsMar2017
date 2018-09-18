@@ -22,7 +22,7 @@ if __name__ == '__main__':
   gStyle.SetTitleOffset(1.2, "Y")
   gROOT.ForceStyle()
 
-  infile = "histos_tbc_add.17.root"
+  infile = "histos_tbc_add.18.root"
   tfile = TFile.Open(infile)
 
 
@@ -75,6 +75,7 @@ if __name__ == '__main__':
     frame.GetYaxis().SetTitle("#Delta(p_{T})/p_{T} bias")
     frame.SetMaximum(0.5)
     frame.SetMinimum(-0.5)
+    frame.SetStats(0)
     frame.Draw()
     gr1_aspt.SetLineColor(col)
     gr1_aspt.SetMarkerColor(col)
@@ -86,6 +87,7 @@ if __name__ == '__main__':
     frame.GetYaxis().SetTitle("#Delta(p_{T})/p_{T} resolution")
     frame.SetMaximum(0.6)
     frame.SetMinimum(0.0)
+    frame.SetStats(0)
     frame.Draw()
     gr2_aspt.SetLineColor(col)
     gr2_aspt.SetMarkerColor(col)
