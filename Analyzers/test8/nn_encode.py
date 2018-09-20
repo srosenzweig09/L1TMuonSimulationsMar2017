@@ -2,7 +2,7 @@ import numpy as np
 
 nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
 
-nvariables = (nlayers * 6) + 8
+nvariables = (nlayers * 5) + 3
 
 nvariables_input = (nlayers * 7) + 3
 
@@ -114,15 +114,20 @@ class Encoder(object):
         #theta_cuts    = np.array((6., 6., 6., 6., 6., 10., 10., 10., 10., 8., 8., 8.), dtype=np.float32)
         #x_theta_tmp   = np.where(np.isnan(self.x_theta), 99., self.x_theta)  # take care of nan
         #x_theta_tmp   = np.abs(x_theta_tmp) > theta_cuts
-        self.x_bend[:, 5:9] = 0  # do not use RPC bend
-        x_ring_tmp    = self.x_ring.astype(np.int32)
-        x_ring_tmp    = (x_ring_tmp == 2) | (x_ring_tmp == 3) | (x_ring_tmp == 4)
-        self.x_ring[x_ring_tmp] = 1  # ring 2,3,4 -> 1; also differentiate ring 4 (ME1/1a) from ring 1 (ME1/1b)
-        self.x_ring[~x_ring_tmp] = 0 # ring 1 -> 0
-        x_fr_tmp      = self.x_fr.astype(np.int32)
-        x_fr_tmp      = (x_fr_tmp == 1)
-        self.x_fr[x_fr_tmp] = 1   # front chamber -> 1
-        self.x_fr[~x_fr_tmp] = 0  # rear chamber  -> 0
+        if True:  # modify ring and F/R definitions
+          x_ring_tmp    = self.x_ring.astype(np.int32)
+          x_ring_tmp    = (x_ring_tmp == 2) | (x_ring_tmp == 3) | (x_ring_tmp == 4)
+          self.x_ring[x_ring_tmp]  = 1 # ring 2,3,4 -> 1; also differentiate ring 4 (ME1/1a) from ring 1 (ME1/1b)
+          self.x_ring[~x_ring_tmp] = 0 # ring 1 -> 0
+          x_fr_tmp      = self.x_fr.astype(np.int32)
+          x_fr_tmp      = (x_fr_tmp == 1)
+          self.x_fr[x_fr_tmp]  = 1  # front chamber -> 1
+          self.x_fr[~x_fr_tmp] = 0  # rear chamber  -> 0
+        if True:  # zero out some variables
+          self.x_bend[:, 5:9]  = 0  # no bend for RPC
+          self.x_time[:, :]    = 0  # no time for everyone
+          self.x_ring[:, 9:12] = 0  # no ring for GEM, ME0
+          self.x_fr[:, 5:12]   = 0  # no F/R for RPC, GEM, ME0
         s = [ 0.005083,  0.019142, -0.015694, -0.010744, -0.007120,  0.021043,
              -0.042957, -0.009228, -0.006421,  0.003815, -0.015731,  0.003477,
               0.596512,  0.592788,  1.459119,  1.507292,  1.062175,  0.228293,
@@ -197,8 +202,8 @@ class Encoder(object):
     #x_valid[11] = 0  # 11: ME0
 
     x_new = np.hstack((self.x_phi[:,x_valid], self.x_theta[:,x_valid], self.x_bend[:,x_valid],
-                       self.x_time[:,x_valid], self.x_ring[:,x_valid], self.x_fr[:,x_valid],
-                       self.x_straightness, self.x_zone, self.x_theta_median, self.x_mode_vars))
+                       self.x_ring[:,x_valid], self.x_fr[:,x_valid],
+                       self.x_straightness, self.x_zone, self.x_theta_median))
     return x_new
 
   def get_x_mask(self):

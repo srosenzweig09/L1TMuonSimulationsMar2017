@@ -7,7 +7,7 @@ logger = getLogger()
 adjust_scale = 3
 
 #learning_rate = 0.00113
-learning_rate = 0.0024
+learning_rate = 0.0033
 
 gradient_clip_norm = 100.
 
@@ -17,7 +17,7 @@ discr_pt_cut = 14.
 
 reg_pt_scale = 100.
 
-discr_loss_weight = 30.
+discr_loss_weight = 20.
 
 add_noise = True
 
