@@ -1334,13 +1334,13 @@ for k in ("denom", "numer"):
 hname = "nevents"
 histograms[hname] = Hist(5, 0, 5, name=hname, title="; count", type='F')
 for m in ("emtf", "emtf2023"):
-  hname = "highest_%s_absEtaMin0_absEtaMax2.5_qmin12_pt" % m
+  hname = "highest_%s_absEtaMin1.24_absEtaMax2.4_qmin12_pt" % m
   histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
-  hname = "highest_%s_absEtaMin1.2_absEtaMax1.65_qmin12_pt" % m
+  hname = "highest_%s_absEtaMin1.24_absEtaMax1.65_qmin12_pt" % m
   histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
   hname = "highest_%s_absEtaMin1.65_absEtaMax2.15_qmin12_pt" % m
   histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
-  hname = "highest_%s_absEtaMin2.15_absEtaMax2.5_qmin12_pt" % m
+  hname = "highest_%s_absEtaMin2.15_absEtaMax2.4_qmin12_pt" % m
   histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
 
   for l in xrange(14,22+1):
@@ -1890,39 +1890,39 @@ elif analysis == 'rates':
 
     tracks = evt.tracks
     #
-    select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
-    hname = "highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt"
+    select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
+    hname = "highest_emtf_absEtaMin1.24_absEtaMax2.4_qmin12_pt"
     fill_highest_pt()
-    select = lambda trk: trk and (1.2 <= abs(trk.eta) < 1.65) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
-    hname = "highest_emtf_absEtaMin1.2_absEtaMax1.65_qmin12_pt"
+    select = lambda trk: trk and (1.24 <= abs(trk.eta) < 1.65) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
+    hname = "highest_emtf_absEtaMin1.24_absEtaMax1.65_qmin12_pt"
     fill_highest_pt()
     select = lambda trk: trk and (1.65 <= abs(trk.eta) < 2.15) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
     hname = "highest_emtf_absEtaMin1.65_absEtaMax2.15_qmin12_pt"
     fill_highest_pt()
-    select = lambda trk: trk and (2.15 <= abs(trk.eta) <= 2.5) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
-    hname = "highest_emtf_absEtaMin2.15_absEtaMax2.5_qmin12_pt"
+    select = lambda trk: trk and (2.15 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
+    hname = "highest_emtf_absEtaMin2.15_absEtaMax2.4_qmin12_pt"
     fill_highest_pt()
     for l in xrange(14,22+1):
-      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.bx == 0) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l))
+      select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l))
       hname = "emtf_ptmin%i_qmin12_eta" % (l)
       fill_eta()
 
     tracks = emtf2023_tracks
     #
-    select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5)
-    hname = "highest_emtf2023_absEtaMin0_absEtaMax2.5_qmin12_pt"
+    select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4)
+    hname = "highest_emtf2023_absEtaMin1.24_absEtaMax2.4_qmin12_pt"
     fill_highest_pt()
-    select = lambda trk: trk and (1.2 <= abs(trk.eta) < 1.65)
-    hname = "highest_emtf2023_absEtaMin1.2_absEtaMax1.65_qmin12_pt"
+    select = lambda trk: trk and (1.24 <= abs(trk.eta) < 1.65)
+    hname = "highest_emtf2023_absEtaMin1.24_absEtaMax1.65_qmin12_pt"
     fill_highest_pt()
     select = lambda trk: trk and (1.65 <= abs(trk.eta) < 2.15)
     hname = "highest_emtf2023_absEtaMin1.65_absEtaMax2.15_qmin12_pt"
     fill_highest_pt()
-    select = lambda trk: trk and (2.15 <= abs(trk.eta) <= 2.5)
-    hname = "highest_emtf2023_absEtaMin2.15_absEtaMax2.5_qmin12_pt"
+    select = lambda trk: trk and (2.15 <= abs(trk.eta) <= 2.4)
+    hname = "highest_emtf2023_absEtaMin2.15_absEtaMax2.4_qmin12_pt"
     fill_highest_pt()
     for l in xrange(14,22+1):
-      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.pt > float(l))
+      select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.pt > float(l))
       hname = "emtf2023_ptmin%i_qmin12_eta" % (l)
       fill_eta()
 
@@ -1937,13 +1937,13 @@ elif analysis == 'rates':
     hname = "nevents"
     hnames.append("nevents")
     for m in ("emtf", "emtf2023"):
-      hname = "highest_%s_absEtaMin0_absEtaMax2.5_qmin12_pt" % m
+      hname = "highest_%s_absEtaMin1.24_absEtaMax2.4_qmin12_pt" % m
       hnames.append(hname)
-      hname = "highest_%s_absEtaMin1.2_absEtaMax1.65_qmin12_pt" % m
+      hname = "highest_%s_absEtaMin1.24_absEtaMax1.65_qmin12_pt" % m
       hnames.append(hname)
       hname = "highest_%s_absEtaMin1.65_absEtaMax2.15_qmin12_pt" % m
       hnames.append(hname)
-      hname = "highest_%s_absEtaMin2.15_absEtaMax2.5_qmin12_pt" % m
+      hname = "highest_%s_absEtaMin2.15_absEtaMax2.4_qmin12_pt" % m
       hnames.append(hname)
       for l in xrange(14,22+1):
         hname = "%s_ptmin%i_qmin12_eta" % (m,l)
@@ -2032,7 +2032,7 @@ elif analysis == 'effie':
         histograms[hname2].fill(abs(part.invpt), (abs(1.0/trk.invpt) - abs(1.0/part.invpt))/abs(1.0/part.invpt))
 
     for l in (0, 10, 15, 20, 30, 40, 50):
-      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l))
+      select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l))
       tracks = evt.tracks
       #
       hname = "emtf_eff_vs_genpt_l1pt%i" % (l)
@@ -2048,7 +2048,7 @@ elif analysis == 'effie':
         hname2 = "emtf_l1ptres_vs_genpt"
         fill_resolution()
 
-      select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.pt > float(l))
+      select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.pt > float(l))
       tracks = emtf2023_tracks
       #
       hname = "emtf2023_eff_vs_genpt_l1pt%i" % (l)
@@ -2125,43 +2125,34 @@ elif analysis == 'mixing':
     #emtf2023_tracks = trkprod.run(slim_roads, variables_mod, predictions, other_vars)
 
     def find_highest_part_pt():
-      highest_pt = np.full((12,), -999999., dtype=np.float32)
+      highest_pt = -999999.
       for ipart, part in enumerate(evt.particles):
         if select(part):
-          part.invpt = np.true_divide(part.q, part.pt)
-          #part.exphi = extrapolate_to_emtf(part.phi, part.invpt, part.eta)
-          part.exphi = emtf_extrapolation(part)
-          part.sector = find_sector(part.exphi)
-          part.endcap = find_endcap(part.eta)
-          endsec = find_endsec(part.endcap, part.sector)
-          if highest_pt[endsec] < part.pt:
-            highest_pt[endsec] = part.pt
-      #highest_pt = np.clip(highest_pt, -999999., 100.-1e-3)
-      return highest_pt
+          if highest_pt < part.pt:
+            highest_pt = part.pt
+      if highest_pt > 0.:
+        highest_pt = min(100.-1e-3, highest_pt)
+        return highest_pt
 
     select = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
     highest_part_pt = find_highest_part_pt()
 
     def find_highest_track_pt():
-      highest_pt = np.full((12,), -999999., dtype=np.float32)
+      highest_pt = -999999.
       for itrk, trk in enumerate(evt.tracks):
         if select(trk):
-          endsec = find_endsec(trk.endcap, trk.sector)
-          if highest_pt[endsec] < trk.pt:  # using scaled pT
-            highest_pt[endsec] = trk.pt
-      #highest_pt = np.clip(highest_pt, -999999., 100.-1e-3)
-      return highest_pt
+          if highest_pt < trk.pt:  # using scaled pT
+            highest_pt = trk.pt
+      if highest_pt > 0.:
+        highest_pt = min(100.-1e-3, highest_pt)
+        return highest_pt
 
-    select = lambda trk: trk and (0. <= abs(trk.eta) <= 2.5) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
+    select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
     highest_track_pt = find_highest_track_pt()
 
-    def find_aux_info(road):
-      endsec = find_endsec(road.id[0], road.id[1])
-      aux = (jobid, ievt, highest_part_pt[endsec], highest_track_pt[endsec])
-      return aux
-
     if len(slim_roads) > 0:
-      out_particles += [find_aux_info(road) for road in slim_roads]
+      part = (jobid, ievt, highest_part_pt, highest_track_pt)
+      out_particles += [part for _ in xrange(len(slim_roads))]
       out_roads += slim_roads
 
     debug_event_list = [2826, 2937, 3675, 4581, 4838, 5379, 7640]
