@@ -2,7 +2,7 @@ import numpy as np
 
 nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
 
-nvariables = (nlayers * 5) + 3
+nvariables = (nlayers * 6) + 3 - 26
 
 nvariables_input = (nlayers * 7) + 3
 
@@ -61,7 +61,7 @@ class Encoder(object):
       self.x_time [x_dropit] = np.nan
       self.x_ring [x_dropit] = np.nan
       self.x_fr   [x_dropit] = np.nan
-      self.x_mask [x_dropit] = 1.0
+      self.x_mask [x_dropit] = 1
 
       # Make event weight
       #self.w       = np.ones(self.y_pt.shape, dtype=np.float32)
@@ -152,7 +152,7 @@ class Encoder(object):
       #self.x_time [x_theta_tmp] = np.nan
       #self.x_ring [x_theta_tmp] = np.nan
       #self.x_fr   [x_theta_tmp] = np.nan
-      #self.x_mask [x_theta_tmp] = 1.0
+      #self.x_mask [x_theta_tmp] = 1
 
       # Add variables: straightness, zone, theta_median and mode variables
       self.x_straightness = (self.x_straightness - 6.) / 6.   # scaled to [-1,1]
@@ -194,16 +194,24 @@ class Encoder(object):
     x[np.isnan(x)] = 0.0
     return x
 
-  def get_x(self):
-    # Drop input nodes
-    x_valid = np.ones((nlayers,), dtype=np.bool)
-    #x_valid[9]  = 0  # 9: GE1/1
-    #x_valid[10] = 0  # 10: GE2/1
-    #x_valid[11] = 0  # 11: ME0
-
-    x_new = np.hstack((self.x_phi[:,x_valid], self.x_theta[:,x_valid], self.x_bend[:,x_valid],
-                       self.x_ring[:,x_valid], self.x_fr[:,x_valid],
+  def get_x(self, drop_columns_of_zeroes=True):
+    x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend,
+                       self.x_time, self.x_ring, self.x_fr,
                        self.x_straightness, self.x_zone, self.x_theta_median))
+    # Drop input nodes
+    if drop_columns_of_zeroes:
+      dropit = np.all(x_new == 0, axis=0)  # columns with only zeroes
+      x_new = x_new[:, ~dropit]
+
+      # Sanity check
+      drop_phi   = [nlayers*0 + x for x in xrange(0,0)]  # keep everyone
+      drop_theta = [nlayers*1 + x for x in xrange(0,0)]  # keep everyone
+      drop_bend  = [nlayers*2 + x for x in xrange(5,9)]  # no bend for RPC
+      drop_time  = [nlayers*3 + x for x in xrange(0,12)] # no time for everyone
+      drop_ring  = [nlayers*4 + x for x in xrange(9,12)] # no ring for GEM, ME0
+      drop_fr    = [nlayers*5 + x for x in xrange(5,12)] # no F/R for RPC, GEM, ME0
+      assert(list(np.where(dropit)[0]) == drop_phi + drop_theta + drop_bend + drop_time + drop_ring + drop_fr)
+
     return x_new
 
   def get_x_mask(self):

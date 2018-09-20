@@ -28,6 +28,8 @@ def muon_data(filename, adjust_scale=0, reg_pt_scale=1.0, correct_for_eta=False)
     x, y, w, x_mask = encoder.get_x(), encoder.get_y_corrected_for_eta(), encoder.get_w(), encoder.get_x_mask()
   else:
     x, y, w, x_mask = encoder.get_x(), encoder.get_y(), encoder.get_w(), encoder.get_x_mask()
+  logger.info('Loaded the encoded variables with shape {0}'.format(x.shape))
+  logger.info('Loaded the encoded parameters with shape {0}'.format(y.shape))
   assert(np.isfinite(x).all())
   return x, y, w, x_mask
 
@@ -57,20 +59,21 @@ def pileup_data(filename, adjust_scale=0, reg_pt_scale=1.0):
     loaded = np.load(filename)
     the_variables = loaded['variables']
     the_parameters = np.zeros((the_variables.shape[0], 3), dtype=np.float32)
-    the_auxiliaries = loaded['aux']
+    the_aux = loaded['aux']
     logger.info('Loaded the variables with shape {0}'.format(the_variables.shape))
-    logger.info('Loaded the auxiliary PU info with shape {0}'.format(the_auxiliaries.shape))
+    logger.info('Loaded the auxiliary PU info with shape {0}'.format(the_aux.shape))
   except:
     logger.error('Failed to load data from file: {0}'.format(filename))
 
-  assert(the_variables.shape[0] == the_auxiliaries.shape[0])
-  assert(the_auxiliaries.shape[1] == 4)  # jobid, ievt, highest_part_pt, highest_track_pt
+  assert(the_variables.shape[0] == the_aux.shape[0])
+  assert(the_aux.shape[1] == 4)  # jobid, ievt, highest_part_pt, highest_track_pt
 
   encoder = Encoder(the_variables, the_parameters, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale)
   x, y, w, x_mask = encoder.get_x(), encoder.get_y(), encoder.get_w(), encoder.get_x_mask()
+  logger.info('Loaded the encoded variables with shape {0}'.format(x.shape))
+  logger.info('Loaded the encoded auxiliary PU info with shape {0}'.format(the_aux.shape))
   assert(np.isfinite(x).all())
-  aux = the_auxiliaries
-  return x, aux, w, x_mask
+  return x, the_aux, w, x_mask
 
 
 def pileup_data_split(filename, adjust_scale=0, reg_pt_scale=1.0, test_job=50):
