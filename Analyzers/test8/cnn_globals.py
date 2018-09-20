@@ -8,7 +8,7 @@ superstrip_size = 16
 
 n_zones = 7
 
-rows_per_zone = 11
+rows_per_zone = 9
 
 n_rows = n_zones * rows_per_zone
 
@@ -22,7 +22,7 @@ dropout = 0.2
 
 learning_rate = 1e-3
 
-gradient_clip_norm = 10.
+gradient_clip_norm = 100.
 
 infile_images = '../test7/histos_tbe.17.npz'
 
@@ -43,9 +43,11 @@ logger.info('Using numpy {0}'.format(np.__version__))
 import tensorflow as tf
 logger.info('Using tensorflow {0}'.format(tf.__version__))
 
-from tensorflow import keras as tf_keras
-K = tf_keras.backend
-logger.info('Using keras {0}'.format(tf_keras.__version__))
+import keras
+from keras import backend as K
+#K.set_epsilon(1e-08)
+#K.set_session(tf.Session(config=tf.ConfigProto(intra_op_parallelism_threads=4, inter_op_parallelism_threads=4, allow_soft_placement=True)))
+logger.info('Using keras {0}'.format(keras.__version__))
 logger.info('.. list devices: {0}'.format(K.get_session().list_devices()))
 
 import scipy
