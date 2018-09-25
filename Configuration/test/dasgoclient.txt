@@ -1,0 +1,11 @@
+dasgoclient -query="file dataset=/SingleNeutrino/PhaseIIFall17D-L1TPU140_93X_upgrade2023_realistic_v5-v1/GEN-SIM-DIGI-RAW" > input_SingleNeutrino_PhaseIIFall17D-L1TPU140.txt
+dasgoclient -query="file dataset=/SingleNeutrino/PhaseIIFall17D-L1TPU200_93X_upgrade2023_realistic_v5-v1/GEN-SIM-DIGI-RAW" > input_SingleNeutrino_PhaseIIFall17D-L1TPU200.txt
+
+dasgoclient -query="file dataset=/SingleMu_FlatPt-2to100/PhaseIIFall17D-L1TPU140_93X_upgrade2023_realistic_v5-v1/GEN-SIM-DIGI-RAW" > input_SingleMuon_PhaseIIFall17D-L1TPU140.txt
+dasgoclient -query="file dataset=/SingleMu_FlatPt-2to100/PhaseIIFall17D-L1TPU200_93X_upgrade2023_realistic_v5-v1/GEN-SIM-DIGI-RAW" > input_SingleMuon_PhaseIIFall17D-L1TPU200.txt
+
+dasgoclient -query="file dataset=/SingleE_FlatPt-2to100/PhaseIIFall17D-L1TPU140_93X_upgrade2023_realistic_v5-v1/GEN-SIM-DIGI-RAW" > input_SingleElectron_PhaseIIFall17D-L1TPU140.txt
+dasgoclient -query="file dataset=/SingleE_FlatPt-2to100/PhaseIIFall17D-L1TPU200_93X_upgrade2023_realistic_v5-v1/GEN-SIM-DIGI-RAW" > input_SingleElectron_PhaseIIFall17D-L1TPU200.txt
+
+dasgoclient -query="file dataset=/SinglePhoton_FlatPt-8to150/PhaseIIFall17D-L1TPU140_93X_upgrade2023_realistic_v5-v1/GEN-SIM-DIGI-RAW" > input_SinglePhoton_PhaseIIFall17D-L1TPU140.txt
+dasgoclient -query="file dataset=/SinglePhoton_FlatPt-8to150/PhaseIIFall17D-L1TPU200_93X_upgrade2023_realistic_v5-v1/GEN-SIM-DIGI-RAW" > input_SinglePhoton_PhaseIIFall17D-L1TPU200.txt
