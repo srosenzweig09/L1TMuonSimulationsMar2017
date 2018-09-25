@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from six.moves import range
+from six.moves import range, zip
 import threading
 import warnings
 
@@ -272,15 +272,14 @@ class NumpyArrayIterator(Iterator):
                                                  seed)
 
     def _get_batches_of_transformed_samples(self, index_array):
-        batch_x = np.zeros(tuple([len(index_array)] + list(self.x.shape)[1:]),
+        batch_x = np.zeros(tuple([len(index_array)] + self.image_data_generator.preprocessing_output_shape_x),
                            dtype=self.dtype)
+        batch_y = np.zeros(tuple([len(index_array)] + self.image_data_generator.preprocessing_output_shape_y),
+                           dtype=self.dtype)
+
         for i, j in enumerate(index_array):
-            x = self.x[j]
-            #params = self.image_data_generator.get_random_transform(x.shape)
-            #x = self.image_data_generator.apply_transform(
-            #    x.astype(self.dtype), params)
-            #x = self.image_data_generator.standardize(x)
-            batch_x[i] = x
+            batch_x[i] = self.image_data_generator.preprocessing_function_x(*(x[j] for x in self.x_misc))
+            batch_y[i] = self.image_data_generator.preprocessing_function_y(self.y[j])
 
         if self.save_to_dir:
             for i, j in enumerate(index_array):
@@ -291,12 +290,10 @@ class NumpyArrayIterator(Iterator):
                     hash=np.random.randint(1e4),
                     format=self.save_format)
                 img.save(os.path.join(self.save_to_dir, fname))
-        batch_x_miscs = [xx[index_array] for xx in self.x_misc]
-        output = (batch_x if batch_x_miscs == []
-                  else [batch_x] + batch_x_miscs,)
+
+        output = (batch_x, batch_y)
         if self.y is None:
-            return output[0]
-        output += (self.y[index_array],)
+            return batch_x
         if self.sample_weight is not None:
             output += (self.sample_weight[index_array],)
         return output
@@ -533,7 +530,10 @@ class ImageDataGenerator(object):
                  horizontal_flip=False,
                  vertical_flip=False,
                  rescale=None,
-                 preprocessing_function=None,
+                 preprocessing_function_x=None,
+                 preprocessing_function_y=None,
+                 preprocessing_output_shape_x=None,
+                 preprocessing_output_shape_y=None,
                  data_format='channels_last',
                  validation_split=0.0,
                  dtype='float32'):
@@ -555,7 +555,10 @@ class ImageDataGenerator(object):
         self.horizontal_flip = horizontal_flip
         self.vertical_flip = vertical_flip
         self.rescale = rescale
-        self.preprocessing_function = preprocessing_function
+        self.preprocessing_function_x = preprocessing_function_x
+        self.preprocessing_function_y = preprocessing_function_y
+        self.preprocessing_output_shape_x = preprocessing_output_shape_x
+        self.preprocessing_output_shape_y = preprocessing_output_shape_y
         self.dtype = dtype
 
         if data_format not in {'channels_last', 'channels_first'}:
