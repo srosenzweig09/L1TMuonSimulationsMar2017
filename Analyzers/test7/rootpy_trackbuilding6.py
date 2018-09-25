@@ -447,6 +447,24 @@ class PatternRecognition(object):
   def __init__(self, bank):
     self.bank = bank
 
+  def _select_hit(self, zone, hit):
+    (_type, station, ring, fr) = hit.id
+    if _type == kCSC:
+      if hit.bx in (-1,0):
+        return True
+    elif _type == kRPC:
+      if hit.bx == 0:
+        if zone <= 2:  # in zones 0,1,2: only iRPC
+          if ring == 1:
+            return True
+        else:          # in zones 3,4,5,6: only old RPC
+          if ring != 1:
+            return True
+    else:
+      if hit.bx == 0:
+        return True
+    return False
+
   def _apply_patterns(self, endcap, sector, ipt_range, ieta_range, iphi_range, sector_hits):
 
     # Retrieve patterns with (ipt, ieta, lay, pattern)
@@ -486,32 +504,19 @@ class PatternRecognition(object):
     # Create a road
     roads = []
     for road_id, road_hits in amap.iteritems():
-      # Try BX window (-1,0)
+      (endcap, sector, ipt, ieta, iphi) = road_id
       road_mode = 0
       road_mode_csconly = 0
       tmp_road_hits = []
       for hit in road_hits:
-        if hit.bx in (-1,0):
+        if self._select_hit(ieta, hit):
           (_type, station, ring, fr) = hit.id
           road_mode |= (1 << (4 - station))
-          if _type == kCSC:
+          if _type == kCSC or _type == kME0:
             road_mode_csconly |= (1 << (4 - station))
           tmp_road_hits.append(hit)
 
-      #if not (emtf_is_singlemu(road_mode) and emtf_is_muopen(road_mode_csconly)):
-      #  # Try BX window (0,+1)
-      #  road_mode = 0
-      #  tmp_road_hits = []
-      #  for hit in road_hits:
-      #    if hit.bx in (0,+1):
-      #      (_type, station, ring, fr) = hit.id
-      #      road_mode |= (1 << (4 - station))
-      #      if _type == kCSC:
-      #        road_mode_csconly |= (1 << (4 - station))
-      #      tmp_road_hits.append(hit)
-
       if (emtf_is_singlemu(road_mode) and emtf_is_muopen(road_mode_csconly)):
-        (endcap, sector, ipt, ieta, iphi) = road_id
         road_quality = emtf_road_quality(ipt)
         road_sort_code = emtf_road_sort_code(road_mode, road_quality, tmp_road_hits)
         myroad = Road(road_id, tmp_road_hits, road_mode, road_mode_csconly, road_quality, road_sort_code)
@@ -1418,6 +1423,7 @@ def load_pgun():
   tree.define_collection(name='hits', prefix='vh_', size='vh_size')
   tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
   tree.define_collection(name='particles', prefix='vp_', size='vp_size')
+  #tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
   return tree
 
 def load_pgun_batch(j):
@@ -1437,11 +1443,12 @@ def load_pgun_batch(j):
   tree.define_collection(name='hits', prefix='vh_', size='vh_size')
   tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
   tree.define_collection(name='particles', prefix='vp_', size='vp_size')
+  #tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
   return tree
 
 def load_minbias_batch(j):
   global infile_r
-  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180813_210720/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
+  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180925_011729/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
   infile = pufiles[j]
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
@@ -1451,6 +1458,34 @@ def load_minbias_batch(j):
   tree.define_collection(name='hits', prefix='vh_', size='vh_size')
   tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
   tree.define_collection(name='particles', prefix='vp_', size='vp_size')
+  tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
+  return tree
+
+def load_minbias_batch_for_mixing(j):
+  global infile_r
+  pufiles = []
+  # For training purposes
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU140/ParticleGuns/CRAB3/180925_011552/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(20)]  # up to 20/56
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180925_011729/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30)]  # up to 30/63
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleMuon_PU140/ParticleGuns/CRAB3/180925_011845/0000/ntuple_SingleMuon_PU140_%i.root' % (i+1) for i in xrange(25)]
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleMuon_PU200/ParticleGuns/CRAB3/180925_012012/0000/ntuple_SingleMuon_PU200_%i.root' % (i+1) for i in xrange(26)]
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleElectron_PU140/ParticleGuns/CRAB3/180925_012138/0000/ntuple_SingleElectron_PU140_%i.root' % (i+1) for i in xrange(28)]  # all jobs failed
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleElectron_PU200/ParticleGuns/CRAB3/180925_012258/0000/ntuple_SingleElectron_PU200_%i.root' % (i+1) for i in xrange(27)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SinglePhoton_PU140/ParticleGuns/CRAB3/180925_012419/0000/ntuple_SinglePhoton_PU140_%i.root' % (i+1) for i in xrange(27)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SinglePhoton_PU200/ParticleGuns/CRAB3/180925_012545/0000/ntuple_SinglePhoton_PU200_%i.root' % (i+1) for i in xrange(27)]
+  # For testing purposes (SingleNeutrino, PU200)
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180925_011729/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30,63)]  # from 30/63
+
+  infile = pufiles[j]
+  infile_r = root_open(infile)
+  tree = infile_r.ntupler.tree
+  print('[INFO] Opening file: %s' % infile)
+
+  # Define collection
+  tree.define_collection(name='hits', prefix='vh_', size='vh_size')
+  tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
+  tree.define_collection(name='particles', prefix='vp_', size='vp_size')
+  tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
   return tree
 
 def unload_tree():
@@ -2095,7 +2130,8 @@ elif analysis == 'effie':
 # ______________________________________________________________________________
 # Analysis: mixing
 elif analysis == 'mixing':
-  tree = load_minbias_batch(jobid)
+  #tree = load_minbias_batch(jobid)
+  tree = load_minbias_batch_for_mixing(jobid)
 
   # Workers
   bank = PatternBank(bankfile)
