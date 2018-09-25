@@ -2,7 +2,7 @@ import numpy as np
 
 nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
 
-nvariables = (nlayers * 6) + 3 - 26
+nvariables = (nlayers * 6) + 3 - 32
 
 nvariables_input = (nlayers * 7) + 3
 
@@ -124,9 +124,9 @@ class Encoder(object):
           self.x_fr[x_fr_tmp]  = 1  # front chamber -> 1
           self.x_fr[~x_fr_tmp] = 0  # rear chamber  -> 0
         if True:  # zero out some variables
-          self.x_bend[:, 5:9]  = 0  # no bend for RPC
+          self.x_bend[:, 5:11] = 0  # no bend for RPC, GEM
           self.x_time[:, :]    = 0  # no time for everyone
-          self.x_ring[:, 9:12] = 0  # no ring for GEM, ME0
+          self.x_ring[:, 5:12] = 0  # no ring for RPC, GEM, ME0
           self.x_fr[:, 5:12]   = 0  # no F/R for RPC, GEM, ME0
         s = [ 0.005083,  0.019142, -0.015694, -0.010744, -0.007120,  0.021043,
              -0.042957, -0.009228, -0.006421,  0.003815, -0.015731,  0.003477,
@@ -200,18 +200,18 @@ class Encoder(object):
                        self.x_straightness, self.x_zone, self.x_theta_median))
     # Drop input nodes
     if drop_columns_of_zeroes:
-      dropit = np.all(x_new == 0, axis=0)  # columns with only zeroes
-      x_new = x_new[:, ~dropit]
-
-      # Sanity check
       drop_phi   = [nlayers*0 + x for x in xrange(0,0)]  # keep everyone
       drop_theta = [nlayers*1 + x for x in xrange(0,0)]  # keep everyone
-      drop_bend  = [nlayers*2 + x for x in xrange(5,9)]  # no bend for RPC
+      drop_bend  = [nlayers*2 + x for x in xrange(5,11)] # no bend for RPC, GEM
       drop_time  = [nlayers*3 + x for x in xrange(0,12)] # no time for everyone
-      drop_ring  = [nlayers*4 + x for x in xrange(9,12)] # no ring for GEM, ME0
+      drop_ring  = [nlayers*4 + x for x in xrange(5,12)] # no ring for RPC, GEM, ME0
       drop_fr    = [nlayers*5 + x for x in xrange(5,12)] # no F/R for RPC, GEM, ME0
-      assert(list(np.where(dropit)[0]) == drop_phi + drop_theta + drop_bend + drop_time + drop_ring + drop_fr)
 
+      x_dropit = np.zeros(x_new.shape[1], dtype=np.bool)
+      for i in drop_phi + drop_theta + drop_bend + drop_time + drop_ring + drop_fr:
+        x_dropit[i] = True
+
+      x_new = x_new[:, ~x_dropit]
     return x_new
 
   def get_x_mask(self):
