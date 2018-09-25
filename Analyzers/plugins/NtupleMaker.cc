@@ -29,6 +29,7 @@
 #include "DataFormats/HepMCCandidate/interface/GenParticleFwd.h"
 #include "SimDataFormats/TrackingAnalysis/interface/TrackingParticle.h"
 #include "SimDataFormats/TrackingAnalysis/interface/TrackingParticleFwd.h"
+#include "SimDataFormats/PileupSummaryInfo/interface/PileupSummaryInfo.h"
 
 #include "DataFormats/L1TMuon/interface/EMTFHit.h"
 #include "DataFormats/L1TMuon/interface/EMTFTrack.h"
@@ -65,7 +66,7 @@ private:
   void endRun(const edm::Run&, const edm::EventSetup&) override;
 
   // Main functions
-  void process();
+  void process(const edm::Event& iEvent, const edm::EventSetup& iSetup);
 
   // Aux functions
   void getHandles(const edm::Event& iEvent, const edm::EventSetup& iSetup);
@@ -94,17 +95,19 @@ private:
   const edm::InputTag   tkTrackAssocTag_;
   const edm::InputTag   genPartTag_;
   const edm::InputTag   trkPartTag_;
+  const edm::InputTag   pileupInfoTag_;
   const std::string     outFileName_;
   int verbose_;
 
   // Member data
   bool firstEvent_;
-  edm::EDGetTokenT<l1t::EMTFHitCollection>        emuHitToken_;
-  edm::EDGetTokenT<l1t::EMTFTrackCollection>      emuTrackToken_;
-  edm::EDGetTokenT<L1TrackTriggerTrackCollection> tkTrackToken_;
-  edm::EDGetTokenT<L1TrackTriggerTrackAssociator> tkTrackAssocToken_;
-  edm::EDGetTokenT<reco::GenParticleCollection>   genPartToken_;
-  edm::EDGetTokenT<TrackingParticleCollection>    trkPartToken_;
+  edm::EDGetTokenT<l1t::EMTFHitCollection>          emuHitToken_;
+  edm::EDGetTokenT<l1t::EMTFTrackCollection>        emuTrackToken_;
+  edm::EDGetTokenT<L1TrackTriggerTrackCollection>   tkTrackToken_;
+  edm::EDGetTokenT<L1TrackTriggerTrackAssociator>   tkTrackAssocToken_;
+  edm::EDGetTokenT<reco::GenParticleCollection>     genPartToken_;
+  edm::EDGetTokenT<TrackingParticleCollection>      trkPartToken_;
+  edm::EDGetTokenT<std::vector<PileupSummaryInfo> > pileupInfoToken_;
 
   l1t::EMTFHitCollection        emuHits_;
   l1t::EMTFTrackCollection      emuTracks_;
@@ -148,7 +151,6 @@ private:
   std::unique_ptr<std::vector<float  > >  vh_sim_z;
   std::unique_ptr<std::vector<int32_t> >  vh_sim_tp1;
   std::unique_ptr<std::vector<int32_t> >  vh_sim_tp2;
-  //
   std::unique_ptr<int32_t              >  vh_size;
 
   // Tracks
@@ -168,7 +170,6 @@ private:
   std::unique_ptr<std::vector<int32_t> >  vt_hitref2;
   std::unique_ptr<std::vector<int32_t> >  vt_hitref3;
   std::unique_ptr<std::vector<int32_t> >  vt_hitref4;
-  //
   std::unique_ptr<int32_t              >  vt_size;
 
   // Track trigger tracks
@@ -191,7 +192,6 @@ private:
   std::unique_ptr<std::vector<int32_t> >  vu_sim_tp;
   std::unique_ptr<std::vector<int32_t> >  vu_sim_pdgid;
   std::unique_ptr<std::vector<int16_t> >  vu_sim_assoc;  // isGenuine, isLooselyGenuine, isCombinatoric, isUnknown
-  //
   std::unique_ptr<int32_t>                vu_size;
 
   // Gen particles
@@ -207,6 +207,13 @@ private:
   std::unique_ptr<std::vector<int16_t> >  vp_event;
   std::unique_ptr<std::vector<int32_t> >  vp_pdgid;
   std::unique_ptr<int32_t              >  vp_size;
+
+  // Event info
+  std::unique_ptr<std::vector<uint64_t> > ve_event;
+  std::unique_ptr<std::vector<uint32_t> > ve_run;
+  std::unique_ptr<std::vector<uint32_t> > ve_lumi;
+  std::unique_ptr<std::vector<int32_t> >  ve_npv;
+  std::unique_ptr<int32_t              >  ve_size;
 };
 
 
@@ -219,6 +226,7 @@ NtupleMaker::NtupleMaker(const edm::ParameterSet& iConfig) :
     tkTrackAssocTag_(iConfig.getParameter<edm::InputTag>("tkTrackAssocTag")),
     genPartTag_     (iConfig.getParameter<edm::InputTag>("genPartTag")),
     trkPartTag_     (iConfig.getParameter<edm::InputTag>("trkPartTag")),
+    pileupInfoTag_  (iConfig.getParameter<edm::InputTag>("pileupInfoTag")),
     outFileName_    (iConfig.getParameter<std::string>  ("outFileName")),
     verbose_        (iConfig.getUntrackedParameter<int> ("verbosity"))
 {
@@ -226,12 +234,13 @@ NtupleMaker::NtupleMaker(const edm::ParameterSet& iConfig) :
 
   firstEvent_ = true;
 
-  emuHitToken_       = consumes<l1t::EMTFHitCollection>       (emuHitTag_);
-  emuTrackToken_     = consumes<l1t::EMTFTrackCollection>     (emuTrackTag_);
-  tkTrackToken_      = consumes<L1TrackTriggerTrackCollection>(tkTrackTag_);
-  tkTrackAssocToken_ = consumes<L1TrackTriggerTrackAssociator>(tkTrackAssocTag_);
-  genPartToken_      = consumes<reco::GenParticleCollection>  (genPartTag_);
-  trkPartToken_      = consumes<TrackingParticleCollection>   (trkPartTag_);
+  emuHitToken_       = consumes<l1t::EMTFHitCollection>         (emuHitTag_);
+  emuTrackToken_     = consumes<l1t::EMTFTrackCollection>       (emuTrackTag_);
+  tkTrackToken_      = consumes<L1TrackTriggerTrackCollection>  (tkTrackTag_);
+  tkTrackAssocToken_ = consumes<L1TrackTriggerTrackAssociator>  (tkTrackAssocTag_);
+  genPartToken_      = consumes<reco::GenParticleCollection>    (genPartTag_);
+  trkPartToken_      = consumes<TrackingParticleCollection>     (trkPartTag_);
+  pileupInfoToken_   = consumes<std::vector<PileupSummaryInfo> >(pileupInfoTag_);
 }
 
 NtupleMaker::~NtupleMaker() {}
@@ -242,7 +251,7 @@ void NtupleMaker::endRun(const edm::Run& iRun, const edm::EventSetup& iSetup) {}
 
 void NtupleMaker::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
   getHandles(iEvent, iSetup);
-  process();
+  process(iEvent, iSetup);
 }
 
 // _____________________________________________________________________________
@@ -317,6 +326,19 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
     }
   }
 
+  // Pileup info
+  edm::Handle<std::vector<PileupSummaryInfo> > pileupInfo_handle;
+  iEvent.getByToken(pileupInfoToken_, pileupInfo_handle);
+
+  if (!iEvent.isRealData()) {
+    if (!pileupInfoToken_.isUninitialized()) {
+      iEvent.getByToken(pileupInfoToken_, pileupInfo_handle);
+    }
+    if (!pileupInfo_handle.isValid()) {
+      if (firstEvent_)  edm::LogError("NtupleMaker") << "Cannot get the product: " << pileupInfoTag_;
+    }
+  }
+
 
   // ___________________________________________________________________________
   // Object filters
@@ -381,7 +403,7 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
 
 
 // _____________________________________________________________________________
-void NtupleMaker::process() {
+void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
 
   // In-place functions
 
@@ -695,6 +717,28 @@ void NtupleMaker::process() {
     //assert((*vp_size) <= 1);  // expect 0 or 1 gen particle
   }
 
+  // ___________________________________________________________________________
+  // Event info
+  {
+    int trueNPV = 0;
+    if (!iEvent.isRealData()) {
+      edm::Handle<std::vector<PileupSummaryInfo> > pileupInfo_handle;
+      iEvent.getByToken(pileupInfoToken_, pileupInfo_handle);
+      for (std::vector<PileupSummaryInfo>::const_iterator it = pileupInfo_handle->begin(); it != pileupInfo_handle->end(); ++it) {
+        if (it->getBunchCrossing()==0) {
+          trueNPV = it->getTrueNumInteractions();
+        }
+      }
+    }
+
+    ve_event      ->push_back(iEvent.id().event());
+    ve_run        ->push_back(iEvent.id().run());
+    ve_lumi       ->push_back(iEvent.id().luminosityBlock());
+    ve_npv        ->push_back(trueNPV);
+    (*ve_size)    = 1;
+  }
+
+  // ___________________________________________________________________________
   // Fill
   tree->Fill();
 
@@ -728,7 +772,6 @@ void NtupleMaker::process() {
   vh_sim_z      ->clear();
   vh_sim_tp1    ->clear();
   vh_sim_tp2    ->clear();
-  //
   (*vh_size)    = 0;
 
   // Tracks
@@ -748,7 +791,6 @@ void NtupleMaker::process() {
   vt_hitref2    ->clear();
   vt_hitref3    ->clear();
   vt_hitref4    ->clear();
-  //
   (*vt_size)    = 0;
 
   // L1TrackTrigger tracks
@@ -771,7 +813,6 @@ void NtupleMaker::process() {
   vu_sim_tp     ->clear();
   vu_sim_pdgid  ->clear();
   vu_sim_assoc  ->clear();
-  //
   (*vu_size)    = 0;
 
   // Gen particles
@@ -787,6 +828,13 @@ void NtupleMaker::process() {
   vp_event      ->clear();
   vp_pdgid      ->clear();
   (*vp_size)    = 0;
+
+  // Event info
+  ve_event      ->clear();
+  ve_run        ->clear();
+  ve_lumi       ->clear();
+  ve_npv        ->clear();
+  (*ve_size)    = 0;
 
   if (firstEvent_)
     firstEvent_ = false;
@@ -838,7 +886,6 @@ void NtupleMaker::makeTree() {
   vh_sim_z      = std::make_unique<std::vector<float   > >();
   vh_sim_tp1    = std::make_unique<std::vector<int32_t > >();
   vh_sim_tp2    = std::make_unique<std::vector<int32_t > >();
-  //
   vh_size       = std::make_unique<int32_t>(0);
 
   // Tracks
@@ -858,7 +905,6 @@ void NtupleMaker::makeTree() {
   vt_hitref2    = std::make_unique<std::vector<int32_t > >();
   vt_hitref3    = std::make_unique<std::vector<int32_t > >();
   vt_hitref4    = std::make_unique<std::vector<int32_t > >();
-  //
   vt_size       = std::make_unique<int32_t>(0);
 
   // L1TrackTrigger trakcs
@@ -881,7 +927,6 @@ void NtupleMaker::makeTree() {
   vu_sim_tp     = std::make_unique<std::vector<int32_t > >();
   vu_sim_pdgid  = std::make_unique<std::vector<int32_t > >();
   vu_sim_assoc  = std::make_unique<std::vector<int16_t > >();
-  //
   vu_size       = std::make_unique<int32_t>(0);
 
   // Gen particles
@@ -897,6 +942,14 @@ void NtupleMaker::makeTree() {
   vp_event      = std::make_unique<std::vector<int16_t > >();
   vp_pdgid      = std::make_unique<std::vector<int32_t > >();
   vp_size       = std::make_unique<int32_t>(0);
+
+  // Event info
+  ve_event      = std::make_unique<std::vector<uint64_t > >();
+  ve_run        = std::make_unique<std::vector<uint32_t > >();
+  ve_lumi       = std::make_unique<std::vector<uint32_t > >();
+  ve_npv        = std::make_unique<std::vector<int32_t > > ();
+  ve_size       = std::make_unique<int32_t>(0);
+
 
   // Set branches
   // Hits
@@ -929,7 +982,6 @@ void NtupleMaker::makeTree() {
   tree->Branch("vh_sim_z"     , &(*vh_sim_z     ));
   tree->Branch("vh_sim_tp1"   , &(*vh_sim_tp1   ));
   tree->Branch("vh_sim_tp2"   , &(*vh_sim_tp2   ));
-  //
   tree->Branch("vh_size"      , &(*vh_size      ));
 
   // Tracks
@@ -949,7 +1001,6 @@ void NtupleMaker::makeTree() {
   tree->Branch("vt_hitref2"   , &(*vt_hitref2   ));
   tree->Branch("vt_hitref3"   , &(*vt_hitref3   ));
   tree->Branch("vt_hitref4"   , &(*vt_hitref4   ));
-  //
   tree->Branch("vt_size"      , &(*vt_size      ));
 
   // L1TrackTrigger tracks
@@ -972,7 +1023,6 @@ void NtupleMaker::makeTree() {
   tree->Branch("vu_sim_tp"    , &(*vu_sim_tp    ));
   tree->Branch("vu_sim_pdgid" , &(*vu_sim_pdgid ));
   tree->Branch("vu_sim_assoc" , &(*vu_sim_assoc ));
-  //
   tree->Branch("vu_size"      , &(*vu_size      ));
 
   // Gen particles
@@ -988,6 +1038,13 @@ void NtupleMaker::makeTree() {
   tree->Branch("vp_event"     , &(*vp_event     ));
   tree->Branch("vp_pdgid"     , &(*vp_pdgid     ));
   tree->Branch("vp_size"      , &(*vp_size      ));
+
+  // Event info
+  tree->Branch("ve_event"     , &(*ve_event     ));
+  tree->Branch("ve_run"       , &(*ve_run       ));
+  tree->Branch("ve_lumi"      , &(*ve_lumi      ));
+  tree->Branch("ve_npv"       , &(*ve_npv       ));
+  tree->Branch("ve_size"      , &(*ve_size      ));
 }
 
 void NtupleMaker::writeTree() {

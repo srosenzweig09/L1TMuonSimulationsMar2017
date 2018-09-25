@@ -31,6 +31,7 @@ ntupler = cms.EDAnalyzer('NtupleMaker',
     tkTrackAssocTag = cms.InputTag('TTTrackAssociatorFromPixelDigis', 'Level1TTTracks'),
     genPartTag = cms.InputTag('genParticles'),
     trkPartTag = cms.InputTag('mix', 'MergedTrackTruth'),
+    pileupInfoTag = cms.InputTag('addPileupInfo'),
 
     cscSimHitsTag = cms.InputTag('g4SimHits','MuonCSCHits'),
     cscSimHitsXFTag = cms.InputTag('mix', 'g4SimHitsMuonCSCHits'),
