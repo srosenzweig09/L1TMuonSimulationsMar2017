@@ -427,3 +427,7 @@ class NewKerasRegressor(KerasRegressor):
 
   def __init__(self, build_fn=None, **sk_params):
     super(NewKerasRegressor, self).__init__(build_fn=build_fn, **sk_params)
+
+  def fit(self, x, y, **kwargs):
+    print('.. fitting x (shape:{0}) & y (shape:{1}) with params: {2} & {3}'.format(x.shape, y.shape, self.filter_sk_params(self.build_fn), kwargs))
+    return super(NewKerasRegressor, self).fit(x, y, **kwargs)

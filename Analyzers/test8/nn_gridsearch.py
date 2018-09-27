@@ -21,14 +21,15 @@ from nn_globals import *
 
 from nn_encode import nlayers, nvariables
 
-from nn_data import muon_data, pileup_data, muon_data_split, pileup_data_split, \
-                    mix_training_inputs
+from nn_data import (muon_data_split, pileup_data_split, mix_training_inputs)
 
-from nn_models import create_model, create_model_bn, \
-                      create_model_sequential, create_model_sequential_regularized, \
-                      lr_decay, modelbestcheck, modelbestcheck_weights
+from nn_models import (create_model, create_model_bn, create_model_pruned,
+                       create_model_sequential, create_model_sequential_bn,
+                       lr_decay, modelbestcheck, modelbestcheck_weights)
 
-from nn_training import train_model, train_model_sequential
+from nn_training import train_model
+
+from nn_pruning import prune_model
 
 
 # ______________________________________________________________________________
@@ -38,23 +39,30 @@ logger.info('Using skopt {0}'.format(skopt.__version__))
 use_hpe = ('SLURM_JOB_ID' in os.environ)
 
 if use_hpe:
-  infile_muon = '/scratch/CMS/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/histos_tba.16.npz'
-  infile_pileup = '/scratch/CMS/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/histos_tbd.16.npz'
+  infile_muon = '/scratch/CMS/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/histos_tba.18.npz'
+  infile_pileup = '/scratch/CMS/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/histos_tbd.18.npz'
 
 
 # ______________________________________________________________________________
 # Import muon data
-x_train, x_test, y_train, y_test, w_train, w_test, x_mask_train, x_mask_test = \
-    muon_data_split(infile_muon, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale, test_size=0.3)
+# 'x' is the input variables with shape (n, 87), 'y' is the q/pT with shape (n, 1)
+#x_train, x_test, y_train, y_test, w_train, w_test, x_mask_train, x_mask_test = \
+#    muon_data_split(infile_muon, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale, test_size=0.31)
+
+# Use ShuffleSplit as the CV iterator
+from nn_data import muon_data
+from sklearn.model_selection import ShuffleSplit
+x, y, w, x_mask = muon_data(infile_muon, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale, correct_for_eta=False)
+cv = ShuffleSplit(n_splits=1, test_size=0.31)
 
 # ______________________________________________________________________________
 # Create KerasRegressor
 
 from nn_models import NewKerasRegressor
-estimator = NewKerasRegressor(build_fn=create_model_sequential, reg_pt_scale=reg_pt_scale,
-                              min_pt=20., max_pt=22., coverage=90.,
-                              nvariables=nvariables, lr=learning_rate, l1_reg=l1_reg, l2_reg=l2_reg,
-                              epochs=20, batch_size=8192, verbose=0)
+estimator = NewKerasRegressor(build_fn=create_model_sequential_bn,
+                              nvariables=nvariables, lr=learning_rate, clipnorm=gradient_clip_norm, l1_reg=l1_reg, l2_reg=l2_reg,
+                              nodes1=40, nodes2=30, nodes3=20,
+                              epochs=100, batch_size=4096, verbose=0)
 callbacks_list = [lr_decay,modelbestcheck]
 
 
@@ -63,18 +71,20 @@ callbacks_list = [lr_decay,modelbestcheck]
 
 from sklearn.model_selection import cross_val_score, cross_validate, KFold, GridSearchCV
 
-nodes1 = [32,40,64,80,128]
-nodes2 = [16,24,32,48]
-nodes3 = [16,24,32,48]
-lr = [0.001, 0.005, 0.01]
-param_grid = dict(nodes1=nodes1, nodes2=nodes2, nodes3=nodes3, lr=lr)
-print("param_grid: %r" % param_grid)
+nodes1 = [30,40,60,80]
+nodes2 = [20,30,40]
+nodes3 = [10,20,30]
+lr = [0.001, 0.01]
+batches = [256, 512, 1024, 4096]
+param_grid = dict(lr=lr, nodes1=nodes1, nodes2=nodes2, nodes3=nodes3)
+#param_grid = dict(lr=lr, batch_size=batches)
+logger.info('Using parameter grid: %r' % param_grid)
 
-#opt = GridSearchCV(estimator=estimator, param_grid=param_grid, scoring='neg_mean_squared_error',
-#                   n_jobs=1, cv=None, verbose=0, return_train_score=False)
 opt = GridSearchCV(estimator=estimator, param_grid=param_grid,
-                   n_jobs=1, cv=None, verbose=0, return_train_score=False)
-opt.fit(x_train, y_train)
+                   n_jobs=1, cv=cv, verbose=0, refit=False, return_train_score=False)
+
+logger.info('Begin training ...')
+opt.fit(x, y)
 
 
 # ______________________________________________________________________________
@@ -100,20 +110,22 @@ opt.fit(x_train, y_train)
 # ______________________________________________________________________________
 # Results
 
-print("Best: %f using %s" % (opt.best_score_, opt.best_params_))
-opt.best_estimator_.model.summary()
+print('Best: %f using %s' % (opt.best_score_, opt.best_params_))
+#opt.best_estimator_.model.summary()
 means = opt.cv_results_['mean_test_score']
 stds = opt.cv_results_['std_test_score']
 params = opt.cv_results_['params']
 for mean, stdev, param in zip(means, stds, params):
-  print("%f (+/-%f) with: %r" % (mean, stdev, param))
+  print('%f (+/-%f) with: %r' % (mean, stdev, param))
 print
 
 print(opt)
-print(opt.cv_results_)
-print
+for k, v in opt.cv_results_.iteritems():
+  print("'%s': %r" % (k, v))
 
-#print("Test: %f using %s" % (opt.score(x_test, y_test), opt.best_params_))
-#print
+# Persistency
+from sklearn.externals import joblib
+joblib.dump(opt, 'dump.pkl')
+#loaded_opt = joblib.load('dump.pkl')
 
 logger.info('DONE')
