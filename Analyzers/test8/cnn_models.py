@@ -8,11 +8,13 @@ import tensorflow as tf
 from keras import backend as K
 from keras.models import Sequential, Model, clone_model, load_model, model_from_json
 from keras.layers import Dense, Activation, Dropout, Input, Concatenate, Lambda, BatchNormalization
-from keras.layers import Conv2D, MaxPooling2D, Flatten
+from keras.layers import Conv2D, MaxPooling2D, Flatten, GlobalAveragePooling2D
 from keras.callbacks import LearningRateScheduler, TerminateOnNaN, ModelCheckpoint
 from keras.regularizers import Regularizer
 from keras.constraints import Constraint
 from keras import initializers, regularizers, optimizers, losses, metrics
+
+from keras.applications.mobilenet import relu6, DepthwiseConv2D
 
 from cnn_globals import (superstrip_size, n_zones, rows_per_zone, n_rows, n_columns, n_channels, n_classes)
 
@@ -21,72 +23,197 @@ def create_model(nvariables=None, lr=0.001, clipnorm=10., dropout=0.2, use_bn=Tr
   input_shape = (n_rows, n_columns, n_channels)
   inputs = Input(shape=input_shape, dtype='float32')
 
-  inputs_zone0 = Lambda(lambda x: x[:, 0*rows_per_zone:(0+1)*rows_per_zone])(inputs)
-  inputs_zone1 = Lambda(lambda x: x[:, 1*rows_per_zone:(1+1)*rows_per_zone])(inputs)
-  inputs_zone2 = Lambda(lambda x: x[:, 2*rows_per_zone:(2+1)*rows_per_zone])(inputs)
-  inputs_zone3 = Lambda(lambda x: x[:, 3*rows_per_zone:(3+1)*rows_per_zone])(inputs)
-  inputs_zone4 = Lambda(lambda x: x[:, 4*rows_per_zone:(4+1)*rows_per_zone])(inputs)
-  inputs_zone5 = Lambda(lambda x: x[:, 5*rows_per_zone:(5+1)*rows_per_zone])(inputs)
-  inputs_zone6 = Lambda(lambda x: x[:, 6*rows_per_zone:(6+1)*rows_per_zone])(inputs)
+  # Split by zones
+  x = inputs
+  x_zone0 = Lambda(lambda x: x[:, 0*rows_per_zone:(0+1)*rows_per_zone])(x)
+  x_zone1 = Lambda(lambda x: x[:, 1*rows_per_zone:(1+1)*rows_per_zone])(x)
+  x_zone2 = Lambda(lambda x: x[:, 2*rows_per_zone:(2+1)*rows_per_zone])(x)
+  x_zone3 = Lambda(lambda x: x[:, 3*rows_per_zone:(3+1)*rows_per_zone])(x)
+  x_zone4 = Lambda(lambda x: x[:, 4*rows_per_zone:(4+1)*rows_per_zone])(x)
+  x_zone5 = Lambda(lambda x: x[:, 5*rows_per_zone:(5+1)*rows_per_zone])(x)
+  x_zone6 = Lambda(lambda x: x[:, 6*rows_per_zone:(6+1)*rows_per_zone])(x)
 
-  def first_conv2d_layer_fn(inputs):
+  def _conv_block_one(x):
     x = Conv2D(
-            12,
-            (rows_per_zone,63),
-            strides=(rows_per_zone,3),
-            padding='same',
+            8, (rows_per_zone,63),
+            strides=(rows_per_zone,7),
+            padding='valid',
             kernel_initializer='he_normal',
-            activation='relu')(inputs)
+            use_bias=False,
+            activation=None)(x)
+    x = BatchNormalization(epsilon=1e-3, momentum=0.999)(x)
+    x = Activation(relu6)(x)
     return x
 
-  x_zone0 = first_conv2d_layer_fn(inputs_zone0)
-  x_zone1 = first_conv2d_layer_fn(inputs_zone1)
-  x_zone2 = first_conv2d_layer_fn(inputs_zone2)
-  x_zone3 = first_conv2d_layer_fn(inputs_zone3)
-  x_zone4 = first_conv2d_layer_fn(inputs_zone4)
-  x_zone5 = first_conv2d_layer_fn(inputs_zone5)
-  x_zone6 = first_conv2d_layer_fn(inputs_zone6)
+  x_zone0 = _conv_block_one(x_zone0)
+  x_zone1 = _conv_block_one(x_zone1)
+  x_zone2 = _conv_block_one(x_zone2)
+  x_zone3 = _conv_block_one(x_zone3)
+  x_zone4 = _conv_block_one(x_zone4)
+  x_zone5 = _conv_block_one(x_zone5)
+  x_zone6 = _conv_block_one(x_zone6)
 
-  x_all_zones = [x_zone0, x_zone1, x_zone2, x_zone3, x_zone4, x_zone5, x_zone6]
-  x = Concatenate()(x_all_zones)
+  def _conv_block_two(x):
+    filters = 16
+    x = DepthwiseConv2D(
+            (3,3),
+            strides=(1,1),
+            depth_multiplier=1,
+            padding='same',
+            kernel_initializer='he_normal',
+            use_bias=False,
+            activation=None)(x)
+    x = BatchNormalization(epsilon=1e-3, momentum=0.999)(x)
+    x = Activation(relu6)(x)
+    x = Conv2D(
+            filters, (1,1),
+            strides=(1,1),
+            padding='same',
+            kernel_initializer='he_normal',
+            use_bias=False,
+            activation=None)(x)
+    x = BatchNormalization(epsilon=1e-3, momentum=0.999)(x)
+    x = Activation(relu6)(x)
+    x = MaxPooling2D(
+            (1,3),
+            strides=(1,2),
+            padding='valid')(x)
+    #
+    filters = 16
+    x = DepthwiseConv2D(
+            (3,3),
+            strides=(1,1),
+            depth_multiplier=1,
+            padding='same',
+            kernel_initializer='he_normal',
+            use_bias=False,
+            activation=None)(x)
+    x = BatchNormalization(epsilon=1e-3, momentum=0.999)(x)
+    x = Activation(relu6)(x)
+    x = Conv2D(
+            filters, (1,1),
+            strides=(1,1),
+            padding='same',
+            kernel_initializer='he_normal',
+            use_bias=False,
+            activation=None)(x)
+    x = BatchNormalization(epsilon=1e-3, momentum=0.999)(x)
+    x = Activation(relu6)(x)
+    x = MaxPooling2D(
+            (1,3),
+            strides=(1,2),
+            padding='valid')(x)
+    #
+    #filters = 16
+    #x = DepthwiseConv2D(
+    #        (3,3),
+    #        strides=(1,1),
+    #        depth_multiplier=1,
+    #        padding='same',
+    #        kernel_initializer='he_normal',
+    #        use_bias=False,
+    #        activation=None)(x)
+    #x = BatchNormalization(epsilon=1e-3, momentum=0.999)(x)
+    #x = Activation(relu6)(x)
+    #x = Conv2D(
+    #        filters, (1,1),
+    #        strides=(1,1),
+    #        padding='same',
+    #        kernel_initializer='he_normal',
+    #        use_bias=False,
+    #        activation=None)(x)
+    #x = BatchNormalization(epsilon=1e-3, momentum=0.999)(x)
+    #x = Activation(relu6)(x)
+    #x = MaxPooling2D(
+    #        (1,3),
+    #        strides=(1,2),
+    #        padding='valid')(x)
+    return x
 
-  x = Conv2D(
-          48,
-          (5,5),
-          strides=(1,1),
-          padding='same',
-          kernel_initializer='he_normal',
-          activation='relu')(x)
-  x = MaxPooling2D(
-          (1,5),
-          strides=(1,3),
-          padding='valid')(x)
-  x = MaxPooling2D(
-          (1,3),
-          strides=(1,2),
-          padding='valid')(x)
-  x = Flatten()(x)
+  x_zone0 = _conv_block_two(x_zone0)
+  x_zone1 = _conv_block_two(x_zone1)
+  x_zone2 = _conv_block_two(x_zone2)
+  x_zone3 = _conv_block_two(x_zone3)
+  x_zone4 = _conv_block_two(x_zone4)
+  x_zone5 = _conv_block_two(x_zone5)
+  x_zone6 = _conv_block_two(x_zone6)
 
-  if use_bn:
-    x = Dense(40, use_bias=False, activation=None)(x)
-    x = BatchNormalization(momentum=0.9, epsilon=1e-4)(x)
-    x = Activation('relu')(x)
-    if use_dropout:
-      x = Dropout(dropout)(x)
-    x = Dense(20, use_bias=False, activation=None)(x)
-    x = BatchNormalization(momentum=0.9, epsilon=1e-4)(x)
-    x = Activation('relu')(x)
-    if use_dropout:
-      x = Dropout(dropout)(x)
-  else:
-    x = Dense(40, activation='relu')(x)
-    if use_dropout:
-      x = Dropout(dropout)(x)
-    x = Dense(20, activation='relu')(x)
-    if use_dropout:
-      x = Dropout(dropout)(x)
+  # Merge zones
+  x_zone01 = Concatenate()([x_zone0, x_zone1])
+  x_zone12 = Concatenate()([x_zone1, x_zone2])
+  x_zone23 = Concatenate()([x_zone2, x_zone3])
+  x_zone34 = Concatenate()([x_zone3, x_zone4])
+  x_zone45 = Concatenate()([x_zone4, x_zone5])
+  x_zone56 = Concatenate()([x_zone5, x_zone6])
 
-  outputs = Dense(n_classes, activation='softmax')(x)
+  def _conv_block_three(x):
+    x = Conv2D(
+            16, (1,1),
+            strides=(1,1),
+            padding='same',
+            kernel_initializer='he_normal',
+            use_bias=False,
+            activation=None)(x)
+    x = BatchNormalization(epsilon=1e-3, momentum=0.999)(x)
+    x = Activation(relu6)(x)
+    return x
+
+  x_zone01 = _conv_block_three(x_zone01)
+  x_zone12 = _conv_block_three(x_zone12)
+  x_zone23 = _conv_block_three(x_zone23)
+  x_zone34 = _conv_block_three(x_zone34)
+  x_zone45 = _conv_block_three(x_zone45)
+  x_zone56 = _conv_block_three(x_zone56)
+
+  # Merge zones
+  x_zone0123 = Concatenate()([x_zone01, x_zone12, x_zone23])
+  x_zone1234 = Concatenate()([x_zone12, x_zone23, x_zone34])
+  x_zone2345 = Concatenate()([x_zone23, x_zone34, x_zone45])
+  x_zone3456 = Concatenate()([x_zone34, x_zone45, x_zone56])
+
+  def _conv_block_four(x):
+    x = Conv2D(
+            16, (1,1),
+            strides=(1,1),
+            padding='same',
+            kernel_initializer='he_normal',
+            use_bias=False,
+            activation=None)(x)
+    x = BatchNormalization(epsilon=1e-3, momentum=0.999)(x)
+    x = Activation(relu6)(x)
+    return x
+
+  x_zone0123 = _conv_block_four(x_zone0123)
+  x_zone1124 = _conv_block_four(x_zone1234)
+  x_zone2345 = _conv_block_four(x_zone2345)
+  x_zone3456 = _conv_block_four(x_zone3456)
+
+  # Merge zones
+  x = Concatenate()([x_zone0123, x_zone1234, x_zone2345, x_zone3456])
+
+  def _conv_block_five(x):
+    x = Conv2D(
+            16, (1,1),
+            strides=(1,1),
+            padding='same',
+            kernel_initializer='he_normal',
+            use_bias=False,
+            activation=None)(x)
+    x = BatchNormalization(epsilon=1e-3, momentum=0.999)(x)
+    x = Activation(relu6)(x)
+    return x
+
+  x = _conv_block_five(x)
+
+  #x = Flatten()(x)
+  #x = Dense(32, activation='relu')(x)
+  #if use_dropout:
+  #  x = Dropout(dropout)(x)
+
+  x = GlobalAveragePooling2D()(x)
+
+  x = Dense(n_classes, activation='softmax')(x)
+  outputs = x
 
   model = Model(inputs=inputs, outputs=outputs)
 

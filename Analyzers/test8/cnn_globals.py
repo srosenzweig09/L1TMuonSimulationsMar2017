@@ -24,7 +24,7 @@ learning_rate = 1e-3
 
 gradient_clip_norm = 100.
 
-infile_images = '../test7/histos_tbe.17.npz'
+infile_images = '../test7/histos_tbe.18.npz'
 
 
 # ______________________________________________________________________________
