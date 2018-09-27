@@ -61,10 +61,10 @@ if __name__ == '__main__':
   # highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt
 
   hname_pairs = [
-    ("highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt", "emtf2023_rate_reduction"),
-    ("highest_emtf_absEtaMin1.2_absEtaMax1.65_qmin12_pt", "emtf2023_rate_reduction_1"),
+    ("highest_emtf_absEtaMin1.24_absEtaMax2.4_qmin12_pt", "emtf2023_rate_reduction"),
+    ("highest_emtf_absEtaMin1.24_absEtaMax1.65_qmin12_pt", "emtf2023_rate_reduction_1"),
     ("highest_emtf_absEtaMin1.65_absEtaMax2.15_qmin12_pt", "emtf2023_rate_reduction_2"),
-    ("highest_emtf_absEtaMin2.15_absEtaMax2.5_qmin12_pt", "emtf2023_rate_reduction_3"),
+    ("highest_emtf_absEtaMin2.15_absEtaMax2.4_qmin12_pt", "emtf2023_rate_reduction_3"),
   ]
 
   for hname, imgname in hname_pairs:
