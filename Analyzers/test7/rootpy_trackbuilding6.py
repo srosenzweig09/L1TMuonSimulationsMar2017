@@ -376,13 +376,14 @@ class Hit(object):
     return self.id[3]
 
 class Road(object):
-  def __init__(self, _id, hits, mode, mode_csc, quality, sort_code):
+  def __init__(self, _id, hits, mode, mode_csc, quality, sort_code, theta_median):
     self.id = _id  # (endcap, sector, ipt, ieta, iphi)
     self.hits = hits
     self.mode = mode
     self.mode_csc = mode_csc
     self.quality = quality
     self.sort_code = sort_code
+    self.theta_median = theta_median
 
   def to_variables(self):
     amap = {}
@@ -519,7 +520,11 @@ class PatternRecognition(object):
       if (emtf_is_singlemu(road_mode) and emtf_is_muopen(road_mode_csconly)):
         road_quality = emtf_road_quality(ipt)
         road_sort_code = emtf_road_sort_code(road_mode, road_quality, tmp_road_hits)
-        myroad = Road(road_id, tmp_road_hits, road_mode, road_mode_csconly, road_quality, road_sort_code)
+        _select_csc = lambda x: (x.emtf_layer <= 4)
+        tmp_thetas = [hit.emtf_theta for hit in tmp_road_hits if _select_csc(hit)]
+        tmp_theta = np.median(tmp_thetas, overwrite_input=True)
+
+        myroad = Road(road_id, tmp_road_hits, road_mode, road_mode_csconly, road_quality, road_sort_code, tmp_theta)
         roads.append(myroad)
     return roads
 
@@ -795,7 +800,7 @@ class RoadSlimming(object):
           assert(len(hits_array[hit_lay]) == 1)
           slim_road_hits.append(hits_array[hit_lay][0])
 
-      slim_road = Road(road.id, slim_road_hits, road.mode, road.mode_csc, road.quality, road.sort_code)
+      slim_road = Road(road.id, slim_road_hits, road.mode, road.mode_csc, road.quality, road.sort_code, road.theta_median)
       slim_roads.append(slim_road)
     return slim_roads
 
@@ -825,8 +830,8 @@ class PtAssignment(object):
 
     def create_encoder(x):
       nentries = x.shape[0]
-      dummy = np.zeros((nentries, 3), dtype=np.float32)
-      encoder = Encoder(x, dummy, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale)
+      y = np.zeros((nentries, 3), dtype=np.float32)  # dummy
+      encoder = Encoder(x, y, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale)
       return encoder
     self.create_encoder = create_encoder
 
@@ -847,12 +852,9 @@ class PtAssignment(object):
 
     encoder = self.create_encoder(x)
     x_new = encoder.get_x()
-
     y = self.predict(x_new)
-
-    ndof = (encoder.get_x_mask() == False).sum(axis=1)  # num of hits
-    ndof = ndof[:, np.newaxis]
-    return (x_new, y, ndof)
+    x_mask = encoder.get_x_mask()
+    return (x_new, y, x_mask)
 
 
 # Track producer module
@@ -862,68 +864,24 @@ class TrackProducer(object):
     self.s_max = 60.
     self.s_nbins = 120
     self.s_step = (self.s_max - self.s_min)/self.s_nbins
-    self.s_lut =[  1.8001,  1.5061,  1.5533,  1.8039,  2.1714,  2.6079,  3.1022,  3.6403,
-                   4.2039,  4.7842,  5.3787,  5.9909,  6.6235,  7.2762,  7.9477,  8.6370,
-                   9.3504, 10.0934, 10.8721, 11.6946, 12.5557, 13.4203, 14.2373, 14.9889,
-                  15.6956, 16.3590, 17.0382, 17.7780, 18.5755, 19.4135, 20.2035, 20.9283,
-                  21.6253, 22.3527, 23.1098, 23.7308, 24.2632, 24.8080, 25.4359, 26.1762,
-                  26.9875, 27.8515, 28.7581, 29.7614, 30.8578, 31.9832, 33.1318, 34.2586,
-                  35.2303, 36.0346, 36.7887, 37.6733, 38.8758, 40.2935, 41.6736, 43.0472,
-                  44.3657, 45.6259, 46.8854, 48.2374, 49.6263, 50.7977, 51.7181, 52.5912,
-                  53.4564, 54.3191, 55.1807, 56.0418, 56.9025, 57.7631, 58.6235, 59.4838,
-                  60.3440, 61.2042, 62.0643, 62.9245, 63.7846, 64.6447, 65.5047, 66.3648,
-                  67.2248, 68.0849, 68.9449, 69.8049, 70.6650, 71.5250, 72.3850, 73.2450,
-                  74.1050, 74.9650, 75.8251, 76.6851, 77.5451, 78.4051, 79.2651, 80.1251,
-                  80.9851, 81.8451, 82.7051, 83.5651, 84.4251, 85.2851, 86.1451, 87.0051,
-                  87.8651, 88.7251, 89.5851, 90.4451, 91.3051, 92.1651, 93.0251, 93.8851,
-                  94.7451, 95.6051, 96.4651, 97.3251, 98.1851, 99.0451, 99.9051,100.7651]
+    self.s_lut =[ 1.7811,  1.5095,  1.5624,  1.8121,  2.1762,  2.6084,  3.0972,  3.6299,
+                  4.1905,  4.7705,  5.3654,  5.9772,  6.6052,  7.2465,  7.9028,  8.5697,
+                  9.2455,  9.9430, 10.6776, 11.4580, 12.2630, 13.0317, 13.7502, 14.4456,
+                 15.1405, 15.8497, 16.5862, 17.3343, 18.0754, 18.8086, 19.5559, 20.3527,
+                 21.2136, 22.0656, 22.8197, 23.4857, 24.0766, 24.6421, 25.2588, 25.9539,
+                 26.7149, 27.4785, 28.2148, 28.9525, 29.7449, 30.6370, 31.5250, 32.3522,
+                 33.1904, 34.0974, 35.1060, 36.1935, 37.2887, 38.3954, 39.4637, 40.4745,
+                 41.3779, 42.1708, 42.9547, 43.8274, 44.9100, 46.1583, 47.5567, 49.0209,
+                 50.0229, 50.8538, 51.6697, 52.4806, 53.2896, 54.0976, 54.9052, 55.7125,
+                 56.5196, 57.3265, 58.1334, 58.9403, 59.7470, 60.5538, 61.3605, 62.1672,
+                 62.9739, 63.7806, 64.5873, 65.3939, 66.2006, 67.0073, 67.8139, 68.6205,
+                 69.4272, 70.2338, 71.0405, 71.8471, 72.6537, 73.4604, 74.2670, 75.0736,
+                 75.8803, 76.6869, 77.4935, 78.3001, 79.1068, 79.9134, 80.7200, 81.5266,
+                 82.3333, 83.1399, 83.9465, 84.7531, 85.5598, 86.3664, 87.1730, 87.9796,
+                 88.7863, 89.5929, 90.3995, 91.2061, 92.0128, 92.8194, 93.6260, 94.4326]
     #self.s_lut = np.linspace(self.s_min, self.s_max, num=self.s_nbins+1)[:-1]
 
-  def run(self, slim_roads, variables, predictions, other_vars):
-    assert(len(slim_roads) == len(variables))
-    assert(len(slim_roads) == len(predictions))
-    assert(len(slim_roads) == len(other_vars))
-
-    discr_pt_cut = 14.
-
-    tracks = []
-
-    for myroad, myvars, mypreds, myother in izip(slim_roads, variables, predictions, other_vars):
-      # Unpack variables
-      assert(len(myvars.shape) == 1)
-      assert(myvars.shape[0] == (nlayers * 6) + 8)
-
-      x = myvars
-      ndof = np.asscalar(myother)
-      y_meas = np.asscalar(mypreds[...,0])
-      y_discr = np.asscalar(mypreds[...,1])
-
-      passed = self.pass_trigger(x, ndof, y_meas, y_discr, discr_pt_cut=discr_pt_cut)
-      trk_xml_pt = np.abs(1.0/y_meas)
-      trk_pt = self.get_trigger_pt(x, y_meas)
-
-      if passed:
-        trk_q = np.sign(y_meas)
-        trk_mode = 0
-        x_mode_vars = np.equal(x[nlayers*6+3:nlayers*6+8], 1)
-        for i, x_mode_var in enumerate(x_mode_vars):
-          if i == 0:
-            station = 1
-          else:
-            station = i
-          if x_mode_var:
-            trk_mode |= (1 << (4 - station))
-
-        trk_emtf_phi = myroad.id[4]
-        trk_emtf_theta = int(x[(nlayers*6) + 2] * 83) + 3
-
-        trk = Track(myroad.id, myroad.hits, trk_mode, trk_xml_pt, trk_pt, trk_q, trk_emtf_phi, trk_emtf_theta, ndof, y_discr)
-        tracks.append(trk)
-    return tracks
-
   def get_trigger_pt(self, x, y_meas):
-    #zone = int(x[(nlayers*6) + 1] * 6)
-
     xml_pt = np.abs(1.0/y_meas)
     if xml_pt <= 2.:  # do not use the LUT if below 2 GeV
       return xml_pt
@@ -946,20 +904,8 @@ class TrackProducer(object):
     pt = interpolate(xml_pt, x0, x1, y0, y1)
     return pt
 
-  def pass_trigger(self, x, ndof, y_meas, y_discr, discr_pt_cut=14.):
-    trk_mode = 0
-    x_mode_vars = np.equal(x[nlayers*6+3:nlayers*6+8], 1)
-    for i, x_mode_var in enumerate(x_mode_vars):
-      if i == 0:
-        station = 1
-      else:
-        station = i
-      if x_mode_var:
-        trk_mode |= (1 << (4 - station))
-
-    straightness = int(x[(nlayers*6) + 0] * 6) + 6
-
-    ipt1 = straightness
+  def pass_trigger(self, strg, ndof, trk_mode, y_meas, y_discr, discr_pt_cut=14.):
+    ipt1 = strg
     ipt2 = find_pt_bin(y_meas)
     quality1 = emtf_road_quality(ipt1)
     quality2 = emtf_road_quality(ipt2)
@@ -968,17 +914,86 @@ class TrackProducer(object):
       if np.abs(1.0/y_meas) > discr_pt_cut:
         if ndof <= 3:
           #trigger = (y_discr > 0.8)
-          trigger = (y_discr > 0.9960)  # 90% coverage
+          trigger = (y_discr > 0.9909)  # 90% coverage
           #trigger = (y_discr > 0.9999)  # 95% coverage
         else:
           #trigger = (y_discr > 0.5393)
-          trigger = (y_discr > 0.9716) # 98.5% coverage
+          trigger = (y_discr > 0.9508) # 98.0% coverage
           #trigger = (y_discr > 0.9929) # 99% coverage
       else:
         trigger = (y_discr >= 0.)  # True
     else:
       trigger = (y_discr < 0.)  # False
     return trigger
+
+  def run(self, slim_roads, variables, predictions, other_vars):
+
+    # __________________________________________________________________________
+    # Extra pieces
+    nvariables = 43
+
+    discr_pt_cut = 14.
+
+    def get_zone_from_x(x):
+      assert(x.shape[0] == nvariables)
+      zone = x[42-1] # 42th variable out of 43
+      return int(zone * 6)
+
+    def get_straightness_from_x(x):
+      assert(x.shape[0] == nvariables)
+      straightness = x[41-1]  # 41th variable out of 43
+      return int(straightness * 6) + 6
+
+    def get_ndof_from_x_mask(x_mask):
+      assert(x_mask.shape[0] == nlayers)
+      valid = ~x_mask
+      return int(valid.sum())
+
+    def get_mode_from_x_mask(x_mask):
+      assert(x_mask.shape[0] == nlayers)
+      valid = ~x_mask
+      mode = 0
+      if np.any([valid[0], valid[1], valid[5], valid[9], valid[11]]):   # ME1/1, ME1/2, RE1/2, GE1/1, ME0
+        mode |= (1<<3)
+      if np.any([valid[2], valid[6], valid[10]]):  # ME2, RE2, GE2/1
+        mode |= (1<<2)
+      if np.any([valid[3], valid[7]]):  # ME3, RE3
+        mode |= (1<<1)
+      if np.any([valid[4], valid[8]]):  # ME4, RE4
+        mode |= (1<<0)
+      return int(mode)
+
+    # __________________________________________________________________________
+    assert(len(slim_roads) == len(variables))
+    assert(len(slim_roads) == len(predictions))
+    assert(len(slim_roads) == len(other_vars))
+
+    tracks = []
+
+    for myroad, myvars, mypreds, myother in izip(slim_roads, variables, predictions, other_vars):
+      assert(len(myvars.shape) == 1)
+
+      x = myvars
+      x_mask = myother
+      y_meas = np.asscalar(mypreds[...,0])
+      y_discr = np.asscalar(mypreds[...,1])
+
+      zone = get_zone_from_x(x)
+      strg = get_straightness_from_x(x)
+      ndof = get_ndof_from_x_mask(x_mask)
+      mode = get_mode_from_x_mask(x_mask)
+
+      passed = self.pass_trigger(strg, ndof, mode, y_meas, y_discr, discr_pt_cut=discr_pt_cut)
+      xml_pt = np.abs(1.0/y_meas)
+      pt = self.get_trigger_pt(x, y_meas)
+
+      if passed:
+        trk_q = np.sign(y_meas)
+        trk_emtf_phi = myroad.id[4]
+        trk_emtf_theta = myroad.theta_median
+        trk = Track(myroad.id, myroad.hits, mode, xml_pt, pt, trk_q, trk_emtf_phi, trk_emtf_theta, ndof, y_discr)
+        tracks.append(trk)
+    return tracks
 
 
 # Make EMTF image
