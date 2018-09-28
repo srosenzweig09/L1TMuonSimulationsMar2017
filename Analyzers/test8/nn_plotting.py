@@ -2,7 +2,21 @@ import numpy as np
 
 import contextlib
 
+from scipy.optimize import curve_fit
 from scipy.stats import beta
+
+def gaus(x,a,mu,sig):
+  return a*np.exp(-0.5*np.square((x-mu)/sig))
+
+def fit_gaus(hist, edges, mu=0., sig=1.):
+  hist = hist.astype('float64')
+  edges = edges.astype('float64')
+  xdata = (edges[1:] + edges[:-1])/2
+  ydata = hist
+  popt, pcov = curve_fit(gaus, xdata, ydata, p0=[np.max(hist),mu,sig])
+  if not np.isfinite(pcov).all():
+    raise Exception('Fit has failed to converge.')
+  return popt
 
 def find_sumw2_errors(y, w):
   sumw2 = y * np.square(w)

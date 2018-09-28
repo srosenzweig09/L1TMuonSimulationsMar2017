@@ -8,7 +8,7 @@ adjust_scale = 3
 
 #learning_rate = 0.00113
 #learning_rate = 0.0033
-learning_rate = 0.005
+learning_rate = 0.0063
 
 gradient_clip_norm = 100.
 

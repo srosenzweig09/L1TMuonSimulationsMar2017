@@ -7,7 +7,8 @@ import tensorflow as tf
 
 from keras import backend as K
 from keras.models import Sequential, Model, clone_model, load_model, model_from_json
-from keras.layers import Dense, Activation, Dropout, Input, Concatenate, BatchNormalization
+from keras.layers import Dense, Activation, Dropout, Input, Concatenate, Lambda, BatchNormalization
+from keras.layers.advanced_activations import LeakyReLU
 from keras.callbacks import LearningRateScheduler, TerminateOnNaN, ModelCheckpoint
 from keras.regularizers import Regularizer
 from keras.constraints import Constraint
@@ -126,24 +127,59 @@ def masked_huber_loss(y_true, y_pred, delta=1.345, mask_value=100.):
   mask = K.not_equal(y_true, mask_value)
   mask = K.cast(mask, K.floatx())
   xx *= mask
-  xx /= K.mean(mask)
+  xx /= (K.mean(mask) + K.epsilon())
+  return K.mean(xx, axis=-1)
+
+def unmasked_huber_loss(y_true, y_pred, delta=1.345, mask_value=100.):
+  x = K.abs(y_true - y_pred)
+  squared_loss = 0.5*K.square(x)
+  absolute_loss = delta * (x - 0.5*delta)
+  #xx = K.switch(x < delta, squared_loss, absolute_loss)
+  xx = tf.where(x < delta, squared_loss, absolute_loss)  # needed for tensorflow
+
+  mask = K.not_equal(y_true, mask_value)
+  x_pu = (K.abs(y_pred)-100./10.)
+  log_loss = K.log(1+K.exp(-x_pu))
+  log_loss *= 20.
+  xx = tf.where(mask, xx, log_loss)
   return K.mean(xx, axis=-1)
 
 # ______________________________________________________________________________
 # Binary crossentropy
 
-# See: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/losses.py
-#      https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/backend.py
+# See: https://github.com/keras-team/keras/blob/master/keras/losses.py
 #def binary_crossentropy(y_true, y_pred):
 #  return K.mean(K.binary_crossentropy(y_true, y_pred), axis=-1)
 
-def masked_binary_crossentropy(y_true, y_pred, mask_value=100.):
-  xx = K.binary_crossentropy(y_true, y_pred)
+# See: https://github.com/keras-team/keras/blob/master/keras/backend/tensorflow_backend.py
+#def binary_crossentropy(target, output, from_logits=False):
+#    # Note: tf.nn.sigmoid_cross_entropy_with_logits
+#    # expects logits, Keras expects probabilities.
+#    if not from_logits:
+#        # transform back to logits
+#        _epsilon = tf.convert_to_tensor(epsilon(), dtype=output.dtype.base_dtype)
+#        output = tf.clip_by_value(output, _epsilon, 1 - _epsilon)
+#        output = tf.log(output / (1 - output))
+#    return tf.nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
+
+def weighted_crossentropy(target, output, pos_weight, from_logits=False):
+    # Note: tf.nn.sigmoid_cross_entropy_with_logits
+    # expects logits, Keras expects probabilities.
+    if not from_logits:
+      # transform back to logits
+      _epsilon = tf.convert_to_tensor(K.epsilon(), dtype=output.dtype.base_dtype)
+      output = tf.clip_by_value(output, _epsilon, 1 - _epsilon)
+      output = tf.log(output / (1 - output))
+    return tf.nn.weighted_cross_entropy_with_logits(targets=target, logits=output, pos_weight=pos_weight)
+
+def masked_binary_crossentropy(y_true, y_pred, mask_value=100., pos_weight=0.333333):
+  #xx = K.binary_crossentropy(y_true, y_pred)
+  xx = weighted_crossentropy(y_true, y_pred, pos_weight=pos_weight) * 2/(1+pos_weight)
 
   mask = K.not_equal(y_true, mask_value)
   mask = K.cast(mask, K.floatx())
   xx *= mask
-  xx /= K.mean(mask)
+  xx /= (K.mean(mask) + K.epsilon())
   return K.mean(xx, axis=-1)
 
 # ______________________________________________________________________________
@@ -151,7 +187,7 @@ def masked_binary_crossentropy(y_true, y_pred, mask_value=100.):
 
 def lr_schedule(epoch, lr):
   if (epoch % 10) == 0 and epoch != 0:
-    lr *= 0.95
+    lr *= 0.9
   return lr
 
 lr_decay = LearningRateScheduler(lr_schedule, verbose=0)
@@ -190,6 +226,7 @@ def create_model(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, nodes
     if nodes3:
       x = Dense(nodes3, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizer)(x)
 
+  # Output nodes
   regr = Dense(1, activation='linear', kernel_initializer='glorot_uniform', name='regr')(x)
   discr = Dense(1, activation='sigmoid', kernel_initializer='glorot_uniform', name='discr')(x)
 
@@ -227,6 +264,7 @@ def create_model_bn(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, no
       x = Activation('tanh')(x)
       if use_dropout: x = Dropout(0.2)(x)
 
+  # Output nodes
   regr = Dense(1, activation='linear', kernel_initializer='glorot_uniform', name='regr')(x)
   discr = Dense(1, activation='sigmoid', kernel_initializer='glorot_uniform', name='discr')(x)
 
@@ -265,6 +303,7 @@ def create_model_pruned(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32
       x = Activation('tanh')(x)
       if use_dropout: x = Dropout(0.2)(x)
 
+  # Output nodes
   regr = Dense(1, activation='linear', kernel_initializer='glorot_uniform', name='regr')(x)
   discr = Dense(1, activation='sigmoid', kernel_initializer='glorot_uniform', name='discr')(x)
 
@@ -329,10 +368,10 @@ def create_model_mdn(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, n
       x = Activation('tanh')(x)
       if use_dropout: x = Dropout(0.2)(x)
 
+  # Output nodes
   mus = Dense(mixture, activation=None, kernel_initializer='glorot_uniform', name='mus')(x)  # the means
   sigmas = Dense(mixture, activation=NewElu, kernel_initializer='glorot_uniform', name='sigmas')(x)  # the variance
   pi = Dense(mixture, activation='softmax', kernel_initializer='glorot_uniform', name='pi')(x)  # the mixture components
-
   outputs = Concatenate(axis=1)([pi, mus, sigmas])
 
   # Create model
@@ -350,7 +389,7 @@ def create_model_sequential(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes
   regularizer = regularizers.L1L2(l1=l1_reg, l2=l2_reg)
 
   model = Sequential()
-  model.add(Dense(nodes1, input_dim=nvariables, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizer))
+  model.add(Dense(nodes1, input_shape=(nvariables,), activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizer))
   #model.add(Dropout(0.2))
   if nodes2:
     model.add(Dense(nodes2, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizer))
@@ -359,10 +398,12 @@ def create_model_sequential(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes
       model.add(Dense(nodes3, activation='tanh', kernel_initializer='glorot_uniform', kernel_regularizer=regularizer))
       #model.add(Dropout(0.2))
 
+  # Output node
   model.add(Dense(1, activation='linear', kernel_initializer='glorot_uniform'))
 
+  # Set loss and optimizers
   adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
-  model.compile(loss=huber_loss, optimizer=adam, metrics=['acc'])
+  model.compile(optimizer=adam, loss=huber_loss, metrics=['acc'])
   model.summary()
   return model
 
@@ -372,25 +413,28 @@ def create_model_sequential_bn(nvariables, lr=0.001, clipnorm=10., nodes1=64, no
   regularizer = regularizers.L1L2(l1=l1_reg, l2=l2_reg)
 
   model = Sequential()
-  model.add(Dense(nodes1, input_dim=nvariables, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False))
+  model.add(Dense(nodes1, input_shape=(nvariables,), kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False))
   if use_bn: model.add(BatchNormalization(epsilon=1e-4, momentum=0.9))
   model.add(Activation('tanh'))
-  if use_dropout: model.add(Dropout(0.2)(x))
+  if use_dropout: model.add(Dropout(0.2))
   if nodes2:
     model.add(Dense(nodes2, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False))
     if use_bn: model.add(BatchNormalization(epsilon=1e-4, momentum=0.9))
     model.add(Activation('tanh'))
-    if use_dropout: model.add(Dropout(0.2)(x))
+    if use_dropout: model.add(Dropout(0.2))
     if nodes3:
       model.add(Dense(nodes3, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False))
       if use_bn: model.add(BatchNormalization(epsilon=1e-4, momentum=0.9))
       model.add(Activation('tanh'))
-      if use_dropout: model.add(Dropout(0.2)(x))
+      if use_dropout: model.add(Dropout(0.2))
 
+  # Output node
   model.add(Dense(1, activation='linear', kernel_initializer='glorot_uniform'))
 
+  # Set loss and optimizers
   adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
-  model.compile(loss=huber_loss, optimizer=adam, metrics=['acc'])
+  model.compile(optimizer=adam, loss=huber_loss, metrics=['acc'])
+  #model.compile(optimizer=adam, loss=unmasked_huber_loss, metrics=['acc'])
   model.summary()
   return model
 
