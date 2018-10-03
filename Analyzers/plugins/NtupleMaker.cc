@@ -424,11 +424,15 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
         result = (station < 3) ? isEven : !isEven;
       }
     } else if (subsystem == TriggerPrimitive::kRPC) {
-      // 10 degree rings have even subsectors in front
-      // 20 degree rings have odd subsectors in front
-      bool is_10degree = !((station == 3 || station == 4) && (ring == 1));
-      bool isEven = (subsector % 2 == 0);
-      result = (is_10degree) ? isEven : !isEven;
+      //// 10 degree rings have even subsectors in front
+      //// 20 degree rings have odd subsectors in front
+      //bool is_10degree = !((station == 3 || station == 4) && (ring == 1));
+      //bool isEven = (subsector % 2 == 0);
+      //result = (is_10degree) ? isEven : !isEven;
+
+      // Use the equivalent CSC chamber F/R
+      bool isEven = (chamber % 2 == 0);
+      result = (station < 3) ? isEven : !isEven;
     } else if (subsystem == TriggerPrimitive::kGEM) {
       //
       result = (chamber % 2 == 0);
