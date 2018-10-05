@@ -275,7 +275,7 @@ def create_model_bn(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, no
   adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
   model.compile(optimizer=adam,
     loss={'regr': masked_huber_loss, 'discr': masked_binary_crossentropy},
-    loss_weights={'regr': 1.0, 'discr': discr_loss_weight},
+    loss_weights={'regr': 1.0/discr_loss_weight, 'discr': 1.0},
     #metrics={'regr': ['acc', 'mse', 'mae'], 'discr': ['acc',]}
     )
   model.summary()
