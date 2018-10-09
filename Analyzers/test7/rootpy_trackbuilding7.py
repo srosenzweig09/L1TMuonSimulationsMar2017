@@ -19,14 +19,14 @@ TH1.AddDirectory(False)
 kDT, kCSC, kRPC, kGEM, kME0 = 0, 1, 2, 3, 4
 
 # Globals
-eta_bins = (1.2, 1.4, 1.55, 1.7, 1.8, 1.98, 2.15, 2.5)
+eta_bins = (1.2, 1.55, 1.7, 1.8, 1.98, 2.15, 2.4)
 eta_bins = eta_bins[::-1]
-pt_bins = (-0.50, -0.333333, -0.25, -0.20, -0.15, -0.10, -0.05, 0.05, 0.10, 0.15, 0.20, 0.25, 0.333333, 0.50)
+pt_bins = (-0.5 , -0.38, -0.26, -0.15, -0.05, 0.05, 0.15, 0.26, 0.38, 0.5)
 nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
-superstrip_size = 16
+superstrip_size = 32
 
-assert(len(eta_bins) == 7+1)
-assert(len(pt_bins) == 13+1)
+assert(len(eta_bins) == 6+1)
+assert(len(pt_bins) == 9+1)
 
 
 # Functions
@@ -60,16 +60,6 @@ def calc_phi_loc_int(glob, sector):
     loc += 360.
   loc = (loc + 22.) * 60.
   phi_int = int(round(loc))
-  return phi_int
-
-def calc_phi_loc_int_1(glob, sector):
-  # glob in deg, sector [1-6]
-  loc = calc_phi_loc_deg_from_glob(glob, sector)
-  if (loc + 22.) < 0.:
-    loc += 360.
-  loc = (loc + 22.) * 60.
-  #phi_int = int(round(loc))
-  phi_int = loc  # no cast to int
   return phi_int
 
 def calc_phi_loc_deg(bits):
@@ -168,7 +158,7 @@ def is_valid_for_run2(hit):
 # Decide EMTF hit layer number
 class EMTFLayer(object):
   def __init__(self):
-    lut = np.zeros((5,5,5), dtype=np.int32) - 99
+    lut = np.zeros((5,5,5), dtype=np.int32) - 99  # (type, station, ring) -> layer
     lut[1,1,4] = 0  # ME1/1a
     lut[1,1,1] = 0  # ME1/1b
     lut[1,1,2] = 1  # ME1/2
@@ -192,20 +182,105 @@ class EMTFLayer(object):
     lut[4,1,1] = 11 # ME0
     self.lut = lut
 
-  def get(self, hit):
+  def __call__(self, hit):
     index = (hit.type, hit.station, hit.ring)
-    return self.lut[index]
+    entry = self.lut[index]
+    return entry
 
-anemtflayer = EMTFLayer()
-def emtf_layer(hit):
-  return anemtflayer.get(hit)
+find_emtf_layer = EMTFLayer()
+
+# Decide EMTF hit zones
+class EMTFZone(object):
+  def __init__(self):
+    lut = np.zeros((5,5,5,6,2), dtype=np.int32) - 99  # (type, station, ring) -> [zone] x [min_theta,max_theta]
+    lut[1,1,4][0] = 4,17   # ME1/1a
+    lut[1,1,4][1] = 16,26  # ME1/1a
+    lut[1,1,4][2] = 24,37  # ME1/1a
+    lut[1,1,4][3] = 34,43  # ME1/1a
+    lut[1,1,4][4] = 40,53  # ME1/1a
+    lut[1,1,1][0] = 4,17   # ME1/1b
+    lut[1,1,1][1] = 16,26  # ME1/1b
+    lut[1,1,1][2] = 24,37  # ME1/1b
+    lut[1,1,1][3] = 34,43  # ME1/1b
+    lut[1,1,1][4] = 40,53  # ME1/1b
+    lut[1,1,2][4] = 46,54  # ME1/2
+    lut[1,1,2][5] = 52,88  # ME1/2
+    lut[1,1,3][4] = 46,54  # ME1/3
+    lut[1,1,3][5] = 52,88  # ME1/3
+    #
+    lut[1,2,1][0] = 4,17   # ME2/1
+    lut[1,2,1][1] = 16,25  # ME2/1
+    lut[1,2,1][2] = 24,36  # ME2/1
+    lut[1,2,1][3] = 34,43  # ME2/1
+    lut[1,2,1][4] = 40,49  # ME2/1
+    lut[1,2,2][5] = 53,88  # ME2/2
+    #
+    lut[1,3,1][0] = 4,17   # ME3/1
+    lut[1,3,1][1] = 16,25  # ME3/1
+    lut[1,3,1][2] = 24,36  # ME3/1
+    lut[1,3,1][3] = 34,40  # ME3/1
+    lut[1,3,2][4] = 44,54  # ME3/2
+    lut[1,3,2][5] = 52,88  # ME3/2
+    #
+    lut[1,4,1][0] = 4,17   # ME4/1
+    lut[1,4,1][1] = 16,25  # ME4/1
+    lut[1,4,1][2] = 24,35  # ME4/1
+    lut[1,4,2][3] = 38,43  # ME4/2
+    lut[1,4,2][4] = 41,54  # ME4/2
+    lut[1,4,2][5] = 52,88  # ME4/2
+    #
+    lut[2,1,2][5] = 52,84  # RE1/2
+    lut[2,2,2][5] = 56,76  # RE2/2
+    lut[2,3,1][0] = 4,20   # RE3/1
+    lut[2,3,1][1] = 20,24  # RE3/1
+    lut[2,3,1][2] = 24,32  # RE3/1
+    lut[2,3,2][3] = 40,40  # RE3/2
+    lut[2,3,2][4] = 40,52  # RE3/2
+    lut[2,3,2][5] = 48,84  # RE3/2
+    lut[2,3,3][3] = 40,40  # RE3/3
+    lut[2,3,3][4] = 40,52  # RE3/3
+    lut[2,3,3][5] = 48,84  # RE3/3
+    lut[2,4,1][0] = 8,16   # RE4/1
+    lut[2,4,1][1] = 16,28  # RE4/1
+    lut[2,4,1][2] = 24,28  # RE4/1
+    lut[2,4,2][3] = 36,44  # RE4/2
+    lut[2,4,2][4] = 44,52  # RE4/2
+    lut[2,4,2][5] = 52,84  # RE4/2
+    lut[2,4,3][3] = 36,44  # RE4/3
+    lut[2,4,3][4] = 44,52  # RE4/3
+    lut[2,4,3][5] = 52,84  # RE4/3
+    #
+    lut[3,1,1][1] = 17,26  # GE1/1
+    lut[3,1,1][2] = 24,37  # GE1/1
+    lut[3,1,1][3] = 35,45  # GE1/1
+    lut[3,1,1][4] = 40,52  # GE1/1
+    lut[3,2,1][0] = 7,19   # GE2/1
+    lut[3,2,1][1] = 18,24  # GE2/1
+    lut[3,2,1][2] = 23,35  # GE2/1
+    lut[3,2,1][3] = 34,45  # GE2/1
+    lut[3,2,1][4] = 40,46  # GE2/1
+    #
+    lut[4,1,1][0] = 4,17   # ME0
+    lut[4,1,1][1] = 16,23  # ME0
+    self.lut = lut
+
+  def __call__(self, hit):
+    index = (hit.type, hit.station, hit.ring)
+    entry = self.lut[index]
+    answer = (entry[:,0] <= hit.emtf_theta) & (hit.emtf_theta <= entry[:,1])
+    zones = np.nonzero(answer)
+    if isinstance(zones, tuple):
+      zones = zones[0]
+    return zones
+
+find_emtf_zones = EMTFZone()
 
 # Decide EMTF hit bend
 class EMTFBend(object):
   def __init__(self):
     self.lut = np.array([5, -5, 4, -4, 3, -3, 2, -2, 1, -1, 0], dtype=np.int32)
 
-  def get(self, hit):
+  def __call__(self, hit):
     if hit.type == kCSC:
       #clct = int(hit.pattern)
       #bend = self.lut[clct]
@@ -218,28 +293,73 @@ class EMTFBend(object):
       bend = hit.bend
     return bend
 
-anemtfbend = EMTFBend()
-def emtf_bend(hit):
-  return anemtfbend.get(hit)
+find_emtf_bend = EMTFBend()
+
+class EMTFZee(object):
+  def __init__(self):
+    self.lut = np.array([599.0, 696.8, 827.1, 937.5, 1027, 708.7, 790.9, 968.8, 1060, 566.4, 794.8, 539.3], dtype=np.float32)
+    assert(self.lut.shape[0] == nlayers)
+
+  def __call__(self, hit):
+    return self.lut[hit.emtf_layer]
+
+find_emtf_zee = EMTFZee()
+
+class EMTFPhi(object):
+  def __init__(self):
+    pass
+
+  def __call__(self, hit):
+    if hit.type == kCSC:
+      if hit.station == 1:
+        if hit.ring == 1:
+          bend_corr_lut = (-1.3861, 1.3692)  # ME1/1b (r,f)
+        elif hit.ring == 4:
+          bend_corr_lut = (-1.6419, 1.6012)  # ME1/1a (r,f)
+        else:
+          bend_corr_lut = (-0.9237, 0.8287)  # ME1/2 (r,f)
+        bend_corr = bend_corr_lut[int(hit.fr)] * hit.bend
+        bend_corr = bend_corr if hit.endcap == 1 else (bend_corr * -1)
+        bend_corr = int(round(bend_corr))
+        return hit.emtf_phi + bend_corr
+      else:
+        pass
+    else:
+      pass
+    return hit.emtf_phi
+
+find_emtf_phi = EMTFPhi()
+
+class EMTFLayerPair(object):
+  def __init__(self):
+    self.lut = np.array([2, 2, 0, 0, 0, 0, 2, 3, 4, 0, 2, 0], dtype=np.int32)
+    assert(self.lut.shape[0] == nlayers)
+
+  def __call__(self, hit, zone):
+    partner = self.lut[hit.emtf_layer]
+    if zone >= 5:  # zones 5,6, use ME1/2
+      if partner == 0:
+        partner = 1
+    return partner
+
+find_emtf_layer_partner = EMTFLayerPair()
 
 # Decide EMTF road quality (by pT)
 class EMTFRoadQuality(object):
   def __init__(self):
     self.best_ipt = find_pt_bin(0.)
 
-  def get(self, ipt):
+  def __call__(self, ipt):
     return self.best_ipt - abs(ipt - self.best_ipt)
 
-anemtfroadquality = EMTFRoadQuality()
-def emtf_road_quality(ipt):
-  return anemtfroadquality.get(ipt)
+find_emtf_road_quality = EMTFRoadQuality()
 
 # Decide EMTF road sort code
 class EMTFRoadSortCode(object):
   def __init__(self):
     pass
 
-  def get(self, road_mode, road_quality, road_hits):
+  def __call__(self, road_mode, road_quality, road_hits):
     #def madorsky_code(mode, qual):
     #  code = 0
     #  code |= ((mode >> 3) & 1) << 6
@@ -253,8 +373,8 @@ class EMTFRoadSortCode(object):
 
     def mlayer_code(hits, qual):
       # 11     10     9      8      7    6      5    4    3      2..0
-      # GE1/1, ME1/1, ME1/2, GE2/1, ME2, RE1&2, ME3, ME4, RE3&4, qual
-      hits_to_mlayer = (10,9,7,5,4,6,6,3,3,11,8,11)
+      # ME1/1, GE1/1, ME1/2, GE2/1, ME2, RE1&2, ME3, ME4, RE3&4, qual
+      hits_to_mlayer = (11,9,7,5,4,6,6,3,3,10,8,11)
       code = 0
       for hit in hits:
         hit_lay = hit.emtf_layer
@@ -264,59 +384,33 @@ class EMTFRoadSortCode(object):
       return code
     return mlayer_code(road_hits, road_quality)
 
-anemtfroadsortcode = EMTFRoadSortCode()
-def emtf_road_sort_code(road_mode, road_quality, road_hits):
-  return anemtfroadsortcode.get(road_mode, road_quality, road_hits)
+find_emtf_road_sort_code = EMTFRoadSortCode()
 
 # Decide EMTF road mode
-class EMTFRoadMode(object):
-  def __init__(self):
-    self.singlemu = (11,13,14,15)
-    self.doublemu = (7,10,12) + self.singlemu
-    self.muopen = (3,5,6,9) + self.doublemu
+def is_emtf_singlemu(mode):
+  return mode in (11,13,14,15)
 
-anemtfroadmode = EMTFRoadMode()
-def emtf_is_singlemu(mode):
-  return mode in anemtfroadmode.singlemu
-def emtf_is_doublemu(mode):
-  return mode in anemtfroadmode.doublemu
-def emtf_is_muopen(mode):
-  return mode in anemtfroadmode.muopen
+def is_emtf_doublemu(mode):
+  return mode in (7,10,12) + (11,13,14,15)
 
-# Extrapolate from paramter space to EMTF space
-class EMTFExtrapolation(object):
-  def __init__(self):
-    self.eta_bins = (13, 1.2, 2.5)
-    self.pt_bins = (200, -0.5, 0.5)
-    self.loaded = False
+def is_emtf_muopen(mode):
+  return mode in (3,5,6,9) + (7,10,12) + (11,13,14,15)
 
-  def _find_bin(self, x, bins):
-    x = np.clip(x, bins[1], bins[2]-1e-8)
-    binx = (x - bins[1]) / (bins[2] - bins[1]) * bins[0]
-    return int(binx)
-
-  def _find_eta_bin(self, part):
-    x = abs(part.eta)
-    return self._find_bin(x, self.eta_bins)
-
-  def _find_pt_bin(self, part):
-    x = part.invpt
-    return self._find_bin(x, self.pt_bins)
-
-  def get(self, part):
-    if not self.loaded:
-      with np.load(bankfile) as data:
-        self.lut = data['patterns_exphi']
-        self.loaded = True
-    index = (self._find_eta_bin(part), self._find_pt_bin(part))
-    c = self.lut[index]
-    dphi = c * (part.invpt * np.sinh(1.8587) / np.sinh(abs(part.eta)))
-    exphi = part.phi + dphi  # in radians
-    return exphi
-
-anemtfextrapolation = EMTFExtrapolation()
-def emtf_extrapolation(part):
-  return anemtfextrapolation.get(part)
+# Decide EMTF legit hit
+def is_emtf_legit_hit(hit):
+  def check_bx(hit):
+    if hit.type == kCSC:
+      return hit.bx in (-1,0)
+    else:
+      return hit.bx == 0
+  #
+  def check_quality(hit):
+    if hit.type == kRPC:
+      return hit.quality <= 9  # cluster width
+    else:
+      return True
+  #
+  return check_bx(hit) and check_quality(hit)
 
 
 # ______________________________________________________________________________
@@ -333,20 +427,12 @@ class Particle(object):
     parameters = np.array((np.true_divide(self.q, self.pt), self.phi, self.eta), dtype=np.float32)
     return parameters
 
-class Pattern(object):
-  def __init__(self, xmin, xmed, xmax, ymin, ymed, ymax):
-    self.xmin = xmin
-    self.xmed = xmed
-    self.xmax = xmax
-    self.ymin = ymin
-    self.ymed = ymed
-    self.ymax = ymax
-
 class PatternBank(object):
   def __init__(self, bankfile):
     with np.load(bankfile) as data:
       patterns_phi = data['patterns_phi']
-      patterns_theta = data['patterns_theta']
+      #patterns_theta = data['patterns_theta']
+      patterns_theta = np.zeros_like(patterns_phi)
       patterns_match = data['patterns_match']
     self.x_array = patterns_phi
     self.y_array = patterns_theta
@@ -359,9 +445,8 @@ class PatternBank(object):
     assert(self.z_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
 
 class Hit(object):
-  def __init__(self, _id, bx, emtf_layer, emtf_phi, emtf_theta, emtf_bend, time, sim_tp):
-    self.id = _id  # (_type, station, ring, fr)
-    self.bx = bx
+  def __init__(self, _id, emtf_layer, emtf_phi, emtf_theta, emtf_bend, time, sim_tp):
+    self.id = _id  # (_type, station, ring, fr, bx)
     self.emtf_layer = emtf_layer
     self.emtf_phi = emtf_phi
     self.emtf_theta = emtf_theta
@@ -374,6 +459,9 @@ class Hit(object):
 
   def get_fr(self):
     return self.id[3]
+
+  def get_bx(self):
+    return self.id[4]
 
 class Road(object):
   def __init__(self, _id, hits, mode, mode_csc, quality, sort_code, theta_median):
@@ -404,7 +492,7 @@ class Road(object):
       hits_phi[lay] = hit.emtf_phi
       hits_theta[lay] = hit.emtf_theta
       hits_bend[lay] = hit.emtf_bend
-      hits_time[lay] = hit.bx  #FIXME: use hit.time?
+      hits_time[lay] = hit.get_bx()  #FIXME: use hit.time?
       hits_ring[lay] = hit.get_ring()
       hits_fr[lay] = hit.get_fr()
       hits_mask[lay] = 0.0
@@ -994,339 +1082,6 @@ class TrackProducer(object):
     return tracks
 
 
-# Make EMTF image
-# A m-by-n matrix has m rows and n columns
-class EMTFImage(object):
-  def __init__(self, superstrip_size):
-    self.superstrip_size = superstrip_size
-
-    self.sector_hits_capacity = 50
-
-    l_lut = np.zeros((5,5,5), dtype=np.int32) - 99  # (type, station, ring) -> layer
-    l_lut[1,1,4] = 0  # ME1/1a
-    l_lut[1,1,1] = 0  # ME1/1b
-    l_lut[1,1,2] = 1  # ME1/2
-    l_lut[1,1,3] = 1  # ME1/3
-    l_lut[1,2,1] = 2  # ME2/1
-    l_lut[1,2,2] = 2  # ME2/2
-    l_lut[1,3,1] = 3  # ME3/1
-    l_lut[1,3,2] = 3  # ME3/2
-    l_lut[1,4,1] = 4  # ME4/1
-    l_lut[1,4,2] = 4  # ME4/2
-    l_lut[2,1,2] = 5  # RE1/2
-    l_lut[2,2,2] = 6  # RE2/2
-    l_lut[2,3,1] = 7  # RE3/1
-    l_lut[2,3,2] = 7  # RE3/2
-    l_lut[2,3,3] = 7  # RE3/3
-    l_lut[2,4,1] = 8  # RE4/1
-    l_lut[2,4,2] = 8  # RE4/2
-    l_lut[2,4,3] = 8  # RE4/3
-    l_lut[3,1,1] = 9  # GE1/1
-    l_lut[3,2,1] = 10 # GE2/1
-    l_lut[4,1,1] = 11 # ME0
-    self.l_lut = l_lut
-    assert(self.l_lut.max() < nlayers)
-
-    m_lut = np.zeros((5,5,5), dtype=np.int32) - 99  # (type, station, ring) -> row
-    m_lut[1,1,4] = 2  # ME1/1a
-    m_lut[1,1,1] = 2  # ME1/1b
-    m_lut[1,1,2] = 0  # ME1/2
-    m_lut[1,1,3] = 0  # ME1/3
-    m_lut[1,2,1] = 4  # ME2/1
-    m_lut[1,2,2] = 4  # ME2/2
-    m_lut[1,3,1] = 5  # ME3/1
-    m_lut[1,3,2] = 5  # ME3/2
-    m_lut[1,4,1] = 7  # ME4/1
-    m_lut[1,4,2] = 7  # ME4/2
-    m_lut[2,1,2] = 1  # RE1/2
-    m_lut[2,2,2] = 3  # RE2/2
-    m_lut[2,3,1] = 6  # RE3/1
-    m_lut[2,3,2] = 6  # RE3/2
-    m_lut[2,3,3] = 6  # RE3/3
-    m_lut[2,4,1] = 8  # RE4/1
-    m_lut[2,4,2] = 8  # RE4/2
-    m_lut[2,4,3] = 8  # RE4/3
-    m_lut[3,1,1] = 1  # GE1/1
-    m_lut[3,2,1] = 3  # GE2/1
-    m_lut[4,1,1] = 0  # ME0
-    self.m_lut = m_lut
-    self.m_size = 9
-    assert(self.m_lut.max() < self.m_size)
-
-    self.zone_size = 7
-
-    self.n_size = 5040 // self.superstrip_size
-
-    t_lut = np.zeros((self.m_size,self.zone_size,2), dtype=np.int32) - 99  # (row,zone) -> (min theta, max theta)
-    t_lut[0,0] = 4,17   # ME0
-    t_lut[0,1] = 16,23  # ME0
-    t_lut[1,1] = 17,26  # GE1/1
-    t_lut[1,2] = 24,37  # GE1/1
-    t_lut[1,3] = 35,45  # GE1/1
-    t_lut[1,4] = 40,52  # GE1/1
-    t_lut[2,0] = 4,17   # ME1/1
-    t_lut[2,1] = 16,26  # ME1/1
-    t_lut[2,2] = 24,37  # ME1/1
-    t_lut[2,3] = 34,43  # ME1/1
-    t_lut[2,4] = 40,53  # ME1/1
-    #
-    t_lut[0,4] = 46,54  # ME1/2
-    t_lut[0,5] = 52,67  # ME1/2
-    t_lut[0,6] = 65,88  # ME1/2
-    t_lut[1,5] = 52,72  # RE1/2
-    t_lut[1,6] = 68,84  # RE1/2
-    #
-    t_lut[3,0] = 7,19   # GE2/1
-    t_lut[3,1] = 18,24  # GE2/1
-    t_lut[3,2] = 23,35  # GE2/1
-    t_lut[3,3] = 34,45  # GE2/1
-    t_lut[3,4] = 40,46  # GE2/1
-    t_lut[3,5] = 56,68  # RE2/2+3
-    t_lut[3,6] = 64,76  # RE2/2+3
-    t_lut[4,0] = 4,17   # ME2/1
-    t_lut[4,1] = 16,25  # ME2/1
-    t_lut[4,2] = 24,36  # ME2/1
-    t_lut[4,3] = 34,43  # ME2/1
-    t_lut[4,4] = 40,49  # ME2/1
-    t_lut[4,5] = 53,67  # ME2/2
-    t_lut[4,6] = 65,88  # ME2/2
-    #
-    t_lut[5,0] = 4,17   # ME3/1
-    t_lut[5,1] = 16,25  # ME3/1
-    t_lut[5,2] = 24,36  # ME3/1
-    t_lut[5,3] = 34,40  # ME3/1
-    t_lut[5,4] = 44,54  # ME3/2
-    t_lut[5,5] = 52,67  # ME3/2
-    t_lut[5,6] = 64,88  # ME3/2
-    t_lut[6,0] = 4,20   # RE3/1
-    t_lut[6,1] = 20,24  # RE3/1
-    t_lut[6,2] = 24,32  # RE3/1
-    t_lut[6,3] = 40,40  # RE3/2+3
-    t_lut[6,4] = 40,52  # RE3/2+3
-    t_lut[6,5] = 48,72  # RE3/2+3
-    t_lut[6,6] = 60,84  # RE3/2+3
-    #
-    t_lut[7,0] = 4,17   # ME4/1
-    t_lut[7,1] = 16,25  # ME4/1
-    t_lut[7,2] = 24,35  # ME4/1
-    t_lut[7,3] = 38,43  # ME4/2
-    t_lut[7,4] = 41,54  # ME4/2
-    t_lut[7,5] = 52,67  # ME4/2
-    t_lut[7,6] = 64,88  # ME4/2
-    t_lut[8,0] = 8,16  # RE4/1
-    t_lut[8,1] = 16,28 # RE4/1
-    t_lut[8,2] = 24,28 # RE4/1
-    t_lut[8,3] = 36,44 # RE4/2+3
-    t_lut[8,4] = 44,52 # RE4/2+3
-    t_lut[8,5] = 52,64 # RE4/2+3
-    t_lut[8,6] = 64,84 # RE4/2+3
-    self.t_lut = t_lut
-
-    # ME1/1, ME1/2, ME2, ME3, ME4, RE1
-    # RE2, RE3, RE4, GE1/1, GE2/1, ME0
-    s_bend_lut =[-0.059926, -0.065415, -0.149701,  0.086035,  0.108797,  1.000000,
-                  1.000000,  1.000000,  1.000000, -0.515074, -0.599277, -0.073872,]
-    self.s_bend_lut = np.array(s_bend_lut, dtype=np.float32)
-
-    s_bend_sign_lut = np.sign(self.s_bend_lut)
-    self.s_bend_sign_lut = np.array(s_bend_sign_lut, dtype=np.float32)
-
-    #s_bend_max_lut = [40, 40, 12, 12, 12, 0, 0, 0, 0, 3, 2, 20]
-    s_bend_max_lut = [40, 40, 1, 1, 1, 0, 0, 0, 0, 0, 0, 20]
-    self.s_bend_max_lut = np.array(s_bend_max_lut, dtype=np.float32)
-
-    self.pix_size = 2
-    self.chn_size = 2
-    return
-
-  def get_layer(self, hit):
-    index = (hit.type, hit.station, hit.ring)
-    lay = self.l_lut[index]
-    return lay
-
-  def get_row(self, hit):
-    index = (hit.type, hit.station, hit.ring)
-    m = self.m_lut[index]
-    return m
-
-  def get_col(self, hit):
-    emtf_phi = int(round(hit.emtf_phi))
-    if hit.type == kCSC:
-      if hit.station == 1:
-        if hit.ring == 1:
-          bend_corr_const = (-1.3861, 1.3692)  # ME1/1b (r,f)
-        elif hit.ring == 4:
-          bend_corr_const = (-1.6419, 1.6012)  # ME1/1a (r,f)
-        else:
-          bend_corr_const = (-0.9237, 0.8287)  # ME1/2 (r,f)
-        bend_corr = bend_corr_const[int(hit.fr)]
-        bend_corr = bend_corr if hit.endcap == 1 else (bend_corr * -1)
-        emtf_phi = emtf_phi + (bend_corr * hit.bend)
-        emtf_phi = int(round(emtf_phi))
-    elif hit.type == kRPC:
-      strip_pitch = (10.*60/32)
-      if (hit.station == 3 or hit.station == 4) and hit.ring == 1:  # iRPC
-        clus = (int(hit.quality - 1) // 3) + 1
-      else:
-        clus = (int(hit.quality - 3) // 3) + 1
-      if clus == 1:
-        emtf_phi = emtf_phi
-      elif clus == 2:
-        emtf_phi = (emtf_phi-0.5*strip_pitch, emtf_phi+0.5*strip_pitch)
-        emtf_phi = range(int(round(emtf_phi[0])), int(round(emtf_phi[1]))+1)
-      else:
-        emtf_phi = (emtf_phi-strip_pitch, emtf_phi+strip_pitch)
-        emtf_phi = range(int(round(emtf_phi[0])), int(round(emtf_phi[1]))+1)
-    if not isinstance(emtf_phi, list):
-      emtf_phi = (emtf_phi,)
-    emtf_phi = np.asarray(emtf_phi, dtype=np.int32)
-    assert((emtf_phi < 5040).all())
-    n = emtf_phi // self.superstrip_size
-    return n
-
-  def get_zones(self, hit):
-    m = self.get_row(hit)
-    t = self.t_lut[m]
-    hit_theta = np.asarray(hit.emtf_theta, dtype=np.int32)
-    zones = np.logical_and(t[:,0] <= hit_theta, hit_theta <= t[:,1])
-    zones = np.where(zones)[0]
-    return zones
-
-  def get_chn_bend(self, hit):
-    if hit.type == kCSC:
-      bend = hit.bend
-      if hit.station == 1:
-        # Special case for ME1/1a:
-        # rescale the bend to the same scale as ME1/1b
-        if hit.ring == 4:
-          bend *= 0.026331/0.014264
-      elif hit.station in (2,3,4):
-        if -8 <= bend <= 8:
-          bend = 0
-        elif bend > 8:
-          bend = +1
-        else:
-          bend = -1
-      bend *= hit.endcap
-    elif hit.type == kGEM:
-      bend = hit.bend
-      bend *= hit.endcap
-    elif hit.type == kME0:
-      bend = hit.bend
-    else:
-      bend = 0
-    lay = self.get_layer(hit)
-    #s = self.s_bend_lut[lay]
-    #bend *= s
-    bend_sign = self.s_bend_sign_lut[lay]
-    bend_max = self.s_bend_max_lut[lay]
-    if bend_max == 0:
-      bend = 0.5
-    else:
-      bend = np.clip(float(bend), -bend_max, bend_max)
-      bend = 0.5 + (bend_sign * bend)/(2 * bend_max)
-    return bend
-
-  def get_chn_theta(self, hit):
-    theta = np.clip(float(hit.emtf_theta), 4., 86.)
-    theta = (theta - 3.)/83.
-    return theta
-
-  #def get_chn_mphi(self, hit):
-  #  n = self.get_col(hit)
-  #  mphi = float(hit.emtf_phi) - (n * self.superstrip_size)
-  #  mphi /= self.superstrip_size
-  #  return mphi
-
-  def get_chn(self, hit):
-    chn = (self.get_chn_bend(hit),self.get_chn_theta(hit))
-    chn = np.asarray(chn, dtype=np.float32)
-    assert((0.0 <= chn).all())
-    assert((chn <= 1.0).all())
-    return chn
-
-  def is_intime(self, hit):
-    if hit.type == kCSC:
-      return hit.bx == -1 or hit.bx == 0
-    else:
-      return hit.bx == 0
-
-  def is_good_quality(self, hit):
-    if hit.type == kRPC:
-      return hit.quality <= 9
-    return True
-
-  def __call__(self, hits):
-    amap = {}
-    for ihit, hit in enumerate(hits):
-      if self.is_intime(hit) and self.is_good_quality(hit):
-        m = self.get_row(hit)
-        n = self.get_col(hit)  # multiple values
-        zones = self.get_zones(hit)  # multiple values
-        for z in zones:
-          for n_i in n:
-            m_z = m + (z * self.m_size)
-            chn = self.get_chn(hit)
-            amap.setdefault((m_z,n_i), []).append(chn)
-
-    image_pixels = np.zeros((self.sector_hits_capacity,self.pix_size), dtype=np.int32) - 99
-    image_channels = np.zeros((self.sector_hits_capacity,self.chn_size), dtype=np.float32) + np.nan
-
-    for i, (k, v) in enumerate(amap.iteritems()):
-      if i == self.sector_hits_capacity:
-        break
-      (m,n) = k
-      chn = v[0]  # arbitrarily pick the first hit
-      image_pixels[i] = (m,n)
-      image_channels[i] = chn
-    return image_pixels, image_channels
-
-make_emtf_image = EMTFImage(superstrip_size=superstrip_size)
-
-
-# Assign EMTF label
-class EMTFLabel(object):
-  def __init__(self):
-    self.pt_bins = np.linspace(-0.525, 0.525, num=22)
-    self.eta_bins = eta_bins
-    self.phi_bins = np.linspace(-40, 40, num=129)  # uGMT uses 360./576
-
-  def find_pt_bin(self, part):
-    pt = np.true_divide(part.q, part.pt)
-    ipt = np.digitize((pt,), self.pt_bins[1:])[0]  # skip lowest edge
-    ipt = np.clip(ipt, 0, len(self.pt_bins)-2)
-    return ipt
-
-  def find_sector_phi(self, glob, sector):  # glob in deg, sector in [1,6]
-    # sector 1 starts at 15 deg
-    loc = glob - 15. - (60. * (sector-1))
-    # but here I'm assuming sector 1 centers at 40 deg
-    center = 40. - 15.
-    dphi = delta_phi(loc, center)
-    return dphi
-
-  def find_phi_bin(self, part, sector):
-    phi = self.find_sector_phi(np.rad2deg(part.phi), (sector%6)+1)
-    iphi = np.digitize((phi,), self.phi_bins[1:])[0]  # skip lowest edge
-    iphi = np.clip(iphi, 0, len(self.phi_bins)-2)
-    return iphi
-
-  def find_eta_bin(self, part):
-    eta = abs(part.eta)
-    ieta = np.digitize((eta,), self.eta_bins[1:])[0]  # skip lowest edge
-    ieta = np.clip(ieta, 0, len(self.eta_bins)-2)
-    return ieta
-
-  def __call__(self, part, sector):
-    label = (self.find_pt_bin(part),
-             self.find_phi_bin(part, sector),
-             self.find_eta_bin(part))
-    label = np.asarray(label, dtype=np.int32)
-    return label
-
-assign_emtf_label = EMTFLabel()
-
-
 # ______________________________________________________________________________
 # Book histograms
 histograms = {}
@@ -1387,20 +1142,19 @@ for m in ("emtf", "emtf2023"):
 
 # Get number of events
 #maxEvents = -1
-maxEvents = 4000000
-#maxEvents = 1000
+#maxEvents = 4000000
+maxEvents = 1000
 
 # Condor or not
 use_condor = ('CONDOR_EXEC' in os.environ)
 
 # Analysis mode
 #analysis = 'verbose'
-#analysis = 'training'
-#analysis = 'application'
+analysis = 'application'
 #analysis = 'rates'
 #analysis = 'effie'
 #analysis = 'mixing'
-analysis = 'images'
+#analysis = 'images'
 if use_condor:
   analysis = sys.argv[1]
 
@@ -1535,203 +1289,6 @@ if analysis == 'verbose':
 
 
 # ______________________________________________________________________________
-# Analysis: training
-elif analysis == 'training':
-  tree = load_pgun()
-
-  # 3-dimensional arrays of lists
-  # [ipt][ieta][lay]
-  patterns_phi = np.empty((len(pt_bins)-1, len(eta_bins)-1, nlayers), dtype=np.object)
-  patterns_theta = np.empty((len(pt_bins)-1, len(eta_bins)-1, nlayers), dtype=np.object)
-  patterns_match = np.empty((len(pt_bins)-1, len(eta_bins)-1, nlayers), dtype=np.object)  # used for matching
-  for ind in np.ndindex(patterns_phi.shape):
-    patterns_phi[ind] = []
-    patterns_theta[ind] = []
-    patterns_match[ind] = []
-
-  # 2-dimensional arrays of lists
-  # [ieta][ipt]
-  e = EMTFExtrapolation()
-  patterns_exphi = np.empty((e.eta_bins[0], e.pt_bins[0]), dtype=np.object)
-  for ind in np.ndindex(patterns_exphi.shape):
-    patterns_exphi[ind] = []
-
-  # ____________________________________________________________________________
-  # Loop over events
-  for ievt, evt in enumerate(tree):
-    if maxEvents != -1 and ievt == maxEvents:
-      break
-
-    if (ievt % 1000 == 0):  print("Processing event: {0}".format(ievt))
-
-    part = evt.particles[0]  # particle gun
-    part.invpt = np.true_divide(part.q, part.pt)
-    #part.exphi = extrapolate_to_emtf(part.phi, part.invpt, part.eta)
-    part.exphi = emtf_extrapolation(part)
-    part.sector = find_sector(part.exphi)
-    part.endcap = find_endcap(part.eta)
-    #part.emtf_phi = calc_phi_loc_int(np.rad2deg(part.exphi), part.sector)
-    part.emtf_phi = calc_phi_loc_int_1(np.rad2deg(part.exphi), part.sector)  # no cast to int
-    part.emtf_theta = calc_theta_int(calc_theta_deg_from_eta(part.eta), part.endcap)
-
-    if ievt < 20:
-      print("evt {0} has {1} particles and {2} hits".format(ievt, len(evt.particles), len(evt.hits)))
-      print(".. part invpt: {0} pt: {1} eta: {2} phi: {3} exphi: {4} sec: {5} ph: {6} th: {7}".format(part.invpt, part.pt, part.eta, part.phi, part.exphi, part.sector, part.emtf_phi, part.emtf_theta))
-
-    part.ipt = find_pt_bin(part.invpt)
-    part.ieta = find_eta_bin(part.eta)
-    the_patterns_phi = patterns_phi[part.ipt,part.ieta]
-    the_patterns_theta = patterns_theta[0,part.ieta]  # no binning in pt
-    the_patterns_match = patterns_match[part.ipt,part.ieta]
-    e = EMTFExtrapolation()
-    the_patterns_exphi = patterns_exphi[e._find_eta_bin(part), e._find_pt_bin(part)]
-
-    # Loop over hits
-    cached_hits = {}  # used for matching
-
-    for ihit, hit in enumerate(evt.hits):
-      hit_lay = emtf_layer(hit)
-      hit.lay = hit_lay
-      assert(hit_lay != -99)
-      if ievt < 20:
-        print(".. hit {0} type: {1} st: {2} ri: {3} fr: {4} lay: {5} sec: {6} ph: {7} th: {8}".format(ihit, hit.type, hit.station, hit.ring, hit.fr, hit_lay, hit.sector, hit.emtf_phi, hit.emtf_theta))
-
-      if hit.endcap == part.endcap and hit.sector == part.sector and (hit.sim_tp1 == 0 and hit.sim_tp2 == 0):
-        the_patterns_phi[hit_lay].append(hit.emtf_phi - part.emtf_phi)
-        if part.pt >= 4.:  # use >=4 GeV muons for theta windows
-          the_patterns_theta[hit_lay].append(hit.emtf_theta)
-        if hit_lay not in cached_hits:
-          cached_hits[hit_lay] = hit
-
-        if hit.type == kCSC and hit.station == 2:  # extrapolation to EMTF using ME2
-          dphi = delta_phi(np.deg2rad(hit.sim_phi), part.phi)
-          dphi /= (part.invpt * np.sinh(1.8587) / np.sinh(abs(part.eta)))
-          the_patterns_exphi.append(dphi)
-
-    # Find pairs of hits
-    if part.ieta <= 4:
-      pairings = dict([(0,2), (1,2), (2,0), (3,0), (4,0), (5,0), (6,2), (7,3), (8,4), (9,0), (10,2), (11,0)])
-    else:
-      pairings = dict([(0,2), (1,2), (2,1), (3,1), (4,1), (5,1), (6,2), (7,3), (8,4), (9,1), (10,2), (11,1)])
-
-    for ihit, hit in enumerate(evt.hits):
-      if hit.endcap == part.endcap and hit.sector == part.sector and (hit.sim_tp1 == 0 and hit.sim_tp2 == 0):
-        hit_lay = hit.lay
-        hit_lay_p = pairings[hit_lay]
-        if hit_lay_p in cached_hits:
-          hit_p = cached_hits[hit_lay_p]
-          the_patterns_match[hit_lay].append(hit.emtf_phi - hit_p.emtf_phi)
-
-  # End loop over events
-  unload_tree()
-
-  # ____________________________________________________________________________
-  # Plot histograms
-  print('[INFO] Creating file: histos_tb.root')
-  with root_open('histos_tb.root', 'recreate') as f:
-    for i in xrange(len(pt_bins)-1):
-      for j in xrange(len(eta_bins)-1):
-        for k in xrange(nlayers):
-          hname = "patterns_phi_%i_%i_%i" % (i,j,k)
-          h1a = Hist(201, -402, 402, name=hname, title=hname, type='F')
-          for x in patterns_phi[i,j,k]:  h1a.fill(x)
-          h1a.Write()
-
-          hname = "patterns_theta_%i_%i_%i" % (i,j,k)
-          h1b = Hist(81, -40.5, 40.5, name=hname, title=hname, type='F')
-          for x in patterns_theta[i,j,k]:  h1b.fill(x)
-          h1b.Write()
-
-  # ____________________________________________________________________________
-  # Save objects
-  print('[INFO] Creating file: histos_tb.npz')
-  if True:
-    patterns_phi_tmp = patterns_phi
-    patterns_theta_tmp = patterns_theta
-    patterns_match_tmp = patterns_match
-    patterns_phi = np.zeros((len(pt_bins)-1, len(eta_bins)-1, nlayers, 3), dtype=np.int32)
-    patterns_theta = np.zeros((len(pt_bins)-1, len(eta_bins)-1, nlayers, 3), dtype=np.int32)
-    patterns_match = np.zeros((len(pt_bins)-1, len(eta_bins)-1, nlayers, 3), dtype=np.int32)
-    #
-    for i in xrange(len(pt_bins)-1):
-      for j in xrange(len(eta_bins)-1):
-        for k in xrange(nlayers):
-          patterns_phi_tmp_ijk = patterns_phi_tmp[i,j,k]
-          if len(patterns_phi_tmp_ijk) > 1000:
-            if k == 9 or k == 10 or k == 11:  # keep more GEMs
-              x = np.percentile(patterns_phi_tmp_ijk, [3.5, 50, 96.5], overwrite_input=True)
-            else:
-              x = np.percentile(patterns_phi_tmp_ijk, [5, 50, 95], overwrite_input=True)
-            x = [int(round(xx)) for xx in x]
-            if (x[2] - x[0]) < 32:
-              old_x = x[:]
-              while (x[2] - x[0]) < 32:  # make sure the range is larger than twice the 'doublestrip' unit
-                x[0] -= 1
-                x[2] += 1
-              print(".. phi (%i,%i,%i) expanded from [%i,%i] to [%i,%i]" % (i,j,k,old_x[0],old_x[2],x[0],x[2]))
-            patterns_phi[i,j,k] = x
-
-          #patterns_theta_tmp_ijk = patterns_theta_tmp[i,j,k]
-          patterns_theta_tmp_ijk = patterns_theta_tmp[0,j,k]  # no binning in pt
-          if len(patterns_theta_tmp_ijk) > 1000:
-            x = np.percentile(patterns_theta_tmp_ijk, [2.5, 50, 97.5], overwrite_input=True)
-            x = [int(round(xx)) for xx in x]
-            patterns_theta[i,j,k] = x
-
-          patterns_match_tmp_ijk = patterns_match_tmp[i,j,k]
-          if len(patterns_match_tmp_ijk) > 1000:
-            x = np.percentile(patterns_match_tmp_ijk, [5, 50, 95], overwrite_input=True)
-            x = [int(round(xx)) for xx in x]
-            patterns_match[i,j,k] = x
-
-
-    # Mask layers by (ieta, lay)
-    valid_layers = [
-      (6,1), (6,2), (6,3), (6,4), (6,5), (6,6), (6,7), (6,8),
-      (5,1), (5,2), (5,3), (5,4), (5,5), (5,6), (5,7), (5,8),
-      (4,0), (4,1), (4,2), (4,3), (4,4), (4,7), (4,8), (4,9), (4,10),
-      (3,0), (3,2), (3,3), (3,4), (3,7), (3,8), (3,9), (3,10),
-      (2,0), (2,2), (2,3), (2,4), (2,7), (2,8), (2,9), (2,10),
-      (1,0), (1,2), (1,3), (1,4), (1,7), (1,8), (1,9), (1,10), (1,11),
-      (0,0), (0,2), (0,3), (0,4), (0,7), (0,8), (0,10), (0,11),
-    ]
-    mask = np.ones_like(patterns_phi, dtype=np.bool)
-    for valid_layer in valid_layers:
-      mask[:,valid_layer[0],valid_layer[1],:] = False
-    patterns_phi[mask] = 0
-    patterns_theta[mask] = 0
-    patterns_match[mask] = 0
-
-    # extrapolation to EMTF using ME2
-    overwrite_extrapolation = True
-    smooth_extrapolation = True
-    if overwrite_extrapolation:
-      patterns_exphi_tmp = patterns_exphi
-      patterns_exphi = np.zeros(patterns_exphi_tmp.shape, dtype=np.float32)
-      for index, x in np.ndenumerate(patterns_exphi_tmp):
-        if x:
-          patterns_exphi[index] = np.median(x, overwrite_input=True)
-      if smooth_extrapolation:
-        from scipy.interpolate import Rbf
-        patterns_exphi_tmp = patterns_exphi
-        patterns_exphi = np.zeros_like(patterns_exphi_tmp, dtype=np.float32)
-        e = EMTFExtrapolation()
-        x = [e.pt_bins[1] + (i+0.5)/e.pt_bins[0]*(e.pt_bins[2] - e.pt_bins[1]) for i in xrange(e.pt_bins[0])]
-        for index in np.ndindex(e.eta_bins[0]):
-          assert(len(x) == len(patterns_exphi_tmp[index]))
-          rbf = Rbf(x, patterns_exphi_tmp[index], smooth = 0.3, function='multiquadric')
-          patterns_exphi[index] = rbf(x)
-    else:
-      with np.load(bankfile) as data:
-        patterns_exphi = data['patterns_exphi']
-
-    outfile = 'histos_tb.npz'
-    np.savez_compressed(outfile, patterns_phi=patterns_phi, patterns_theta=patterns_theta, patterns_match=patterns_match, patterns_exphi=patterns_exphi)
-
-
-
-
-# ______________________________________________________________________________
 # Analysis: application
 elif analysis == 'application':
   #tree = load_pgun()
@@ -1747,7 +1304,8 @@ elif analysis == 'application':
   npassed, ntotal = 0, 0
 
   # Event range
-  n = -1
+  #n = -1  #FIXME
+  n = 1000
 
   # ____________________________________________________________________________
   # Loop over events
@@ -2227,105 +1785,6 @@ elif analysis == 'mixing':
     aux = np.array(out_particles, dtype=np.float32)
     outfile = 'histos_tbd.npz'
     np.savez_compressed(outfile, variables=variables, aux=aux)
-
-
-
-
-# ______________________________________________________________________________
-# Analysis: images
-elif analysis == 'images':
-  tree = load_pgun()
-  #tree = load_pgun_batch(jobid)
-
-  out_image_pixels = []
-  out_image_channels = []
-  out_labels = []
-  out_parameters = []
-
-  # Event range
-  n = -1
-
-  # ____________________________________________________________________________
-  # Loop over events
-  for ievt, evt in enumerate(tree):
-    if n != -1 and ievt == n:
-      break
-
-    if (ievt % 1000 == 0):  print("Processing event: {0}".format(ievt))
-
-    # Skip events without ME1 hits
-    has_ME1 = False
-    for ihit, hit in enumerate(evt.hits):
-      if hit.type == kCSC and hit.station == 1:
-        has_ME1 = True
-        break
-      elif hit.type == kME0 and hit.station == 1:
-        has_ME1 = True
-        break
-    if not has_ME1:
-      continue
-
-    part = evt.particles[0]  # particle gun
-    part.invpt = np.true_divide(part.q, part.pt)
-
-    # Find the best sector
-    sector_cnt_array = np.zeros((12,), dtype=np.int32)
-    sector_hits_array = np.empty((12,), dtype=np.object)
-    for ind in np.ndindex(sector_hits_array.shape):
-      sector_hits_array[ind] = []
-
-    for ihit, hit in enumerate(evt.hits):
-      assert(hit.emtf_phi < 5040)  # 84*60
-      endsec = find_endsec(hit.endcap, hit.sector)
-      sector_cnt_array[endsec] += 1
-      sector_hits_array[endsec].append(hit)
-
-    # Get the best sector hits
-    best_sector = np.argmax(sector_cnt_array)
-    sector_hits = sector_hits_array[best_sector]
-
-    # The workhorse
-    image_pixels, image_channels = make_emtf_image(sector_hits)
-    out_image_pixels.append(image_pixels)
-    out_image_channels.append(image_channels)
-
-    labels = assign_emtf_label(part, best_sector)
-    out_labels.append(labels)
-
-    parameters = np.asarray((np.true_divide(part.q, part.pt), part.phi, part.eta, best_sector), dtype=np.float32)
-    out_parameters.append(parameters)
-
-    if ievt < 40 and part.pt > 5.:
-      print("evt {0}".format(ievt))
-      # Hits
-      for ihit, hit in enumerate(sector_hits):
-        print(".. hit  {0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10} {11}".format(ihit, hit.bx, hit.type, hit.station, hit.ring, hit.sector, hit.fr, hit.emtf_phi, hit.emtf_theta, hit.time, hit.sim_tp1, hit.sim_tp2))
-      # Gen particles
-      for ipart, part in enumerate(evt.particles):
-        print(".. part {0} {1} {2} {3} {4} {5}".format(ipart, part.pt, part.phi, part.eta, part.theta, part.q))
-      # Zones
-      n_zones = make_emtf_image.zone_size
-      n_rows = make_emtf_image.m_size
-      for zone in xrange(n_zones):
-        # Count hits in zone
-        rows = [px[0] for px in image_pixels if px[0] != -99 and (zone*n_rows) <= px[0] < ((zone+1)*n_rows)]
-        print(".. zone {0} {1}/{2}".format(zone, len(rows), len(sector_hits)))
-      print(".. zone info", map(make_emtf_image.get_zones, sector_hits))
-
-  # End loop over events
-  unload_tree()
-
-
-  # ____________________________________________________________________________
-  # Save objects
-  print('[INFO] Creating file: histos_tbe.npz')
-  if True:
-    image_pixels   = np.asarray(out_image_pixels, dtype=np.int32)
-    image_channels = np.asarray(out_image_channels, dtype=np.float32)
-    labels         = np.asarray(out_labels, dtype=np.int32)
-    parameters     = np.asarray(out_parameters, dtype=np.float32)
-    outfile = 'histos_tbe.npz'
-    np.savez_compressed(outfile, image_pixels=image_pixels, image_channels=image_channels, labels=labels, parameters=parameters)
 
 
 
