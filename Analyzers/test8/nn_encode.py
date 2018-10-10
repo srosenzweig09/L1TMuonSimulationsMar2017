@@ -72,8 +72,7 @@ class Encoder(object):
       self.x_zone         = self.x_road[:, 1][:, np.newaxis]
 
       # Subtract median phi from hit phis
-      #self.x_phi_median    = self.x_road[:, 2] * 32 - 16  # multiply by 'quadstrip' unit (4 * 8)
-      self.x_phi_median    = self.x_road[:, 2] * 16 - 8  # multiply by 'doublestrip' unit (2 * 8)
+      self.x_phi_median    = self.x_road[:, 2] * 32  # multiply by 'quadstrip' unit (4 * 8)
       self.x_phi_median    = self.x_phi_median[:, np.newaxis]
       self.x_phi          -= self.x_phi_median
 
@@ -95,20 +94,7 @@ class Encoder(object):
         self.x_copy /= self.x_std
         x_theta_tmp = np.abs(self.x_theta) > 1.0
       elif adjust_scale == 2:  # adjust by hand
-        theta_cuts    = np.array((6., 6., 6., 6., 6., 12., 12., 12., 12., 9., 9., 9.), dtype=np.float32)
-        x_theta_tmp   = np.where(np.isnan(self.x_theta), 99., self.x_theta)  # take care of nan
-        x_theta_tmp   = np.abs(x_theta_tmp) > theta_cuts
-        self.x_phi   *= 0.000991  # GE1/1 dphi linear correlation with q/pT
-        self.x_theta *= (1/12.)   # 12 integer theta units
-        self.x_bend  *= 0.188082  # ME1/2 bend linear correlation with q/pT
-        x_ring_tmp    = self.x_ring.astype(np.int32)
-        x_ring_tmp    = (x_ring_tmp == 2) | (x_ring_tmp == 3)
-        self.x_ring[x_ring_tmp] = 1  # ring 2,3 -> 1
-        self.x_ring[~x_ring_tmp] = 0 # ring 1,4 -> 0
-        x_fr_tmp      = self.x_fr.astype(np.int32)
-        x_fr_tmp      = (x_fr_tmp == 1)
-        self.x_fr[x_fr_tmp] = 1   # front chamber -> 1
-        self.x_fr[~x_fr_tmp] = 0  # rear chamber  -> 0
+        raise NotImplementedError
       elif adjust_scale == 3:  # adjust by hand #2
         #theta_cuts    = np.array((6., 6., 6., 6., 6., 12., 12., 12., 12., 9., 9., 9.), dtype=np.float32)
         #theta_cuts    = np.array((6., 6., 6., 6., 6., 10., 10., 10., 10., 8., 8., 8.), dtype=np.float32)
@@ -127,12 +113,12 @@ class Encoder(object):
           self.x_bend[:, 5:11] = 0  # no bend for RPC, GEM
           self.x_time[:, :]    = 0  # no time for everyone
           self.x_ring[:, 5:12] = 0  # no ring for RPC, GEM, ME0
-        s = [ 0.005083,  0.019142, -0.015694, -0.010744, -0.007120,  0.021043,
-             -0.042957, -0.009228, -0.006421,  0.003815, -0.015731,  0.003477,
-              0.596512,  0.592788,  1.459119,  1.507292,  1.062175,  0.228293,
-              0.289786,  0.355389,  0.385781,  0.454640,  0.603444,  0.710116,
-             -0.059926, -0.065415, -0.149701,  0.086035,  0.108797,  1.000000,
-              1.000000,  1.000000,  1.000000, -0.515074, -0.599277, -0.073872,
+        s = [ 0.003823,  0.014775, -0.020074, -0.020074, -0.007132,  0.018526,
+              0.049287, -0.014615, -0.004606,  0.003129,  0.032047,  0.002763,
+              0.692799,  0.662007,  1.488075,  1.625722,  1.090594,  0.227838,
+              0.307957,  0.356929,  0.397081,  0.499301,  0.596005,  0.692037,
+             -0.051061, -0.065821, -0.798621,  1.177665,  1.210435,  1.000000,
+              1.000000,  1.000000,  1.000000, -0.525397, -0.653634, -0.076719,
               1.000000,  1.000000,  1.000000,  1.000000,  1.000000,  1.000000,
               1.000000,  1.000000,  1.000000,  1.000000,  1.000000,  1.000000,
               1.000000,  1.000000,  1.000000,  1.000000,  1.000000,  1.000000,
@@ -154,8 +140,8 @@ class Encoder(object):
       #self.x_mask [x_theta_tmp] = 1
 
       # Add variables: straightness, zone, theta_median and mode variables
-      self.x_straightness = (self.x_straightness - 6.) / 6.   # scaled to [-1,1]
-      self.x_zone         = (self.x_zone - 0.) / 6.           # scaled to [0,1]
+      self.x_straightness = (self.x_straightness - 4.) / 4.   # scaled to [-1,1]
+      self.x_zone         = (self.x_zone - 0.) / 5.           # scaled to [0,1]
       self.x_theta_median = (self.x_theta_median - 3.) / 83.  # scaled to [0,1]
       hits_to_station = np.array((5,1,2,3,4,1,2,3,4,5,2,5), dtype=np.int32)  # '5' denotes ME1/1
       assert(len(hits_to_station) == nlayers)

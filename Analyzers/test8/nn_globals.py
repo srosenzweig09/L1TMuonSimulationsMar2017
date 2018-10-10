@@ -28,9 +28,9 @@ l1_reg = 0.0
 
 l2_reg = 0.0
 
-infile_muon = '../test7/histos_tba.18.npz'
+infile_muon = '../test7/histos_tba.19.npz'
 
-infile_pileup = '../test7/histos_tbd.18.npz'
+infile_pileup = '../test7/histos_tbd.19.npz'
 
 
 # ______________________________________________________________________________
