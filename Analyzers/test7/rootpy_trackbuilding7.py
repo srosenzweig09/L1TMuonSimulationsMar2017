@@ -544,22 +544,24 @@ class PatternRecognition(object):
 
   def _apply_patterns(self, endcap, sector, sector_hits):
     # Retrieve patterns with (ipt, ieta, lay, pattern)
-    pattern_x = self.bank.x_array[:, :, np.newaxis, :, :]
-    pattern_y = self.bank.y_array[:, :, np.newaxis, :, :]
-    pattern_iphi = np.arange(4928//32, dtype=np.int32)  # divide by 'quadstrip' unit (4 * 8)
+    patterns_x = self.bank.x_array
+    patterns_y = self.bank.y_array
 
     # Loop over hits
     amap = {}  # road_id -> list of 'myhit'
 
     for ihit, hit in enumerate(sector_hits):
       # Make hit coordinates
-      hit_x = (hit.emtf_phi+16)//32 - pattern_iphi  # divide by 'quadstrip' unit (4 * 8)
+      hit_x = (hit.emtf_phi+16)//32  # divide by 'quadstrip' unit (4 * 8)
       #hit_y = hit.emtf_theta
       hit_lay = hit.lay
       hit_zones = hit.zones
 
-      # Match patterns
-      mask = (pattern_x[...,hit_lay,0] <= hit_x) & (hit_x <= pattern_x[...,hit_lay,2])
+      # Scan patterns
+      patterns_iphi = np.arange(max(-31, hit_x-4928//32), min(31, hit_x-0)+1, dtype=np.int32)
+      patterns_x0 = patterns_x[:, hit_zones, hit_lay, 0, np.newaxis]
+      patterns_x1 = patterns_x[:, hit_zones, hit_lay, 2, np.newaxis]
+      mask = (patterns_x0 <= patterns_iphi) & (patterns_iphi <= patterns_x1)
 
       myhit = None
 
@@ -567,11 +569,12 @@ class PatternRecognition(object):
       for index, condition in np.ndenumerate(mask):
         if condition:  # match phi windows
           ipt, ieta, iphi = index
-          if ieta in hit_zones:  # match zone definitions
-            if myhit is None:
-              myhit = self._create_road_hit(hit)
-            road_id = (endcap, sector, ipt, ieta, iphi)
-            amap.setdefault(road_id, []).append(myhit)  # append hit to road
+          ieta = hit_zones[ieta]
+          iphi = hit_x - patterns_iphi[iphi]
+          if myhit is None:
+            myhit = self._create_road_hit(hit)
+          road_id = (endcap, sector, ipt, ieta, iphi)
+          amap.setdefault(road_id, []).append(myhit)  # append hit to road
 
     # Create a road
     roads = []
@@ -1277,8 +1280,7 @@ elif analysis == 'application':
   npassed, ntotal = 0, 0
 
   # Event range
-  #n = -1  #FIXME
-  n = 1000
+  n = -1
 
   # ____________________________________________________________________________
   # Loop over events
