@@ -2,7 +2,8 @@ import numpy as np
 np.random.seed(2023)
 
 import os, sys
-from itertools import izip
+from six.moves import range, zip, map, filter
+
 from rootpy.plotting import Hist, Hist2D, Graph, Efficiency
 from rootpy.tree import Tree, TreeChain, TreeModel, FloatCol, IntCol, ShortCol
 from rootpy.io import root_open
@@ -23,7 +24,7 @@ eta_bins = (1.2, 1.55, 1.7, 1.8, 1.98, 2.15, 2.4)
 eta_bins = eta_bins[::-1]
 pt_bins = (-0.5 , -0.38, -0.26, -0.15, -0.05, 0.05, 0.15, 0.26, 0.38, 0.5)
 nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
-superstrip_size = 32
+#superstrip_size = 32
 
 assert(len(eta_bins) == 6+1)
 assert(len(pt_bins) == 9+1)
@@ -745,7 +746,7 @@ class RoadCleaning(object):
       trk_bx_zero = (bx_counter1 < 3 and bx_counter2 >= 2 and bx_counter3 < 2)
       return trk_bx_zero
 
-    clean_roads = filter(select_bx_zero, clean_roads)
+    clean_roads = list(filter(select_bx_zero, clean_roads))
 
     if clean_roads:
       clean_roads.sort(key=lambda road: road.sort_code, reverse=True)
@@ -790,7 +791,7 @@ class RoadCleaning(object):
     for group in self._groupby(amap.keys()):
 
       # Loop over roads in road clusters, starting from middle
-      for index in self._iter_from_middle(range(len(group))):
+      for index in self._iter_from_middle(xrange(len(group))):
         road_id = group[index]
         road = amap[road_id]
         keep = True
@@ -945,21 +946,21 @@ class TrackProducer(object):
     self.s_max = 60.
     self.s_nbins = 120
     self.s_step = (self.s_max - self.s_min)/self.s_nbins
-    self.s_lut =[ 1.7769,  1.5124,  1.5673,  1.8172,  2.1815,  2.6145,  3.1045,  3.6388,
-                  4.2013,  4.7830,  5.3782,  5.9877,  6.6118,  7.2501,  7.9037,  8.5691,
-                  9.2434,  9.9334, 10.6543, 11.4124, 12.1966, 12.9780, 13.7327, 14.4720,
-                 15.1884, 15.9011, 16.6312, 17.3721, 18.1249, 18.8826, 19.6508, 20.4218,
-                 21.1968, 21.9761, 22.7319, 23.4282, 24.0346, 24.6033, 25.1984, 25.8532,
-                 26.5767, 27.3630, 28.2132, 29.1144, 30.0160, 30.8543, 31.6103, 32.2719,
-                 32.9088, 33.5704, 34.3097, 35.1681, 36.1318, 37.1112, 38.0804, 39.0223,
-                 39.9847, 40.9856, 41.9147, 42.8231, 43.7905, 44.8910, 45.9913, 47.1659,
-                 48.5070, 49.6775, 50.5396, 51.3450, 52.1407, 52.9334, 53.7249, 54.5157,
-                 55.3061, 56.0963, 56.8864, 57.6764, 58.4664, 59.2563, 60.0461, 60.8359,
-                 61.6257, 62.4155, 63.2053, 63.9951, 64.7848, 65.5746, 66.3643, 67.1540,
-                 67.9438, 68.7335, 69.5232, 70.3130, 71.1027, 71.8924, 72.6821, 73.4719,
-                 74.2616, 75.0513, 75.8410, 76.6307, 77.4204, 78.2102, 78.9999, 79.7896,
-                 80.5793, 81.3690, 82.1587, 82.9485, 83.7382, 84.5279, 85.3176, 86.1073,
-                 86.8970, 87.6867, 88.4765, 89.2662, 90.0559, 90.8456, 91.6353, 92.4250]
+    self.s_lut =[  1.7752,  1.4767,  1.5292,  1.7869,  2.1605,  2.6021,  3.1004,  3.6417,
+                   4.2087,  4.7908,  5.3849,  5.9919,  6.6138,  7.2522,  7.9075,  8.5729,
+                   9.2521,  9.9508, 10.6765, 11.4240, 12.1833, 12.9435, 13.7027, 14.4466,
+                  15.1786, 15.9113, 16.6548, 17.4105, 18.1915, 18.9763, 19.7272, 20.4535,
+                  21.2309, 22.1217, 23.0479, 23.8688, 24.6103, 25.4144, 26.2911, 27.1718,
+                  28.0902, 29.0131, 29.8476, 30.6304, 31.4112, 32.2368, 33.1071, 34.1228,
+                  35.3238, 36.6118, 37.9929, 39.4356, 40.7376, 41.9937, 43.2880, 44.6462,
+                  46.0374, 47.6467, 49.4922, 50.6042, 51.5235, 52.4197, 53.3099, 54.1978,
+                  55.0846, 55.9708, 56.8567, 57.7424, 58.6279, 59.5133, 60.3986, 61.2839,
+                  62.1692, 63.0544, 63.9396, 64.8248, 65.7099, 66.5951, 67.4802, 68.3654,
+                  69.2505, 70.1356, 71.0207, 71.9058, 72.7909, 73.6760, 74.5611, 75.4462,
+                  76.3313, 77.2164, 78.1015, 78.9866, 79.8717, 80.7568, 81.6419, 82.5270,
+                  83.4121, 84.2971, 85.1822, 86.0673, 86.9524, 87.8375, 88.7226, 89.6077,
+                  90.4927, 91.3778, 92.2629, 93.1480, 94.0331, 94.9182, 95.8033, 96.6883,
+                  97.5734, 98.4585, 99.3436,100.2287,101.1138,101.9989,102.8839,103.7690]
     #self.s_lut = np.linspace(self.s_min, self.s_max, num=self.s_nbins+1)[:-1]
 
   def get_trigger_pt(self, x, y_meas):
@@ -968,7 +969,7 @@ class TrackProducer(object):
       return xml_pt
 
     def digitize(x, bins=(self.s_nbins, self.s_min, self.s_max)):
-      x = np.clip(x, bins[1], bins[2]-1e-8)
+      x = np.clip(x, bins[1], bins[2]-1e-7)
       binx = (x - bins[1]) / (bins[2] - bins[1]) * bins[0]
       return int(binx)
 
@@ -994,11 +995,11 @@ class TrackProducer(object):
     if trk_mode in (11,13,14,15) and quality2 <= (quality1+1):
       if np.abs(1.0/y_meas) > discr_pt_cut:
         if ndof <= 3:
-          trigger = (y_discr > 0.9858) # 90% coverage
+          trigger = (y_discr > 0.9839) # 90% coverage
         elif ndof == 4:
-          trigger = (y_discr > 0.9633) # 95% coverage
+          trigger = (y_discr > 0.9519) # 95% coverage
         else:
-          trigger = (y_discr > 0.8900) # 98.0% coverage
+          trigger = (y_discr > 0.8311) # 98.5% coverage
       else:
         trigger = (y_discr >= 0.)  # True
     else:
@@ -1016,12 +1017,12 @@ class TrackProducer(object):
     def get_zone_from_x(x):
       assert(x.shape[0] == nvariables)
       zone = x[49-1] # 49th variable out of 50
-      return int(zone * 6)
+      return int(zone * 5)
 
     def get_straightness_from_x(x):
       assert(x.shape[0] == nvariables)
       straightness = x[48-1]  # 48th variable out of 50
-      return int(straightness * 6) + 6
+      return int(straightness * 4) + 4
 
     def get_ndof_from_x_mask(x_mask):
       assert(x_mask.shape[0] == nlayers)
@@ -1049,7 +1050,7 @@ class TrackProducer(object):
 
     tracks = []
 
-    for myroad, myvars, mypreds, myother in izip(slim_roads, variables, predictions, other_vars):
+    for myroad, myvars, mypreds, myother in zip(slim_roads, variables, predictions, other_vars):
       assert(len(myvars.shape) == 1)
 
       x = myvars
