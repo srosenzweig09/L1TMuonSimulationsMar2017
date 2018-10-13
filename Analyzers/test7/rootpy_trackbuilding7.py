@@ -22,7 +22,7 @@ kDT, kCSC, kRPC, kGEM, kME0 = 0, 1, 2, 3, 4
 # Globals
 eta_bins = (1.2, 1.55, 1.7, 1.8, 1.98, 2.15, 2.4)
 eta_bins = eta_bins[::-1]
-pt_bins = (-0.5, -0.37, -0.26, -0.15, -0.07, 0.07, 0.15, 0.26, 0.37, 0.5)
+pt_bins = (-0.5, -0.365, -0.26, -0.155, -0.07, 0.07, 0.155, 0.26, 0.365, 0.5)
 nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
 #superstrip_size = 32
 
@@ -599,6 +599,7 @@ class PatternRecognition(object):
       (endcap, sector, ipt, ieta, iphi) = road_id
       road_mode = 0
       road_mode_csc = 0
+      road_mode_me0 = 0
       tmp_road_hits = []
       tmp_thetas = []
 
@@ -607,11 +608,21 @@ class PatternRecognition(object):
         road_mode |= (1 << (4 - station))
         if _type == kCSC or _type == kME0:
           road_mode_csc |= (1 << (4 - station))
+
+        if _type == kME0:
+          road_mode_me0 |= (1 << 2)
+        elif _type == kCSC and station == 1 and (ring == 1 or ring == 4):
+          road_mode_me0 |= (1 << 1)
+        elif _type == kCSC and station >= 2:
+          road_mode_me0 |= (1 << 0)
+
         tmp_road_hits.append(hit)
         if _type == kCSC:
           tmp_thetas.append(hit.emtf_theta)
 
-      if is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc):
+      # Apply modified SingleMu requirement
+      if (is_emtf_singlemu(road_mode) or road_mode_me0 == 7) and \
+         (is_emtf_muopen(road_mode_csc) or road_mode_me0 >= 6):
         road_quality = find_emtf_road_quality(ipt)
         road_sort_code = find_emtf_road_sort_code(road_mode, road_quality, tmp_road_hits)
         tmp_theta = np.median(tmp_thetas, overwrite_input=True)
@@ -815,6 +826,8 @@ class RoadSlimming(object):
     for road in roads:
       ipt, ieta, iphi = road.id[2:]
 
+      prim_match_lut = self.bank.z_array[ipt, ieta, :, 1]
+
       tmp_phi = (iphi * 32)  # multiply by 'quadstrip' unit (4 * 8)
 
       #_select_csc = lambda x: (x.emtf_layer <= 4)
@@ -835,7 +848,7 @@ class RoadSlimming(object):
 
       # Assume going through ME1, ME2, ... in order
       for hit_lay in xrange(nlayers):
-        mean_dphi = self.bank.z_array[ipt, ieta, hit_lay, 1]
+        mean_dphi = prim_match_lut[hit_lay]
         hit_lay_p = find_emtf_layer_partner(hit_lay, ieta)
 
         # Make pairs of (hit1, hit2)
@@ -937,21 +950,21 @@ class TrackProducer(object):
     self.s_max = 60.
     self.s_nbins = 120
     self.s_step = (self.s_max - self.s_min)/self.s_nbins
-    self.s_lut =[  1.7752,  1.4767,  1.5292,  1.7869,  2.1605,  2.6021,  3.1004,  3.6417,
-                   4.2087,  4.7908,  5.3849,  5.9919,  6.6138,  7.2522,  7.9075,  8.5729,
-                   9.2521,  9.9508, 10.6765, 11.4240, 12.1833, 12.9435, 13.7027, 14.4466,
-                  15.1786, 15.9113, 16.6548, 17.4105, 18.1915, 18.9763, 19.7272, 20.4535,
-                  21.2309, 22.1217, 23.0479, 23.8688, 24.6103, 25.4144, 26.2911, 27.1718,
-                  28.0902, 29.0131, 29.8476, 30.6304, 31.4112, 32.2368, 33.1071, 34.1228,
-                  35.3238, 36.6118, 37.9929, 39.4356, 40.7376, 41.9937, 43.2880, 44.6462,
-                  46.0374, 47.6467, 49.4922, 50.6042, 51.5235, 52.4197, 53.3099, 54.1978,
-                  55.0846, 55.9708, 56.8567, 57.7424, 58.6279, 59.5133, 60.3986, 61.2839,
-                  62.1692, 63.0544, 63.9396, 64.8248, 65.7099, 66.5951, 67.4802, 68.3654,
-                  69.2505, 70.1356, 71.0207, 71.9058, 72.7909, 73.6760, 74.5611, 75.4462,
-                  76.3313, 77.2164, 78.1015, 78.9866, 79.8717, 80.7568, 81.6419, 82.5270,
-                  83.4121, 84.2971, 85.1822, 86.0673, 86.9524, 87.8375, 88.7226, 89.6077,
-                  90.4927, 91.3778, 92.2629, 93.1480, 94.0331, 94.9182, 95.8033, 96.6883,
-                  97.5734, 98.4585, 99.3436,100.2287,101.1138,101.9989,102.8839,103.7690]
+    self.s_lut =[ 1.7949,  1.5211,  1.5722,  1.8217,  2.1879,  2.6251,  3.1204,  3.6594,
+                  4.2266,  4.8140,  5.4164,  6.0313,  6.6594,  7.3047,  7.9718,  8.6617,
+                  9.3689, 10.0897, 10.8244, 11.5735, 12.3440, 13.1359, 13.9268, 14.6976,
+                 15.4459, 16.1629, 16.8590, 17.5676, 18.3088, 19.1089, 19.9322, 20.7178,
+                 21.4663, 22.1795, 22.8520, 23.4796, 24.0682, 24.6430, 25.2673, 26.0116,
+                 26.8809, 27.8434, 28.8219, 29.7353, 30.5849, 31.4214, 32.1818, 32.9306,
+                 33.7863, 34.6822, 35.5203, 36.3237, 37.1418, 37.9772, 38.8546, 39.8815,
+                 40.9867, 42.0057, 42.9740, 43.9306, 44.8833, 45.8390, 46.9090, 48.2831,
+                 49.8387, 50.9098, 51.7594, 52.5797, 53.3932, 54.2043, 55.0143, 55.8237,
+                 56.6328, 57.4416, 58.2504, 59.0590, 59.8676, 60.6761, 61.4846, 62.2931,
+                 63.1016, 63.9100, 64.7184, 65.5268, 66.3352, 67.1436, 67.9520, 68.7604,
+                 69.5688, 70.3772, 71.1856, 71.9939, 72.8023, 73.6107, 74.4191, 75.2274,
+                 76.0358, 76.8442, 77.6525, 78.4609, 79.2693, 80.0776, 80.8860, 81.6944,
+                 82.5027, 83.3111, 84.1194, 84.9278, 85.7362, 86.5445, 87.3529, 88.1613,
+                 88.9696, 89.7780, 90.5864, 91.3947, 92.2031, 93.0114, 93.8198, 94.6282]
     #self.s_lut = np.linspace(self.s_min, self.s_max, num=self.s_nbins+1)[:-1]
 
   def get_trigger_pt(self, x, y_meas):
@@ -986,11 +999,11 @@ class TrackProducer(object):
     if trk_mode in (11,13,14,15) and quality2 <= (quality1+1):
       if np.abs(1.0/y_meas) > discr_pt_cut:
         if ndof <= 3:
-          trigger = (y_discr > 0.9839) # 90% coverage
+          trigger = (y_discr > 0.9844) # 90% coverage
         elif ndof == 4:
-          trigger = (y_discr > 0.9519) # 95% coverage
+          trigger = (y_discr > 0.9529) # 95% coverage
         else:
-          trigger = (y_discr > 0.8311) # 98.5% coverage
+          trigger = (y_discr > 0.8497) # 98.5% coverage
       else:
         trigger = (y_discr >= 0.)  # True
     else:
@@ -1007,12 +1020,12 @@ class TrackProducer(object):
 
     def get_zone_from_x(x):
       assert(x.shape[0] == nvariables)
-      zone = x[49-1] # 49th variable out of 50
+      zone = x[-2] # second last variable
       return int(zone * 5)
 
     def get_straightness_from_x(x):
       assert(x.shape[0] == nvariables)
-      straightness = x[48-1]  # 48th variable out of 50
+      straightness = x[-3] # third last variable
       return int(straightness * 4) + 4
 
     def get_ndof_from_x_mask(x_mask):
@@ -1032,7 +1045,18 @@ class TrackProducer(object):
         mode |= (1<<1)
       if np.any([valid[4], valid[8]]):  # ME4, RE4
         mode |= (1<<0)
-      return int(mode)
+
+      # Apply modified SingleMu requirement
+      mode_me0 = 0
+      if valid[11]: # ME0
+        mode_me0 |= (1 << 2)
+      if valid[0]:  # ME1/1
+        mode_me0 |= (1 << 1)
+      if np.any([valid[2], valid[3], valid[4]]):  # ME2, ME3, ME4
+        mode_me0 |= (1 << 0)
+      if mode_me0 == 7:
+        mode = max(mode, 11)  # pretend as mode 11
+      return mode
 
     # __________________________________________________________________________
     assert(len(slim_roads) == len(variables))
@@ -1072,7 +1096,6 @@ class TrackProducer(object):
 histograms = {}
 
 # Efficiency
-#eff_pt_bins = (0., 0.5, 1., 2., 3., 4., 5., 6., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 35., 40., 45., 50., 60., 80., 120.)
 eff_pt_bins = (0., 0.5, 1., 1.5, 2., 3., 4., 5., 6., 7., 8., 10., 12., 14., 16., 18., 20., 22., 24., 27., 30., 34., 40., 48., 60., 80., 120.)
 
 for k in ("denom", "numer"):
@@ -1119,7 +1142,7 @@ for m in ("emtf", "emtf2023"):
   hname = "%s_l1pt_vs_genpt" % m
   histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -0.5, 0.5, name=hname, title="; gen 1/p_{T} [1/GeV]; 1/p_{T} [1/GeV]", type='F')
   hname = "%s_l1ptres_vs_genpt" % m
-  histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -2, 2, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
+  histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -1, 2, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
 
 
 # ______________________________________________________________________________
@@ -1155,7 +1178,7 @@ print('[INFO] Using analysis mode : %s' % analysis)
 print('[INFO] Using job id        : %s' % jobid)
 
 # Other stuff
-bankfile = 'histos_tb.19.npz'
+bankfile = 'pattern_bank.19.npz'
 
 kerasfile = ['model.19.json', 'model_weights.19.h5']
 
@@ -1313,7 +1336,7 @@ elif analysis == 'application':
     is_important = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0) and (part.pt > 5.)
 
     is_possible = lambda hits: any([((hit.type == kCSC or hit.type == kME0) and hit.station == 1) for hit in hits]) and \
-                               any([(hit.type == kCSC and hit.station >= 2) for hit in hits])
+        any([(hit.type == kCSC and hit.station >= 2) for hit in hits])
 
     if ievt < 20 or (len(clean_roads) == 0 and is_important(part) and is_possible(evt.hits)):
       print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
