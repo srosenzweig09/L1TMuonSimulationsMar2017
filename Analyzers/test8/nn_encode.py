@@ -2,7 +2,7 @@ import numpy as np
 
 nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
 
-nvariables = (nlayers * 6) + 3 - 25
+nvariables = (nlayers * 6) + 3 - 37
 
 nvariables_input = (nlayers * 7) + 3
 
@@ -102,9 +102,9 @@ class Encoder(object):
         #x_theta_tmp   = np.abs(x_theta_tmp) > theta_cuts
         if True:  # modify ring and F/R definitions
           x_ring_tmp    = self.x_ring.astype(np.int32)
-          x_ring_tmp    = (x_ring_tmp == 2) | (x_ring_tmp == 3) | (x_ring_tmp == 4)
-          self.x_ring[x_ring_tmp]  = +1 # ring 2,3,4 -> +1; also differentiate ring 4 (ME1/1a) from ring 1 (ME1/1b)
-          self.x_ring[~x_ring_tmp] = -1 # ring 1 -> -1
+          x_ring_tmp    = (x_ring_tmp == 2) | (x_ring_tmp == 3)
+          self.x_ring[x_ring_tmp]  = +1 # ring 2,3 -> +1
+          self.x_ring[~x_ring_tmp] = -1 # ring 1,4 -> -1
           x_fr_tmp      = self.x_fr.astype(np.int32)
           x_fr_tmp      = (x_fr_tmp == 1)
           self.x_fr[x_fr_tmp]  = +1  # front chamber -> +1
@@ -112,7 +112,9 @@ class Encoder(object):
         if True:  # zero out some variables
           self.x_bend[:, 5:11] = 0  # no bend for RPC, GEM
           self.x_time[:, :]    = 0  # no time for everyone
-          self.x_ring[:, 5:12] = 0  # no ring for RPC, GEM, ME0
+          self.x_ring[:, 5:12] = 0  # ring for only ME2-4
+          self.x_ring[:, 0:2]  = 0  # ^
+          self.x_fr  [:, 2:12] = 0  # fr for only ME1
         s = [ 0.004342,  0.017557, -0.023128, -0.012329, -0.011304,  0.022939,
              -0.024909, -0.009607, -0.009695,  0.003455, -0.023481,  0.003206,
               0.704949,  0.711911,  1.540507,  1.616858,  1.084471,  0.228281,
@@ -154,17 +156,17 @@ class Encoder(object):
 
       # Add dedicated GEM-CSC bend
       # Need to account for ME1/1 f or r
-      self.x_gem_csc_bend = (self.x_orig[:,9] - self.x_orig[:,0])         # 9: GE1/1, 0: ME1/1
-      self.x_gem_csc_bend[(self.x_mask[:,9] | self.x_mask[:,0])] = np.nan # 9: GE1/1, 0: ME1/1
-      self.x_gem_csc_bend = np.hstack((self.x_gem_csc_bend[:,np.newaxis], self.x_gem_csc_bend[:,np.newaxis]))
-      self.x_gem_csc_bend[(self.x_fr[:,0]!=0),0] = np.nan  # for ME1/1r bend, set ME1/1f to nan
-      self.x_gem_csc_bend[(self.x_fr[:,0]!=1),1] = np.nan  # for ME1/1f bend, set ME1/1r to nan
-      if adjust_scale == 3:
-        self.x_gem_csc_bend *= [0.012216, 0.027306]
+      #self.x_gem_csc_bend = (self.x_orig[:,9] - self.x_orig[:,0])         # 9: GE1/1, 0: ME1/1
+      #self.x_gem_csc_bend[(self.x_mask[:,9] | self.x_mask[:,0])] = np.nan # 9: GE1/1, 0: ME1/1
+      #self.x_gem_csc_bend = np.hstack((self.x_gem_csc_bend[:,np.newaxis], self.x_gem_csc_bend[:,np.newaxis]))
+      #self.x_gem_csc_bend[(self.x_fr[:,0]!=0),0] = np.nan  # for ME1/1r bend, set ME1/1f to nan
+      #self.x_gem_csc_bend[(self.x_fr[:,0]!=1),1] = np.nan  # for ME1/1f bend, set ME1/1r to nan
+      #if adjust_scale == 3:
+      #  self.x_gem_csc_bend *= [0.012216, 0.027306]
 
       # Remove NaN
       self._handle_nan_in_x(self.x_copy)
-      self._handle_nan_in_x(self.x_gem_csc_bend)
+      #self._handle_nan_in_x(self.x_gem_csc_bend)
 
       # Scale q/pT for training
       self.y_pt *= reg_pt_scale
@@ -185,12 +187,13 @@ class Encoder(object):
                        self.x_straightness, self.x_zone, self.x_theta_median))
     # Drop input nodes
     if drop_columns_of_zeroes:
-      drop_phi   = [nlayers*0 + x for x in xrange(0,0)]  # keep everyone
-      drop_theta = [nlayers*1 + x for x in xrange(0,0)]  # keep everyone
-      drop_bend  = [nlayers*2 + x for x in xrange(5,11)] # no bend for RPC, GEM
-      drop_time  = [nlayers*3 + x for x in xrange(0,12)] # no time for everyone
-      drop_ring  = [nlayers*4 + x for x in xrange(5,12)] # no ring for RPC, GEM, ME0
-      drop_fr    = [nlayers*5 + x for x in xrange(0,0)]  # keep everyone
+      drop_phi    = [nlayers*0 + x for x in xrange(0,0)]  # keep everyone
+      drop_theta  = [nlayers*1 + x for x in xrange(0,0)]  # keep everyone
+      drop_bend   = [nlayers*2 + x for x in xrange(5,11)] # no bend for RPC, GEM
+      drop_time   = [nlayers*3 + x for x in xrange(0,12)] # no time for everyone
+      drop_ring   = [nlayers*4 + x for x in xrange(5,12)] # ring for only ME2, ME3, ME4
+      drop_ring  += [nlayers*4 + x for x in xrange(0,2)]  # ^
+      drop_fr     = [nlayers*5 + x for x in xrange(2,12)] # fr for only ME1/1, ME1/2
 
       x_dropit = np.zeros(x_new.shape[1], dtype=np.bool)
       for i in drop_phi + drop_theta + drop_bend + drop_time + drop_ring + drop_fr:
