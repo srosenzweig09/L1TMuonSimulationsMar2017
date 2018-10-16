@@ -14,7 +14,7 @@ gradient_clip_norm = 100.
 
 mask_value = 100.
 
-discr_pt_cut = 14.
+discr_pt_cut = 8.
 
 reg_pt_scale = 100.
 
@@ -28,9 +28,9 @@ l1_reg = 0.0
 
 l2_reg = 0.0
 
-infile_muon = '../test7/histos_tba.19.npz'
+infile_muon = '../test7/histos_tba.20.npz'
 
-infile_pileup = '../test7/histos_tbd.19.npz'
+infile_pileup = '../test7/histos_tbd.20.npz'
 
 
 # ______________________________________________________________________________

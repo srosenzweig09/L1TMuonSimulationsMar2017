@@ -2,7 +2,7 @@ import numpy as np
 
 nlayers = 12  # 5 (CSC) + 4 (RPC) + 3 (GEM)
 
-nvariables = (nlayers * 6) + 3 - 37
+nvariables = (nlayers * 6) + 3 - 36
 
 nvariables_input = (nlayers * 7) + 3
 
@@ -101,26 +101,24 @@ class Encoder(object):
         #x_theta_tmp   = np.where(np.isnan(self.x_theta), 99., self.x_theta)  # take care of nan
         #x_theta_tmp   = np.abs(x_theta_tmp) > theta_cuts
         if True:  # modify ring and F/R definitions
-          x_ring_tmp    = self.x_ring.astype(np.int32)
-          x_ring_tmp    = (x_ring_tmp == 2) | (x_ring_tmp == 3)
-          self.x_ring[x_ring_tmp]  = +1 # ring 2,3 -> +1
-          self.x_ring[~x_ring_tmp] = -1 # ring 1,4 -> -1
-          x_fr_tmp      = self.x_fr.astype(np.int32)
-          x_fr_tmp      = (x_fr_tmp == 1)
-          self.x_fr[x_fr_tmp]  = +1  # front chamber -> +1
-          self.x_fr[~x_fr_tmp] = -1  # rear chamber  -> -1
+          x_ring_tmp = self.x_ring.astype(np.int32)
+          self.x_ring[(x_ring_tmp == 2) | (x_ring_tmp == 3)] = +1 # ring 2,3 -> +1
+          self.x_ring[(x_ring_tmp == 1) | (x_ring_tmp == 4)] = -1 # ring 1,4 -> -1
+          x_fr_tmp = self.x_fr.astype(np.int32)
+          self.x_fr[(x_fr_tmp == 1)] = +1  # front chamber -> +1
+          self.x_fr[(x_fr_tmp == 0)] = -1  # rear chamber  -> -1
         if True:  # zero out some variables
           self.x_bend[:, 5:11] = 0  # no bend for RPC, GEM
           self.x_time[:, :]    = 0  # no time for everyone
           self.x_ring[:, 5:12] = 0  # ring for only ME2-4
           self.x_ring[:, 0:2]  = 0  # ^
-          self.x_fr  [:, 2:12] = 0  # fr for only ME1
-        s = [ 0.004342,  0.017557, -0.023128, -0.012329, -0.011304,  0.022939,
-             -0.024909, -0.009607, -0.009695,  0.003455, -0.023481,  0.003206,
-              0.704949,  0.711911,  1.540507,  1.616858,  1.084471,  0.228281,
-              0.309722,  0.358575,  0.404856,  0.506736,  0.606744,  0.704959,
-             -0.051319, -0.067157, -0.769063,  1.187859,  1.174518,  1.000000,
-              1.000000,  1.000000,  1.000000, -0.534082, -0.664849, -0.077838,
+          self.x_fr  [:, 2:11] = 0  # fr for only ME1/1, ME1/2, ME0
+        s = [ 0.004297,  0.016739, -0.024291, -0.015480, -0.010096,  0.022451,
+             -0.034070, -0.012700, -0.007666,  0.003452, -0.024124,  0.003120,
+              0.677816,  0.696196,  1.433512,  1.540938,  1.029405,  0.226928,
+              0.309345,  0.350048,  0.394817,  0.502215,  0.596152,  0.698519,
+             -0.050293, -0.064527, -0.835608,  1.312986,  1.304226,  1.000000,
+              1.000000,  1.000000,  1.000000, -0.542382, -0.720033, -0.074792,
               1.000000,  1.000000,  1.000000,  1.000000,  1.000000,  1.000000,
               1.000000,  1.000000,  1.000000,  1.000000,  1.000000,  1.000000,
               1.000000,  1.000000,  1.000000,  1.000000,  1.000000,  1.000000,
@@ -193,7 +191,7 @@ class Encoder(object):
       drop_time   = [nlayers*3 + x for x in xrange(0,12)] # no time for everyone
       drop_ring   = [nlayers*4 + x for x in xrange(5,12)] # ring for only ME2, ME3, ME4
       drop_ring  += [nlayers*4 + x for x in xrange(0,2)]  # ^
-      drop_fr     = [nlayers*5 + x for x in xrange(2,12)] # fr for only ME1/1, ME1/2
+      drop_fr     = [nlayers*5 + x for x in xrange(2,11)] # fr for only ME1/1, ME1/2, ME0
 
       x_dropit = np.zeros(x_new.shape[1], dtype=np.bool)
       for i in drop_phi + drop_theta + drop_bend + drop_time + drop_ring + drop_fr:
