@@ -103,7 +103,7 @@ def calc_eta_from_theta_deg(theta_deg, endcap):
 
 def extrapolate_to_emtf(phi, invpt, eta):  # phi in radians
   # 1.204 is the magic constant at eta of 1.9
-  eta_sf = np.sinh(1.9) / np.sinh(abs(eta))
+  eta_sf = np.sinh(1.9) / np.sinh(np.abs(eta))
   return phi - 1.204 * invpt * eta_sf
 
 def find_sector(phi):  # phi in radians
@@ -129,7 +129,7 @@ def find_pt_bin(pt):
   return ipt
 
 def find_eta_bin(eta):
-  ieta = np.digitize((abs(eta),), eta_bins[1:])[0]  # skip lowest edge
+  ieta = np.digitize((np.abs(eta),), eta_bins[1:])[0]  # skip lowest edge
   ieta = np.clip(ieta, 0, len(eta_bins)-2)
   return ieta
 
@@ -365,7 +365,7 @@ class EMTFRoadQuality(object):
     self.best_ipt = find_pt_bin(0.)
 
   def __call__(self, ipt):
-    return self.best_ipt - abs(ipt - self.best_ipt)
+    return self.best_ipt - np.abs(ipt - self.best_ipt)
 
 find_emtf_road_quality = EMTFRoadQuality()
 
@@ -482,32 +482,24 @@ class Road(object):
 
   def to_variables(self):
     amap = {}
+    (endcap, sector, ipt, ieta, iphi) = self.id
+    road_info = (ipt, ieta, iphi)
     #np.random.shuffle(self.hits)  # randomize the order
     for hit in self.hits:
       hit_lay = hit.emtf_layer
       if hit_lay not in amap:
         amap[hit_lay] = hit
     #
-    hits_phi = np.zeros(nlayers, dtype=np.float32) + np.nan
-    hits_theta = np.zeros(nlayers, dtype=np.float32) + np.nan
-    hits_bend = np.zeros(nlayers, dtype=np.float32) + np.nan
-    hits_time = np.zeros(nlayers, dtype=np.float32) + np.nan
-    hits_ring = np.zeros(nlayers, dtype=np.float32) + np.nan
-    hits_fr = np.zeros(nlayers, dtype=np.float32) + np.nan
-    hits_mask = np.zeros(nlayers, dtype=np.float32) + 1.0
+    arr = np.zeros((nlayers * 7) + 3, dtype=np.float32)
+    arr[0*nlayers:6*nlayers] = np.nan  # emtf_phi, emtf_theta, emtf_bend, time, ring, fr
+    arr[6*nlayers:7*nlayers] = 1.0     # mask
+    arr[7*nlayers:]          = road_info
     for lay, hit in amap.iteritems():
-      hits_phi[lay] = hit.emtf_phi
-      hits_theta[lay] = hit.emtf_theta
-      hits_bend[lay] = hit.emtf_bend
-      hits_time[lay] = hit.get_bx()  #FIXME: use hit.time?
-      hits_ring[lay] = hit.get_ring()
-      hits_fr[lay] = hit.get_fr()
-      hits_mask[lay] = 0.0
-    #
-    (endcap, sector, ipt, ieta, iphi) = self.id
-    road_info = (ipt, ieta, iphi)
-    variables = np.hstack((hits_phi, hits_theta, hits_bend, hits_time, hits_ring, hits_fr, hits_mask, road_info))
-    return variables
+      ind = [i*nlayers + lay for i in xrange(6)]
+      arr[ind] = (hit.emtf_phi, hit.emtf_theta, hit.emtf_bend, hit.get_bx(), hit.get_ring(), hit.get_fr())
+      ind = (6*nlayers + lay)
+      arr[ind] = 0.0
+    return arr
 
 class Track(object):
   def __init__(self, _id, hits, mode, xml_pt, pt, q, emtf_phi, emtf_theta, ndof, chi2):
@@ -621,7 +613,7 @@ class PatternRecognition(object):
           tmp_thetas.append(hit.emtf_theta)
 
       # Apply modified SingleMu requirement
-      if (is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc)) or (road_mode_me0 == 7):
+      if (is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc)) or (road_mode_me0 >= 6):
         road_quality = find_emtf_road_quality(ipt)
         road_sort_code = find_emtf_road_sort_code(road_mode, road_quality, tmp_road_hits)
         tmp_theta = np.median(tmp_thetas, overwrite_input=True)
@@ -949,22 +941,24 @@ class TrackProducer(object):
     self.s_max = 60.
     self.s_nbins = 120
     self.s_step = (self.s_max - self.s_min)/self.s_nbins
-    self.s_lut =[ 1.8018,  1.5227,  1.5712,  1.8190,  2.1834,  2.6180,  3.1110,  3.6500,
-                  4.2178,  4.8062,  5.4128,  6.0370,  6.6821,  7.3501,  8.0383,  8.7458,
-                  9.4689, 10.2088, 10.9782, 11.7810, 12.5884, 13.3510, 14.0607, 14.7542,
-                 15.4488, 16.1445, 16.8440, 17.5446, 18.2136, 18.8890, 19.6420, 20.4659,
-                 21.3265, 22.1830, 22.9628, 23.6140, 24.2148, 24.8222, 25.5056, 26.3148,
-                 27.2526, 28.2870, 29.3389, 30.3523, 31.2193, 31.9328, 32.5838, 33.2865,
-                 34.0812, 34.9460, 35.8580, 36.8541, 37.8633, 38.8710, 39.8421, 40.7641,
-                 41.7214, 42.6944, 43.5762, 44.4604, 45.4574, 46.6248, 48.0259, 49.4941,
-                 50.6893, 51.6052, 52.4426, 53.2680, 54.0900, 54.9105, 55.7304, 56.5498,
-                 57.3691, 58.1882, 59.0071, 59.8260, 60.6449, 61.4637, 62.2825, 63.1013,
-                 63.9200, 64.7387, 65.5575, 66.3762, 67.1949, 68.0136, 68.8323, 69.6510,
-                 70.4697, 71.2883, 72.1070, 72.9257, 73.7444, 74.5631, 75.3817, 76.2004,
-                 77.0191, 77.8378, 78.6564, 79.4751, 80.2938, 81.1125, 81.9311, 82.7498,
-                 83.5685, 84.3871, 85.2058, 86.0245, 86.8432, 87.6618, 88.4805, 89.2992,
-                 90.1178, 90.9365, 91.7552, 92.5739, 93.3925, 94.2112, 95.0299, 95.8485]
+    self.s_lut =[ 1.8005,  1.5194,  1.5708,  1.8247,  2.1989,  2.6489,  3.1625,  3.7251,
+                  4.3240,  4.9595,  5.6337,  6.3424,  7.0590,  7.7485,  8.4050,  9.0398,
+                  9.6598, 10.2800, 10.9236, 11.6060, 12.3216, 13.0521, 13.7887, 14.5427,
+                 15.2964, 16.0232, 16.7303, 17.4535, 18.2066, 19.0044, 19.8400, 20.6934,
+                 21.5215, 22.3143, 23.1066, 23.8221, 24.4586, 25.1335, 25.9083, 26.7333,
+                 27.5310, 28.2623, 28.9778, 29.7226, 30.5507, 31.4670, 32.4541, 33.5263,
+                 34.5659, 35.5155, 36.4457, 37.4019, 38.3762, 39.3604, 40.3595, 41.3763,
+                 42.3333, 43.2434, 44.2686, 45.5962, 47.0878, 48.3783, 49.4891, 50.5445,
+                 51.4431, 52.2846, 53.1180, 53.9492, 54.7793, 55.6090, 56.4384, 57.2676,
+                 58.0967, 58.9257, 59.7547, 60.5836, 61.4125, 62.2413, 63.0702, 63.8990,
+                 64.7278, 65.5566, 66.3854, 67.2142, 68.0430, 68.8718, 69.7006, 70.5293,
+                 71.3581, 72.1869, 73.0157, 73.8444, 74.6732, 75.5020, 76.3307, 77.1595,
+                 77.9882, 78.8170, 79.6458, 80.4745, 81.3033, 82.1321, 82.9608, 83.7896,
+                 84.6183, 85.4471, 86.2759, 87.1046, 87.9334, 88.7621, 89.5909, 90.4197,
+                 91.2484, 92.0772, 92.9059, 93.7347, 94.5635, 95.3922, 96.2210, 97.0497]
     #self.s_lut = np.linspace(self.s_min, self.s_max, num=self.s_nbins+1)[:-1]
+    self.s_step = np.asarray(self.s_step)
+    self.s_lut = np.asarray(self.s_lut)
 
   def get_trigger_pt(self, x, y_meas):
     xml_pt = np.abs(1.0/y_meas)
@@ -972,37 +966,34 @@ class TrackProducer(object):
       return xml_pt
 
     def digitize(x, bins=(self.s_nbins, self.s_min, self.s_max)):
-      x = np.clip(x, bins[1], bins[2]-1e-7)
+      x = np.clip(x, bins[1], bins[2]-1e-5)
       binx = (x - bins[1]) / (bins[2] - bins[1]) * bins[0]
-      return int(binx)
+      return binx.astype(np.int32)
 
     def interpolate(x, x0, x1, y0, y1):
       y = (x - x0) / (x1 - x0) * (y1 - y0) + y0
       return y
 
     binx = digitize(xml_pt)
-    if (binx+1) >= self.s_nbins:  # check boundary
-      binx = self.s_nbins-2
+    if binx == self.s_nbins-1:  # check boundary
+      binx -= 1
 
     x0, x1 = binx * self.s_step, (binx+1) * self.s_step
     y0, y1 = self.s_lut[binx], self.s_lut[binx+1]
     pt = interpolate(xml_pt, x0, x1, y0, y1)
     return pt
 
-  def pass_trigger(self, strg, ndof, trk_mode, y_meas, y_discr, discr_pt_cut=14.):
+  def pass_trigger(self, strg, ndof, mode, theta_median, y_meas, y_discr, discr_pt_cut=14.):
     ipt1 = strg
     ipt2 = find_pt_bin(y_meas)
     quality1 = find_emtf_road_quality(ipt1)
     quality2 = find_emtf_road_quality(ipt2)
 
-    if trk_mode in (11,13,14,15) and quality2 <= (quality1+1):
-      if np.abs(1.0/y_meas) > discr_pt_cut:
-        if ndof <= 3:
-          trigger = (y_discr > 0.9727) # 90% coverage
-        elif ndof == 4:
-          trigger = (y_discr > 0.9286) # 95% coverage
-        else:
-          trigger = (y_discr > 0.8342) # 98.5% coverage
+    if mode in (11,13,14,15) and quality2 <= (quality1+1):
+      if np.abs(1.0/y_meas) > 14:
+        trigger = (y_discr > 0.9136) # 98.0% coverage
+      elif np.abs(1.0/y_meas) > discr_pt_cut:
+        trigger = (y_discr > 0.7415) # 98.0% coverage
       else:
         trigger = (y_discr >= 0.)  # True
     else:
@@ -1013,29 +1004,39 @@ class TrackProducer(object):
 
     # __________________________________________________________________________
     # Extra pieces
-    nvariables = (nlayers * 6) + 3 - 37
+    nvariables = (nlayers * 6) + 3 - 36
 
-    discr_pt_cut = 14.
+    discr_pt_cut = 8.
+
+    def get_theta_median_from_x(x):
+      assert(x.shape[0] == nvariables)
+      theta_median = x[-1] # last variable
+      theta_median = (theta_median * 83) + 3
+      return theta_median.astype(np.int32)
 
     def get_zone_from_x(x):
       assert(x.shape[0] == nvariables)
       zone = x[-2] # second last variable
-      return int(zone * 5)
+      zone = (zone * 5) + 0
+      return zone.astype(np.int32)
 
     def get_straightness_from_x(x):
       assert(x.shape[0] == nvariables)
       straightness = x[-3] # third last variable
-      return int(straightness * 4) + 4
+      straightness = (straightness * 4) + 4
+      return straightness.astype(np.int32)
 
     def get_ndof_from_x_mask(x_mask):
       assert(x_mask.shape[0] == nlayers)
+      assert(x_mask.dtype == np.bool)
       valid = ~x_mask
-      return int(valid.sum())
+      return valid.sum()
 
     def get_mode_from_x_mask(x_mask):
       assert(x_mask.shape[0] == nlayers)
+      assert(x_mask.dtype == np.bool)
       valid = ~x_mask
-      mode = 0
+      mode = np.int32(0)
       if np.any([valid[0], valid[1], valid[5], valid[9], valid[11]]):   # ME1/1, ME1/2, RE1/2, GE1/1, ME0
         mode |= (1<<3)
       if np.any([valid[2], valid[6], valid[10]]):  # ME2, RE2, GE2/1
@@ -1046,15 +1047,15 @@ class TrackProducer(object):
         mode |= (1<<0)
 
       # Apply modified SingleMu requirement
-      mode_me0 = 0
+      mode_me0 = np.int32(0)
       if valid[11]: # ME0
         mode_me0 |= (1 << 2)
       if valid[0]:  # ME1/1
         mode_me0 |= (1 << 1)
       if np.any([valid[2], valid[3], valid[4]]):  # ME2, ME3, ME4
         mode_me0 |= (1 << 0)
-      if mode_me0 == 7:
-        mode = max(mode, 11)  # pretend as mode 11
+      if mode not in (11,13,14,15) and mode_me0 == 7:
+        mode = 11  # pretend as mode 11
       return mode
 
     # __________________________________________________________________________
@@ -1066,18 +1067,18 @@ class TrackProducer(object):
 
     for myroad, myvars, mypreds, myother in zip(slim_roads, variables, predictions, other_vars):
       assert(len(myvars.shape) == 1)
-
       x = myvars
       x_mask = myother
       y_meas = np.asscalar(mypreds[...,0])
       y_discr = np.asscalar(mypreds[...,1])
 
+      theta_median = get_theta_median_from_x(x)
       zone = get_zone_from_x(x)
       strg = get_straightness_from_x(x)
       ndof = get_ndof_from_x_mask(x_mask)
       mode = get_mode_from_x_mask(x_mask)
 
-      passed = self.pass_trigger(strg, ndof, mode, y_meas, y_discr, discr_pt_cut=discr_pt_cut)
+      passed = self.pass_trigger(strg, ndof, mode, theta_median, y_meas, y_discr, discr_pt_cut=discr_pt_cut)
       xml_pt = np.abs(1.0/y_meas)
       pt = self.get_trigger_pt(x, y_meas)
 
@@ -1177,9 +1178,9 @@ print('[INFO] Using analysis mode : %s' % analysis)
 print('[INFO] Using job id        : %s' % jobid)
 
 # Other stuff
-bankfile = 'pattern_bank.19.npz'
+bankfile = 'pattern_bank.20.npz'
 
-kerasfile = ['model.19.json', 'model_weights.19.h5']
+kerasfile = ['model.20.json', 'model_weights.20.h5']
 
 infile_r = None  # input file handle
 
@@ -1223,6 +1224,7 @@ def load_pgun_batch(j):
 def load_minbias_batch(j):
   global infile_r
   pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180925_011729/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
+  #pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU140/ParticleGuns/CRAB3/180925_011552/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(56)]
   infile = pufiles[j]
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
@@ -1400,8 +1402,11 @@ elif analysis == 'application':
 
   # ____________________________________________________________________________
   # Plot histograms
-  print('[INFO] Creating file: histos_tba.root')
-  with root_open('histos_tba.root', 'recreate') as f:
+  outfile = 'histos_tba.root'
+  if use_condor:
+    outfile = 'histos_tba_%i.root' % jobid
+  print('[INFO] Creating file: %s' % outfile)
+  with root_open(outfile, 'recreate') as f:
     for hname in ["eff_vs_genpt", "eff_vs_geneta", "eff_vs_genphi"]:
       denom = histograms[hname + "_denom"]
       numer = histograms[hname + "_numer"]
@@ -1413,12 +1418,14 @@ elif analysis == 'application':
 
   # ____________________________________________________________________________
   # Save objects
-  print('[INFO] Creating file: histos_tba.npz')
+  outfile = 'histos_tba.npz'
+  if use_condor:
+    outfile = 'histos_tba_%i.npz' % jobid
+  print('[INFO] Creating file: %s' % outfile)
   if True:
     assert(len(out_particles) == len(out_roads))
     parameters = particles_to_parameters(out_particles)
     variables = roads_to_variables(out_roads)
-    outfile = 'histos_tba.npz'
     np.savez_compressed(outfile, parameters=parameters, variables=variables)
 
 
@@ -1547,8 +1554,11 @@ elif analysis == 'rates':
 
   # ____________________________________________________________________________
   # Plot histograms
-  print('[INFO] Creating file: histos_tbb.root')
-  with root_open('histos_tbb.root', 'recreate') as f:
+  outfile = 'histos_tbb.root'
+  if use_condor:
+    outfile = 'histos_tbb_%i.root' % jobid
+  print('[INFO] Creating file: %s' % outfile)
+  with root_open(outfile, 'recreate') as f:
     hnames = []
     hname = "nevents"
     hnames.append("nevents")
@@ -1567,15 +1577,6 @@ elif analysis == 'rates':
     for hname in hnames:
       h = histograms[hname]
       h.Write()
-
-  # ____________________________________________________________________________
-  # Save objects
-  #print('[INFO] Creating file: histos_tbb.npz')
-  #if True:
-  #  variables = np.vstack(out_variables)
-  #  predictions = np.vstack(out_predictions)
-  #  outfile = 'histos_tbb.npz'
-  #  np.savez_compressed(outfile, variables=variables, predictions=predictions)
 
 
 
@@ -1685,8 +1686,11 @@ elif analysis == 'effie':
 
   # ____________________________________________________________________________
   # Plot histograms
-  print('[INFO] Creating file: histos_tbc.root')
-  with root_open('histos_tbc.root', 'recreate') as f:
+  outfile = 'histos_tbc.root'
+  if use_condor:
+    outfile = 'histos_tbc_%i.root' % jobid
+  print('[INFO] Creating file: %s' % outfile)
+  with root_open(outfile, 'recreate') as f:
     hnames = []
     for m in ("emtf", "emtf2023"):
       for l in (0, 10, 15, 20, 30, 40, 50):
@@ -1788,12 +1792,14 @@ elif analysis == 'mixing':
 
   # ____________________________________________________________________________
   # Save objects
-  print('[INFO] Creating file: histos_tbd.npz')
+  outfile = 'histos_tbd.npz'
+  if use_condor:
+    outfile = 'histos_tbd_%i.npz' % jobid
+  print('[INFO] Creating file: %s' % outfile)
   if True:
     assert(len(out_roads) == len(out_particles))
     variables = roads_to_variables(out_roads)
     aux = np.array(out_particles, dtype=np.float32)
-    outfile = 'histos_tbd.npz'
     np.savez_compressed(outfile, variables=variables, aux=aux)
 
 
