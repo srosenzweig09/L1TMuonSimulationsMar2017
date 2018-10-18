@@ -32,7 +32,7 @@ def make_rate(h, nevents):
 
 # ______________________________________________________________________________
 if __name__ == '__main__':
-  from ROOT import gROOT, gPad, gStyle, TFile, TCanvas, TH1F, TH2F, TPolyLine, TLatex, TColor, TEfficiency, TLine
+  from ROOT import gROOT, gPad, gStyle, TFile, TCanvas, TH1F, TH2F, TPolyLine, TLatex, TColor, TEfficiency, TLine, TGraph
 
   # ____________________________________________________________________________
   # Setup basic drawer
@@ -45,7 +45,7 @@ if __name__ == '__main__':
   gStyle.SetPadGridY(True)
   gROOT.ForceStyle()
 
-  infile = "histos_tbb_add.18.root"
+  infile = "histos_tbb_add.20.root"
   tfile = TFile.Open(infile)
 
   h_nevents = tfile.Get("nevents")
@@ -81,7 +81,7 @@ if __name__ == '__main__':
     h.SetLineColor(632)  # kRed
     h.SetLineWidth(2)
     h.GetXaxis().SetTitle("p_{T} threshold [GeV]")
-    h.GetYaxis().SetTitle("Trigger rate (kHz)")
+    h.GetYaxis().SetTitle("Trigger rate [kHz]")
     h.GetYaxis().SetTitleOffset(1.3)
     denom = h.Clone("denom")
     denom.SetMaximum(1.2e4)
@@ -100,7 +100,7 @@ if __name__ == '__main__':
     h.SetLineColor(600)  # kBlue
     h.SetLineWidth(2)
     h.GetXaxis().SetTitle("p_{T} threshold [GeV]")
-    h.GetYaxis().SetTitle("Trigger rate (kHz)")
+    h.GetYaxis().SetTitle("Trigger rate [kHz]")
     h.GetYaxis().SetTitleOffset(1.3)
     numer = h.Clone("numer")
 
@@ -175,3 +175,53 @@ if __name__ == '__main__':
       for obj in [denom, numer, ratio, cc1]:
         obj.Write()
       outfile.Close()
+
+  # ____________________________________________________________________________
+  # PU dependence
+
+  if False:
+    gr10 = TGraph(3)
+    gr10.SetPoint(0, 0, 0)
+    gr10.SetPoint(1, 140, 34.1879)
+    gr10.SetPoint(2, 200, 46.6137)
+
+    gr20 = TGraph(3)
+    gr20.SetPoint(0, 0, 0)
+    gr20.SetPoint(1, 140, 5.56699)
+    gr20.SetPoint(2, 200, 7.30877)
+
+    gr10a = TGraph(3)
+    gr10a.SetPoint(0, 0, 0)
+    gr10a.SetPoint(1, 140, 34.1879)
+    gr10a.SetPoint(2, 200, 34.1879*200/140)
+
+    gr20a = TGraph(3)
+    gr20a.SetPoint(0, 0, 0)
+    gr20a.SetPoint(1, 140, 5.56699)
+    gr20a.SetPoint(2, 200, 5.56699*200/140)
+
+    palette = ("#333333", "#377eb8", "#e41a1c", "#984ea3", "#ff7f00", "#4daf4a")
+    palette = map(lambda x: TColor.GetColor(x), palette)
+
+    gr10.SetMarkerStyle(20)
+    gr10.SetMarkerSize(1)
+    gr10.SetMarkerColor(palette[1])
+    gr20.SetMarkerStyle(20)
+    gr20.SetMarkerSize(1)
+    gr20.SetMarkerColor(palette[2])
+
+    gr10a.SetLineStyle(2)
+    gr10a.SetLineColor(palette[1])
+    gr20a.SetLineStyle(2)
+    gr20a.SetLineColor(palette[2])
+
+    gr10.Draw("AP")
+    gr20.Draw("P")
+
+    gr10a.Draw("C")
+    gr20a.Draw("C")
+
+    gr10.GetHistogram().GetXaxis().SetTitle("PU")
+    gr10.GetHistogram().GetYaxis().SetTitle("Trigger rate [kHz]")
+    imgname = "rate_pu_dependence"
+    gPad.Print("figures_winter/" + imgname + ".png")

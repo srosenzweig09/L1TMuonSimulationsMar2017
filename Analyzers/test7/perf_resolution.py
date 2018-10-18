@@ -22,7 +22,7 @@ if __name__ == '__main__':
   gStyle.SetTitleOffset(1.2, "Y")
   gROOT.ForceStyle()
 
-  infile = "histos_tbc_add.18.root"
+  infile = "histos_tbc_add.20.root"
   tfile = TFile.Open(infile)
 
 
@@ -51,7 +51,17 @@ if __name__ == '__main__':
     # Apply gaussian fits
     for i in xrange(h.GetNbinsX()):
       h_py = h.ProjectionY("_py", i+1, i+1)
-      h_py.Rebin(3)  # 300 bins -> 100
+
+      if 50 <= i <= 60:  # high pT, not enough entries (300 bins -> 150)
+        h_py.Rebin(2)
+      elif i >= 86:      # low pT, resolution affected by finite bin width
+        h_py = h.ProjectionY("_py", i+1, i+2)  # merge i & (i+1) entries
+      elif i >= 96:      # even lower pT, resolution affected by finite bin width
+        if i == 96:
+          h_py = h.ProjectionY("_py", i+1, i+4)  # merge i & (i+4) entries
+        else:
+          continue
+
       if h_py.Integral() < 20:  continue
       r = h_py.Fit("gaus", "SNQ", "", -1, 1.2)
       #r = h_py.Fit("gaus", "SNQ", "", h_py.GetMean() - 0.04*5, h_py.GetMean() + 0.04*5)

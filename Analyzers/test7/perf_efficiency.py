@@ -21,7 +21,7 @@ if __name__ == '__main__':
   gStyle.SetPadGridY(True)
   gROOT.ForceStyle()
 
-  infile = "histos_tbc_add.18.root"
+  infile = "histos_tbc_add.20.root"
   tfile = TFile.Open(infile)
 
   tline = TLine()
@@ -238,8 +238,6 @@ if __name__ == '__main__':
       xmin, xmax = frame.GetXaxis().GetXmin(), frame.GetXaxis().GetXmax()
       tline.DrawLine(xmin, 1.0, xmax, 1.0)
       #eff.Draw("same")
-    elif l == 10:
-      pass
     else:
       #if l == 20: eff.CreateGraph().Print("all")
       eff.Draw("same")
