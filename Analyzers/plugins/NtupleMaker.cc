@@ -206,6 +206,8 @@ private:
   std::unique_ptr<std::vector<int16_t> >  vp_bx;
   std::unique_ptr<std::vector<int16_t> >  vp_event;
   std::unique_ptr<std::vector<int32_t> >  vp_pdgid;
+  std::unique_ptr<std::vector<int16_t> >  vp_status;
+  std::unique_ptr<std::vector<int32_t> >  vp_genp;
   std::unique_ptr<int32_t              >  vp_size;
 
   // Event info
@@ -683,6 +685,7 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   // ___________________________________________________________________________
   // Gen particles
   if (!please_use_trkParts) {
+    int igenPart = 0;
     for (const auto& part : genParts_) {
       vp_pt         ->push_back(part.pt());
       vp_phi        ->push_back(part.phi());
@@ -695,6 +698,10 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
       vp_bx         ->push_back(0);
       vp_event      ->push_back(0);
       vp_pdgid      ->push_back(part.pdgId());
+      vp_status     ->push_back(part.status());
+      vp_genp       ->push_back(igenPart);
+
+      ++igenPart;
     }
     (*vp_size) = genParts_.size();
     assert(static_cast<size_t>(*vp_size) == vp_pt->size());
@@ -704,6 +711,11 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   // Tracking particles
   if (please_use_trkParts) {
     for (const auto& part : trkParts_) {
+      int igenPart = -1;
+      if (!part.genParticles().empty()) {
+        igenPart = (part.genParticles().begin())->key();
+      }
+
       vp_pt         ->push_back(part.pt());
       vp_phi        ->push_back(part.phi());
       vp_eta        ->push_back(part.eta());
@@ -715,6 +727,8 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
       vp_bx         ->push_back(part.eventId().bunchCrossing());
       vp_event      ->push_back(part.eventId().event());
       vp_pdgid      ->push_back(part.pdgId());
+      vp_status     ->push_back(part.status());
+      vp_genp       ->push_back(igenPart);
     }
     (*vp_size) = trkParts_.size();
     assert(static_cast<size_t>(*vp_size) == vp_pt->size());
@@ -831,6 +845,8 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   vp_bx         ->clear();
   vp_event      ->clear();
   vp_pdgid      ->clear();
+  vp_status     ->clear();
+  vp_genp       ->clear();
   (*vp_size)    = 0;
 
   // Event info
@@ -945,6 +961,8 @@ void NtupleMaker::makeTree() {
   vp_bx         = std::make_unique<std::vector<int16_t > >();
   vp_event      = std::make_unique<std::vector<int16_t > >();
   vp_pdgid      = std::make_unique<std::vector<int32_t > >();
+  vp_status     = std::make_unique<std::vector<int16_t > >();
+  vp_genp       = std::make_unique<std::vector<int32_t > >();
   vp_size       = std::make_unique<int32_t>(0);
 
   // Event info
@@ -1041,6 +1059,8 @@ void NtupleMaker::makeTree() {
   tree->Branch("vp_bx"        , &(*vp_bx        ));
   tree->Branch("vp_event"     , &(*vp_event     ));
   tree->Branch("vp_pdgid"     , &(*vp_pdgid     ));
+  tree->Branch("vp_status"    , &(*vp_status    ));
+  tree->Branch("vp_genp"      , &(*vp_genp      ));
   tree->Branch("vp_size"      , &(*vp_size      ));
 
   // Event info
