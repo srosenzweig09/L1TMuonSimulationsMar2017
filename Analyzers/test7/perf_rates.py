@@ -21,8 +21,8 @@ def make_ptcut(h):
   return
 
 def make_rate(h, nevents):
-  orbitFreq = 11245.6
-  nCollBunches = 1866
+  orbitFreq = 11246.
+  nCollBunches = 2808
   nZeroBiasEvents = nevents
   convFactorToHz = orbitFreq * nCollBunches / nZeroBiasEvents
   h.Scale(convFactorToHz / 1000.)
@@ -182,23 +182,23 @@ if __name__ == '__main__':
   if False:
     gr10 = TGraph(3)
     gr10.SetPoint(0, 0, 0)
-    gr10.SetPoint(1, 140, 34.1879)
-    gr10.SetPoint(2, 200, 46.6137)
+    gr10.SetPoint(1, 140, 51.4486)
+    gr10.SetPoint(2, 200, 70.1479)
 
     gr20 = TGraph(3)
     gr20.SetPoint(0, 0, 0)
-    gr20.SetPoint(1, 140, 5.56699)
-    gr20.SetPoint(2, 200, 7.30877)
+    gr20.SetPoint(1, 140, 8.37764)
+    gr20.SetPoint(2, 200, 10.9988)
 
     gr10a = TGraph(3)
     gr10a.SetPoint(0, 0, 0)
-    gr10a.SetPoint(1, 140, 34.1879)
-    gr10a.SetPoint(2, 200, 34.1879*200/140)
+    gr10a.SetPoint(1, 140, 51.4486)
+    gr10a.SetPoint(2, 200, 51.4486*200/140)
 
     gr20a = TGraph(3)
     gr20a.SetPoint(0, 0, 0)
-    gr20a.SetPoint(1, 140, 5.56699)
-    gr20a.SetPoint(2, 200, 5.56699*200/140)
+    gr20a.SetPoint(1, 140, 8.37764)
+    gr20a.SetPoint(2, 200, 8.37764*200/140)
 
     palette = ("#333333", "#377eb8", "#e41a1c", "#984ea3", "#ff7f00", "#4daf4a")
     palette = map(lambda x: TColor.GetColor(x), palette)
