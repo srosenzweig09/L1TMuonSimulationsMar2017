@@ -28,15 +28,16 @@ namespace edm
 
     // data members
 
-    double            fMinPt   ;
-    double            fMaxPt   ;
-    double            fMinOneOverPt   ;
-    double            fMaxOneOverPt   ;
-    double            fXFlatSpread    ;
-    double            fYFlatSpread    ;
-    double            fZFlatSpread    ;
-    double            fRStarForPhi    ;
-    double            fRStarForEta    ;
+    double            fMinPt   ;         // GeV
+    double            fMaxPt   ;         // GeV
+    double            fMinOneOverPt   ;  // GeV^-1
+    double            fMaxOneOverPt   ;  // GeV^-1
+    double            fXFlatSpread    ;  // mm
+    double            fYFlatSpread    ;  // mm
+    double            fZFlatSpread    ;  // mm
+    double            fCTauMean       ;  // mm
+    double            fRStarForPhi    ;  // cm
+    double            fRStarForEta    ;  // cm
     bool              fRandomCharge   ;
     std::string       fPtSpectrum     ;
     bool                                fAppend      ;

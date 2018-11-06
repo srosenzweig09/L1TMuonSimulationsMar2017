@@ -15,6 +15,7 @@
 #include "FWCore/Utilities/interface/RandomNumberGenerator.h"
 
 #include "CLHEP/Random/RandFlat.h"
+#include "CLHEP/Random/RandExponential.h"
 
 using namespace edm;
 using namespace std;
@@ -52,6 +53,7 @@ FlatRandomPtGunProducer2::FlatRandomPtGunProducer2(const ParameterSet& pset) :
   fXFlatSpread   = pgun_params.exists("XFlatSpread")   ? pgun_params.getParameter<double>("XFlatSpread")     : 0.;
   fYFlatSpread   = pgun_params.exists("YFlatSpread")   ? pgun_params.getParameter<double>("YFlatSpread")     : 0.;
   fZFlatSpread   = pgun_params.exists("ZFlatSpread")   ? pgun_params.getParameter<double>("ZFlatSpread")     : 0.;
+  fCTauMean      = pgun_params.exists("CTauMean")      ? pgun_params.getParameter<double>("CTauMean")        : 0.;
   fRStarForPhi   = pgun_params.exists("RStarForPhi")   ? pgun_params.getParameter<double>("RStarForPhi")     : 0.;
   fRStarForEta   = pgun_params.exists("RStarForEta")   ? pgun_params.getParameter<double>("RStarForEta")     : 0.;
   fRandomCharge  = pgun_params.exists("RandomCharge")  ? pgun_params.getParameter<bool>("RandomCharge")      : false;
@@ -98,7 +100,8 @@ void FlatRandomPtGunProducer2::produce(Event &e, const EventSetup& es)
   double vx = fXFlatSpread > 0. ? CLHEP::RandFlat::shoot(engine, -fXFlatSpread, fXFlatSpread) : 0.;
   double vy = fYFlatSpread > 0. ? CLHEP::RandFlat::shoot(engine, -fYFlatSpread, fYFlatSpread) : 0.;
   double vz = fZFlatSpread > 0. ? CLHEP::RandFlat::shoot(engine, -fZFlatSpread, fZFlatSpread) : 0.;
-  HepMC::GenVertex* Vtx = new HepMC::GenVertex(HepMC::FourVector(vx,vy,vz));
+  double ctau = fCTauMean > 0. ? CLHEP::RandExponential::shoot(engine, fCTauMean) : 0.;
+  HepMC::GenVertex* Vtx = new HepMC::GenVertex(HepMC::FourVector(vx,vy,vz,ctau));
 
   // loop over particles
   //
