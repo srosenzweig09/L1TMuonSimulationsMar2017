@@ -659,7 +659,7 @@ class PatternRecognition(object):
         # Remove all non-Run 2 hits
         only_use_run2 = False
         if only_use_run2:
-          sector_hits = filter(is_valid_for_run2, sector_hits)
+          sector_hits = list(filter(is_valid_for_run2, sector_hits))
 
         # Loop over sector hits
         for ihit, hit in enumerate(sector_hits):
