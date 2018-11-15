@@ -44,7 +44,7 @@ if __name__ == '__main__':
   gStyle.SetPadGridY(True)
   gROOT.ForceStyle()
 
-  infile = "histos_tbb_add.20.root"
+  infile = "histos_tbb_add_140.20.root"
   tfile = TFile.Open(infile)
 
   h_nevents = tfile.Get("nevents")
@@ -76,10 +76,10 @@ if __name__ == '__main__':
   # highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt
 
   hname_pairs = [
-    ("highest_emtf_absEtaMin1.24_absEtaMax2.4_qmin12_pt", "emtf2023_rate_reduction"),
-    ("highest_emtf_absEtaMin1.24_absEtaMax1.65_qmin12_pt", "emtf2023_rate_reduction_1"),
-    ("highest_emtf_absEtaMin1.65_absEtaMax2.15_qmin12_pt", "emtf2023_rate_reduction_2"),
-    ("highest_emtf_absEtaMin2.15_absEtaMax2.4_qmin12_pt", "emtf2023_rate_reduction_3"),
+    ("highest_emtf_absEtaMin1.24_absEtaMax2.4_qmin12_pt", "emtf2023_pu140_rate_reduction"),
+    ("highest_emtf_absEtaMin1.24_absEtaMax1.65_qmin12_pt", "emtf2023_pu140_rate_reduction_1"),
+    ("highest_emtf_absEtaMin1.65_absEtaMax2.15_qmin12_pt", "emtf2023_pu140_rate_reduction_2"),
+    ("highest_emtf_absEtaMin2.15_absEtaMax2.4_qmin12_pt", "emtf2023_pu140_rate_reduction_3"),
   ]
 
   for hname, imgname in hname_pairs:
@@ -201,64 +201,3 @@ if __name__ == '__main__':
         for obj in [denom, numer, ratio, cc1]:
           obj.Write()
         outfile.Close()
-
-  # ____________________________________________________________________________
-  # PU dependence
-
-  if True:
-    gr_denom = TGraph(3)
-    gr_denom.SetPoint(0, 0, 0)
-    gr_denom.SetPoint(1, 140, 25.9214)
-    gr_denom.SetPoint(2, 200, 44.4840)
-
-    gr_denom_lin = TGraph(3)
-    gr_denom_lin.SetPoint(0, 0, 0)
-    gr_denom_lin.SetPoint(1, 140, 25.9214)
-    gr_denom_lin.SetPoint(2, 300, 25.9214*300/140)
-
-    gr_numer = TGraph(3)
-    gr_numer.SetPoint(0, 0, 0)
-    gr_numer.SetPoint(1, 140, 8.37764)
-    gr_numer.SetPoint(2, 200, 10.9988)
-
-    gr_numer_lin = TGraph(3)
-    gr_numer_lin.SetPoint(0, 0, 0)
-    gr_numer_lin.SetPoint(1, 140, 8.37764)
-    gr_numer_lin.SetPoint(2, 300, 8.37764*300/140)
-
-    gr_denom.SetMarkerStyle(20)
-    gr_denom.SetMarkerSize(1.4)
-    gr_denom.SetMarkerColor(632)  # kRed
-    gr_numer.SetMarkerStyle(20)
-    gr_numer.SetMarkerSize(1.4)
-    gr_numer.SetMarkerColor(600)  # kBlue
-
-    gr_denom_lin.SetLineStyle(2)
-    gr_denom_lin.SetLineWidth(2)
-    gr_denom_lin.SetLineColor(632)  # kRed
-    gr_numer_lin.SetLineStyle(2)
-    gr_numer_lin.SetLineWidth(2)
-    gr_numer_lin.SetLineColor(600)  # kBlue
-
-    frame = TH1F("frame", "; PU; Trigger rate [kHz]", 100, 0, 300)
-    frame.SetMinimum(0)
-    frame.SetMaximum(50)
-    frame.Draw()
-
-    gr_denom.Draw("P")
-    gr_numer.Draw("P")
-    gr_denom_lin.Draw("C")
-    gr_numer_lin.Draw("C")
-
-    def draw_cms_lumi_1():
-      tlatexCMS1.SetTextSize(0.75*0.05)
-      tlatexCMS2.SetTextSize(0.60*0.05)
-      tlatexCMS3.SetTextSize(0.60*0.05)
-      tlatexCMS1.DrawLatex(0.164, 0.965, 'CMS')
-      tlatexCMS2.DrawLatex(0.252, 0.965, 'Phase-2 Simulation')
-      tlatexCMS3.DrawLatex(0.765, 0.965, '<PU>=140 & 200')
-
-    draw_cms_lumi_1()
-    imgname = "emtf2023_rate_pu_dependence"
-    gPad.Print("figures_winter/" + imgname + ".png")
-    gPad.Print("figures_winter/" + imgname + ".pdf")

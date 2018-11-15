@@ -8,22 +8,47 @@ donotdelete = []
 
 # ______________________________________________________________________________
 if __name__ == '__main__':
-  from ROOT import gROOT, gPad, gStyle, TFile, TCanvas, TH1F, TH2F, TPolyLine, TLatex, TColor, TEfficiency, TGraphAsymmErrors
+  from ROOT import gROOT, gPad, gStyle, TFile, TCanvas, TH1F, TH2F, TPolyLine, TLatex, TColor, TEfficiency, TLine, TLatex, TGraph, TGraphAsymmErrors
 
   # ____________________________________________________________________________
   # Setup basic drawer
   gROOT.LoadMacro("tdrstyle.C")
   gROOT.ProcessLine("setTDRStyle();")
   #gROOT.SetBatch(True)
-  gStyle.SetPadRightMargin(0.05)
   gStyle.SetPadGridX(True)
   gStyle.SetPadGridY(True)
-  gStyle.SetTitleOffset(0.9, "Y")
-  gStyle.SetTitleOffset(1.2, "Y")
+  #gStyle.SetPadRightMargin(0.05)
+  #gStyle.SetTitleOffset(0.9, "Y")
+  #gStyle.SetTitleOffset(1.2, "Y")
   gROOT.ForceStyle()
 
   infile = "histos_tbc_add.20.root"
   tfile = TFile.Open(infile)
+
+  tline = TLine()
+  tline.SetLineColor(920+2)  # kGray+2
+  tline.SetLineStyle(2)
+
+  tlatexCMS1 = TLatex()
+  tlatexCMS1.SetNDC()
+  tlatexCMS1.SetTextFont(61)
+  tlatexCMS1.SetTextSize(0.75*0.05)
+
+  tlatexCMS2 = TLatex()
+  tlatexCMS2.SetNDC()
+  tlatexCMS2.SetTextFont(52)
+  tlatexCMS2.SetTextSize(0.60*0.05)
+
+  tlatexCMS3 = TLatex()
+  tlatexCMS3.SetNDC()
+  tlatexCMS3.SetTextFont(42)
+  tlatexCMS3.SetTextSize(0.60*0.05)
+  tlatexCMS3.SetTextAlign(11)
+
+  def draw_cms_lumi():
+    tlatexCMS1.DrawLatex(0.164, 0.965, 'CMS')
+    tlatexCMS2.DrawLatex(0.252, 0.965, 'Phase-2 Simulation')
+    tlatexCMS3.DrawLatex(0.885, 0.965, '<PU>=0')
 
 
   # ____________________________________________________________________________
@@ -31,12 +56,16 @@ if __name__ == '__main__':
   hname = "emtf_l1pt_vs_genpt"
   h2a = tfile.Get(hname)
   h2a.Draw("COLZ")
-  gPad.Print("figures_winter/" + hname + ".png")
+  #draw_cms_lumi()
+  #gPad.Print("figures_winter/" + hname + ".png")
+  #gPad.Print("figures_winter/" + hname + ".pdf")
 
   hname = hname2023_f(hname)
   h2b = tfile.Get(hname)
   h2b.Draw("COLZ")
-  gPad.Print("figures_winter/" + hname + ".png")
+  #draw_cms_lumi()
+  #gPad.Print("figures_winter/" + hname + ".png")
+  #gPad.Print("figures_winter/" + hname + ".pdf")
 
   donotdelete.append([h2a, h2b])
 
@@ -77,7 +106,9 @@ if __name__ == '__main__':
     # Draw
     h.Draw("COLZ")
     gPad.SetLogx(0)
-    gPad.Print("figures_winter/" + hname + ".png")
+    #draw_cms_lumi()
+    #gPad.Print("figures_winter/" + hname + ".png")
+    #gPad.Print("figures_winter/" + hname + ".pdf")
     #
     frame.Reset()
     frame.SetBins(50, 0, 50)
@@ -91,7 +122,9 @@ if __name__ == '__main__':
     gr1_aspt.SetMarkerColor(col)
     gr1_aspt.Draw("p")
     gPad.SetLogx()
+    draw_cms_lumi()
     gPad.Print("figures_winter/" + hname + "_bias.png")
+    gPad.Print("figures_winter/" + hname + "_bias.pdf")
     #
     frame.GetXaxis().SetTitle("gen p_{T} [GeV]")
     frame.GetYaxis().SetTitle("#Delta(p_{T})/p_{T} resolution")
@@ -104,7 +137,9 @@ if __name__ == '__main__':
     gr2_aspt.Draw("p")
     #gr2_aspt.Fit("pol1", "", "", 10, 40)
     gPad.SetLogx()
+    draw_cms_lumi()
     gPad.Print("figures_winter/" + hname + "_res.png")
+    gPad.Print("figures_winter/" + hname + "_res.pdf")
     #
     h.cache = [frame, gr1, gr2, gr1_aspt, gr2_aspt]
 

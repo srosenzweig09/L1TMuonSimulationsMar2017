@@ -372,9 +372,9 @@ find_emtf_road_quality = EMTFRoadQuality()
 # Decide EMTF road sort code
 class EMTFRoadSortCode(object):
   def __init__(self):
-    # 10     9      8      7    6      5      4      3      2..0
-    # ME1/1, GE1/1, ME1/2, ME2, GE2/1, ME3&4, RE1&2, RE3&4, qual
-    self.hits_to_mlayer = (10,8,7,5,5,4,4,3,3,9,6,10)
+    # 11   10     9      8      7    6      5      4      3      2..0
+    # ME0, ME1/1, GE1/1, ME1/2, ME2, GE2/1, ME3&4, RE1&2, RE3&4, qual
+    self.hits_to_mlayer = (10,8,7,5,5,4,4,3,3,9,6,11)
 
   def __call__(self, mode, qual, hits):
     code = 0
@@ -735,7 +735,7 @@ class RoadCleaning(object):
           if hit.get_bx() > 0:
             bx_counter3 += 1
       #trk_bx_zero = (bx_counter1 < 2 and bx_counter2 >= 2)
-      trk_bx_zero = (bx_counter1 < 3 and bx_counter2 >= 2 and bx_counter3 < 2)
+      trk_bx_zero = (bx_counter1 <= 2 and bx_counter2 >= 2 and bx_counter3 <= 1)
       return trk_bx_zero
 
     clean_roads = list(filter(select_bx_zero, clean_roads))
@@ -833,6 +833,19 @@ class RoadSlimming(object):
       best_phi_array = np.full((nlayers,), tmp_phi, dtype=np.int32)
       best_theta_array = np.full((nlayers,), tmp_theta, dtype=np.int32)
 
+      # Put in the best estimate for the CSC stations
+      best_estimate_me11 = tmp_phi + prim_match_lut[0]
+      best_estimate_me12 = tmp_phi + prim_match_lut[1]
+      if ieta >= 5:  # zones 5,6, use ME1/2
+        best_estimate_me2 = best_estimate_me12 + prim_match_lut[2]
+        best_estimate_me3 = best_estimate_me12 + prim_match_lut[3]
+        best_estimate_me4 = best_estimate_me12 + prim_match_lut[4]
+      else:
+        best_estimate_me2 = best_estimate_me11 + prim_match_lut[2]
+        best_estimate_me3 = best_estimate_me11 + prim_match_lut[3]
+        best_estimate_me4 = best_estimate_me11 + prim_match_lut[4]
+      best_phi_array[0:5] = (best_estimate_me11, best_estimate_me12, best_estimate_me2, best_estimate_me3, best_estimate_me4)
+
       for hit in road.hits:
         hit_lay = hit.emtf_layer
         hits_array[hit_lay].append(hit)
@@ -866,10 +879,6 @@ class RoadSlimming(object):
           hits_array[hit_lay] = [best_hit]
           best_phi_array[hit_lay] = best_hit.emtf_phi
           best_theta_array[hit_lay] = best_hit.emtf_theta
-        else:
-          # No hit in layer, put in the best estimate
-          best_phi_array[hit_lay] = best_phi_array[hit_lay_p] + mean_dphi
-          best_theta_array[hit_lay] = tmp_theta
 
       slim_road_hits = []
       for hit_lay in xrange(nlayers):
