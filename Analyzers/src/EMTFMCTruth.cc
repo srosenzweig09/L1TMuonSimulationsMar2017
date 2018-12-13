@@ -396,6 +396,38 @@ int EMTFMCTruth::findME0DigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
   return findTrackingParticle(matches, trkPartColl);
 }
 
+int EMTFMCTruth::findDTDigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const {
+  std::map<SimHitIdpr, float> matches;
+
+  DTChamberId detId0 = hit.DT_DetId();
+  int bx = hit.BX();
+
+  for (DTDigiSimLinkCollection::DigiRangeIterator detUnit = dtDigiSimLinksPtr_->begin(); detUnit != dtDigiSimLinksPtr_->end(); ++detUnit) {
+    const DTLayerId& layerid = (*detUnit).first;
+    const DTDigiSimLinkCollection::Range& range = (*detUnit).second;
+
+    if (detId0 == layerid.chamberId()) {
+
+      for (DTDigiSimLinkCollection::const_iterator linkItr = range.first; linkItr != range.second; ++linkItr) {
+        // Unfortunately lost all these info in the L1 data format L1MuDTChambPhDigi
+        //float digitime = linkItr->time();
+        //int wire = linkItr->wire();
+        //int digiNumber = linkItr->number();
+        unsigned int simTrackId = linkItr->SimTrackId();
+        EncodedEventId eventId = linkItr->eventId();
+
+        if (bx == eventId.bunchCrossing()) {
+          SimHitIdpr matchId(simTrackId, eventId);
+          if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
+          matches[matchId] += 1.0;
+        }
+      }
+    }
+  }
+
+  return findTrackingParticle(matches, trkPartColl);
+}
+
 int EMTFMCTruth::findTrackingParticle(const std::map<SimHitIdpr, float>& matches, const TrackingParticleCollection& trkPartColl) const {
 
 #if 0

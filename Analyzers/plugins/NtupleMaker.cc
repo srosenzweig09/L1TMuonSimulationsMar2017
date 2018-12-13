@@ -441,6 +441,9 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
     } else if (subsystem == TriggerPrimitive::kME0) {
       //
       result = (chamber % 2 == 0);
+    } else if (subsystem == TriggerPrimitive::kDT) {
+      //
+      result = (chamber % 2 == 0);
     }
     return result;
   };
@@ -468,6 +471,9 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
       sim_tp2 = sim_tp1;
     } else if (hit.Subsystem() == TriggerPrimitive::kME0) {
       sim_tp1 = truth_.findME0DigiSimLink(hit, trkParts_);
+      sim_tp2 = sim_tp1;
+    } else if (hit.Subsystem() == TriggerPrimitive::kDT) {
+      sim_tp1 = truth_.findDTDigiSimLink(hit, trkParts_);
       sim_tp2 = sim_tp1;
     }
     return std::make_pair(sim_tp1, sim_tp2);
