@@ -1,0 +1,8 @@
+<export>
+</export>
+
+<library file="*.cc" name="L1TMuonSimulationsMuonTools_tests">
+  <use name="L1TMuonSimulations/MuonTools"/>
+  <use name="root"/>
+  <flags EDM_PLUGIN="1"/>
+</library>
