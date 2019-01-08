@@ -31,15 +31,15 @@
 #include "SimDataFormats/TrackingAnalysis/interface/TrackingParticleFwd.h"
 #include "SimDataFormats/PileupSummaryInfo/interface/PileupSummaryInfo.h"
 
+#include "DataFormats/L1TrackTrigger/interface/TTTypes.h"
+#include "DataFormats/L1TrackTrigger/interface/TTTrack.h"
+#include "SimTracker/TrackTriggerAssociation/interface/TTTrackAssociationMap.h"
+
 #include "DataFormats/L1TMuon/interface/EMTFHit.h"
 #include "DataFormats/L1TMuon/interface/EMTFTrack.h"
 #include "L1Trigger/L1TMuonEndCap/interface/TrackTools.h"
 
 #include "L1TMuonSimulations/Analyzers/interface/EMTFMCTruth.h"
-
-#include "DataFormats/L1TrackTrigger/interface/TTTypes.h"
-#include "DataFormats/L1TrackTrigger/interface/TTTrack.h"
-#include "SimTracker/TrackTriggerAssociation/interface/TTTrackAssociationMap.h"
 
 
 // From L1Trigger/L1TMuonEndCap/interface/MuonTriggerPrimitive.h
@@ -136,8 +136,8 @@ private:
   std::unique_ptr<std::vector<int16_t> >  vh_strip;
   std::unique_ptr<std::vector<int16_t> >  vh_wire;
   std::unique_ptr<std::vector<int16_t> >  vh_roll;
-  std::unique_ptr<std::vector<int16_t> >  vh_pattern;
   std::unique_ptr<std::vector<int16_t> >  vh_quality;
+  std::unique_ptr<std::vector<int16_t> >  vh_pattern;
   std::unique_ptr<std::vector<int16_t> >  vh_bend;
   std::unique_ptr<std::vector<int16_t> >  vh_time;
   std::unique_ptr<std::vector<int16_t> >  vh_fr;
@@ -194,7 +194,7 @@ private:
   std::unique_ptr<std::vector<int16_t> >  vu_sim_assoc;  // isGenuine, isLooselyGenuine, isCombinatoric, isUnknown
   std::unique_ptr<int32_t>                vu_size;
 
-  // Gen particles
+  // Tracking particles
   std::unique_ptr<std::vector<float  > >  vp_pt;
   std::unique_ptr<std::vector<float  > >  vp_phi;
   std::unique_ptr<std::vector<float  > >  vp_eta;
@@ -479,8 +479,19 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
     return std::make_pair(sim_tp1, sim_tp2);
   };
 
-  auto get_time = [](float time) {
-    return static_cast<int>(std::round(time/0.1));  // to integer unit of 0.1 ns (arbitrary)
+  auto get_pattern = [](const auto& hit) {
+    int pattern = 0;
+    if (hit.Subsystem() == TriggerPrimitive::kCSC) {
+      pattern = hit.Pattern();
+    } else if (hit.Subsystem() == TriggerPrimitive::kDT) {
+      pattern = hit.Sync_err();  // syncErr was hacked to store rpc bit
+    }
+    return pattern;
+  };
+
+  auto get_time = [](const auto& hit) {
+    float time = hit.Time();
+    return static_cast<int>(std::round(time*16/25));  // integer unit is 25ns/16 (4-bit)
   };
 
   auto get_hit_refs = [](const auto& trk, const auto& hits) {
@@ -512,8 +523,8 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
           (conv_hit_i.Strip_low()  == conv_hit_j.Strip_low()) && // For RPC clusters
           (conv_hit_i.Strip_hi()   == conv_hit_j.Strip_hi()) &&  // For RPC clusters
           (conv_hit_i.Roll()       == conv_hit_j.Roll()) &&
-          (conv_hit_i.Endcap()     == conv_hit_j.Endcap()) && // Needed for the ntupler
-          (conv_hit_i.Sector()     == conv_hit_j.Sector()) && // Needed for the ntupler
+          (conv_hit_i.Endcap()     == conv_hit_j.Endcap()) && // Needed only in the ntupler
+          (conv_hit_i.Sector()     == conv_hit_j.Sector()) && // Needed only in the ntupler
           true
         ) {
           int istation = (conv_hit_i.Station() - 1);
@@ -543,7 +554,6 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
           std::cout << ".... " << conv_hit_j.Subsystem() << " " << conv_hit_j.PC_station() << " " << conv_hit_j.PC_chamber() << " " << conv_hit_j.Ring() << " " << conv_hit_j.Strip() << " " << conv_hit_j.Wire() << " " << conv_hit_j.Pattern() << " " << conv_hit_j.BX() << " " << conv_hit_j.Endcap() << " " << conv_hit_j.Sector() << std::endl;
         }
       }
-
       assert(has_hit == has_hit_check);
     }
 
@@ -552,14 +562,16 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
 
 
   // ___________________________________________________________________________
+  // Verbose
   if (firstEvent_)  edm::LogInfo("NtupleMaker") << "Ready to make ntuple.";
 
-  bool please_use_trkParts = true;
-
   if (verbose_ > 0) {
-    std::cout << "[DEBUG] # hits: " << emuHits_.size() << " #  tracks: " << emuTracks_.size() << " # gen parts: " << genParts_.size() << " # trk parts: " << trkParts_.size() << std::endl;
+    std::cout << "[DEBUG] # hits: " << emuHits_.size() << " #  tracks: " << emuTracks_.size()
+              << " # gen parts: " << genParts_.size() << " # trk parts: " << trkParts_.size()
+              << std::endl;
   }
 
+  // ___________________________________________________________________________
   // Hits
   prepare_sim_tp();  // must be called before calling get_sim_tp1() and get_sim_tp2()
 
@@ -580,10 +592,10 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
     vh_strip      ->push_back(hit.Strip());
     vh_wire       ->push_back(hit.Wire());
     vh_roll       ->push_back(hit.Roll());
-    vh_pattern    ->push_back(hit.Pattern());
     vh_quality    ->push_back(hit.Quality());
+    vh_pattern    ->push_back(get_pattern(hit));  // modified
     vh_bend       ->push_back(hit.Bend());
-    vh_time       ->push_back(get_time(hit.Time()));
+    vh_time       ->push_back(get_time(hit));     // modified
     vh_fr         ->push_back(isFront(hit));
     vh_emtf_phi   ->push_back(hit.Phi_fp());
     vh_emtf_theta ->push_back(hit.Theta_fp());
@@ -598,6 +610,7 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   }
   (*vh_size) = emuHits_.size();
 
+  // ___________________________________________________________________________
   // Tracks
   for (const auto& trk : emuTracks_) {
     const auto& hit_refs = get_hit_refs(trk, emuHits_);
@@ -624,6 +637,7 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   }
   (*vt_size) = emuTracks_.size();
 
+  // ___________________________________________________________________________
   // L1TrackTrigger tracks
   if (tkTracks_) {
     int itkTrack = 0;
@@ -690,56 +704,51 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
 
   // ___________________________________________________________________________
   // Gen particles
-  if (!please_use_trkParts) {
-    int igenPart = 0;
-    for (const auto& part : genParts_) {
-      vp_pt         ->push_back(part.pt());
-      vp_phi        ->push_back(part.phi());
-      vp_eta        ->push_back(part.eta());
-      vp_theta      ->push_back(part.theta());
-      vp_vx         ->push_back(part.vx());
-      vp_vy         ->push_back(part.vy());
-      vp_vz         ->push_back(part.vz());
-      vp_q          ->push_back(part.charge());
-      vp_bx         ->push_back(0);
-      vp_event      ->push_back(0);
-      vp_pdgid      ->push_back(part.pdgId());
-      vp_status     ->push_back(part.status());
-      vp_genp       ->push_back(igenPart);
+  //int igenPart = 0;
+  //for (const auto& part : genParts_) {
+  //  vp_pt         ->push_back(part.pt());
+  //  vp_phi        ->push_back(part.phi());
+  //  vp_eta        ->push_back(part.eta());
+  //  vp_theta      ->push_back(part.theta());
+  //  vp_vx         ->push_back(part.vx());
+  //  vp_vy         ->push_back(part.vy());
+  //  vp_vz         ->push_back(part.vz());
+  //  vp_q          ->push_back(part.charge());
+  //  vp_bx         ->push_back(0);
+  //  vp_event      ->push_back(0);
+  //  vp_pdgid      ->push_back(part.pdgId());
+  //  vp_status     ->push_back(part.status());
+  //  vp_genp       ->push_back(igenPart);
+  //
+  //  ++igenPart;
+  //}
+  //(*vp_size) = genParts_.size();
+  //assert(static_cast<size_t>(*vp_size) == vp_pt->size());
 
-      ++igenPart;
-    }
-    (*vp_size) = genParts_.size();
-    assert(static_cast<size_t>(*vp_size) == vp_pt->size());
-    assert((*vp_size) <= 1);  // expect 0 or 1 gen particle
-  }
-
+  // ___________________________________________________________________________
   // Tracking particles
-  if (please_use_trkParts) {
-    for (const auto& part : trkParts_) {
-      int igenPart = -1;
-      if (!part.genParticles().empty()) {
-        igenPart = (part.genParticles().begin())->key();
-      }
-
-      vp_pt         ->push_back(part.pt());
-      vp_phi        ->push_back(part.phi());
-      vp_eta        ->push_back(part.eta());
-      vp_theta      ->push_back(part.theta());
-      vp_vx         ->push_back(part.vx());
-      vp_vy         ->push_back(part.vy());
-      vp_vz         ->push_back(part.vz());
-      vp_q          ->push_back(part.charge());
-      vp_bx         ->push_back(part.eventId().bunchCrossing());
-      vp_event      ->push_back(part.eventId().event());
-      vp_pdgid      ->push_back(part.pdgId());
-      vp_status     ->push_back(part.status());
-      vp_genp       ->push_back(igenPart);
+  for (const auto& part : trkParts_) {
+    int igenPart = -1;
+    if (!part.genParticles().empty()) {
+      igenPart = (part.genParticles().begin())->key();
     }
-    (*vp_size) = trkParts_.size();
-    assert(static_cast<size_t>(*vp_size) == vp_pt->size());
-    //assert((*vp_size) <= 1);  // expect 0 or 1 gen particle
+
+    vp_pt         ->push_back(part.pt());
+    vp_phi        ->push_back(part.phi());
+    vp_eta        ->push_back(part.eta());
+    vp_theta      ->push_back(part.theta());
+    vp_vx         ->push_back(part.vx());
+    vp_vy         ->push_back(part.vy());
+    vp_vz         ->push_back(part.vz());
+    vp_q          ->push_back(part.charge());
+    vp_bx         ->push_back(part.eventId().bunchCrossing());
+    vp_event      ->push_back(part.eventId().event());
+    vp_pdgid      ->push_back(part.pdgId());
+    vp_status     ->push_back(part.status());
+    vp_genp       ->push_back(igenPart);
   }
+  (*vp_size) = trkParts_.size();
+  assert(static_cast<size_t>(*vp_size) == vp_pt->size());
 
   // ___________________________________________________________________________
   // Event info
@@ -759,14 +768,14 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
     ve_run        ->push_back(iEvent.id().run());
     ve_lumi       ->push_back(iEvent.id().luminosityBlock());
     ve_npv        ->push_back(trueNPV);
-    (*ve_size)    = 1;
   }
+  (*ve_size) = 1;
 
   // ___________________________________________________________________________
   // Fill
   tree->Fill();
 
-  // Clear
+  // Hits
   vh_endcap     ->clear();
   vh_station    ->clear();
   vh_ring       ->clear();
@@ -781,8 +790,8 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   vh_strip      ->clear();
   vh_wire       ->clear();
   vh_roll       ->clear();
-  vh_pattern    ->clear();
   vh_quality    ->clear();
+  vh_pattern    ->clear();
   vh_bend       ->clear();
   vh_time       ->clear();
   vh_fr         ->clear();
@@ -822,10 +831,10 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   vu_phi        ->clear();
   vu_eta        ->clear();
   vu_theta      ->clear();
-  vu_q          ->clear();
   vu_vx         ->clear();
   vu_vy         ->clear();
   vu_vz         ->clear();
+  vu_q          ->clear();
   vu_rinv       ->clear();
   vu_chi2       ->clear();
   vu_ndof       ->clear();
@@ -839,7 +848,7 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   vu_sim_assoc  ->clear();
   (*vu_size)    = 0;
 
-  // Gen particles
+  // Tracking particles
   vp_pt         ->clear();
   vp_phi        ->clear();
   vp_eta        ->clear();
@@ -882,6 +891,7 @@ void NtupleMaker::makeTree() {
   edm::Service<TFileService> fs;
   tree = fs->make<TTree>("tree", "tree");
 
+  // Create pointers
   // Hits
   vh_endcap     = std::make_unique<std::vector<int16_t > >();
   vh_station    = std::make_unique<std::vector<int16_t > >();
@@ -897,8 +907,8 @@ void NtupleMaker::makeTree() {
   vh_strip      = std::make_unique<std::vector<int16_t > >();
   vh_wire       = std::make_unique<std::vector<int16_t > >();
   vh_roll       = std::make_unique<std::vector<int16_t > >();
-  vh_pattern    = std::make_unique<std::vector<int16_t > >();
   vh_quality    = std::make_unique<std::vector<int16_t > >();
+  vh_pattern    = std::make_unique<std::vector<int16_t > >();
   vh_bend       = std::make_unique<std::vector<int16_t > >();
   vh_time       = std::make_unique<std::vector<int16_t > >();
   vh_fr         = std::make_unique<std::vector<int16_t > >();
@@ -955,7 +965,7 @@ void NtupleMaker::makeTree() {
   vu_sim_assoc  = std::make_unique<std::vector<int16_t > >();
   vu_size       = std::make_unique<int32_t>(0);
 
-  // Gen particles
+  // Tracking particles
   vp_pt         = std::make_unique<std::vector<float   > >();
   vp_phi        = std::make_unique<std::vector<float   > >();
   vp_eta        = std::make_unique<std::vector<float   > >();
@@ -995,8 +1005,8 @@ void NtupleMaker::makeTree() {
   tree->Branch("vh_strip"     , &(*vh_strip     ));
   tree->Branch("vh_wire"      , &(*vh_wire      ));
   tree->Branch("vh_roll"      , &(*vh_roll      ));
-  tree->Branch("vh_pattern"   , &(*vh_pattern   ));
   tree->Branch("vh_quality"   , &(*vh_quality   ));
+  tree->Branch("vh_pattern"   , &(*vh_pattern   ));
   tree->Branch("vh_bend"      , &(*vh_bend      ));
   tree->Branch("vh_time"      , &(*vh_time      ));
   tree->Branch("vh_fr"        , &(*vh_fr        ));
@@ -1036,10 +1046,10 @@ void NtupleMaker::makeTree() {
   tree->Branch("vu_phi"       , &(*vu_phi       ));
   tree->Branch("vu_eta"       , &(*vu_eta       ));
   tree->Branch("vu_theta"     , &(*vu_theta     ));
-  tree->Branch("vu_q"         , &(*vu_q         ));
   tree->Branch("vu_vx"        , &(*vu_vx        ));
   tree->Branch("vu_vy"        , &(*vu_vy        ));
   tree->Branch("vu_vz"        , &(*vu_vz        ));
+  tree->Branch("vu_q"         , &(*vu_q         ));
   tree->Branch("vu_rinv"      , &(*vu_rinv      ));
   tree->Branch("vu_chi2"      , &(*vu_chi2      ));
   tree->Branch("vu_ndof"      , &(*vu_ndof      ));
@@ -1053,7 +1063,7 @@ void NtupleMaker::makeTree() {
   tree->Branch("vu_sim_assoc" , &(*vu_sim_assoc ));
   tree->Branch("vu_size"      , &(*vu_size      ));
 
-  // Gen particles
+  // Tracking particles
   tree->Branch("vp_pt"        , &(*vp_pt        ));
   tree->Branch("vp_phi"       , &(*vp_phi       ));
   tree->Branch("vp_eta"       , &(*vp_eta       ));

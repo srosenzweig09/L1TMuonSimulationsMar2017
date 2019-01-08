@@ -29,11 +29,11 @@
 #include "DataFormats/HepMCCandidate/interface/GenParticleFwd.h"
 #include "SimDataFormats/TrackingAnalysis/interface/TrackingParticle.h"
 #include "SimDataFormats/TrackingAnalysis/interface/TrackingParticleFwd.h"
+#include "SimDataFormats/PileupSummaryInfo/interface/PileupSummaryInfo.h"
 
-#include "DataFormats/Phase2TrackerDigi/interface/Phase2TrackerDigi.h"
-#include "DataFormats/L1TrackTrigger/interface/TTStub.h"
-#include "DataFormats/L1TrackTrigger/interface/TTCluster.h"
 #include "DataFormats/L1TrackTrigger/interface/TTTypes.h"
+#include "DataFormats/L1TrackTrigger/interface/TTCluster.h"
+#include "DataFormats/L1TrackTrigger/interface/TTStub.h"
 #include "SimTracker/TrackTriggerAssociation/interface/TTClusterAssociationMap.h"
 #include "SimTracker/TrackTriggerAssociation/interface/TTStubAssociationMap.h"
 
@@ -169,10 +169,10 @@ TTStubNtupleMaker::TTStubNtupleMaker(const edm::ParameterSet& iConfig) :
 
   firstEvent_ = true;
 
-  ttstubToken_       = consumes<ttstub_dsv_t>       (ttstubTag_);
-  ttstubAssocToken_  = consumes<ttstub_assocmap_t>  (ttstubAssocTag_);
-  genPartToken_      = consumes<reco::GenParticleCollection>  (genPartTag_);
-  trkPartToken_      = consumes<TrackingParticleCollection>   (trkPartTag_);
+  ttstubToken_       = consumes<ttstub_dsv_t>                   (ttstubTag_);
+  ttstubAssocToken_  = consumes<ttstub_assocmap_t>              (ttstubAssocTag_);
+  genPartToken_      = consumes<reco::GenParticleCollection>    (genPartTag_);
+  trkPartToken_      = consumes<TrackingParticleCollection>     (trkPartTag_);
 }
 
 TTStubNtupleMaker::~TTStubNtupleMaker() {}
