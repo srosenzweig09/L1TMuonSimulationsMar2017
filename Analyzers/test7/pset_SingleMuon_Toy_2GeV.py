@@ -148,11 +148,15 @@ process = customiseEarlyDelete(process)
 
 
 # ______________________________________________________________________________
-# Modify CSC Trigger Primitives
-if True:
-    process.simCscTriggerPrimitiveDigis.commonParam.runME11ILT = False
-    process.simCscTriggerPrimitiveDigis.commonParam.runME21ILT = False
-    process.simCscTriggerPrimitiveDigis.commonParam.runME3141ILT = False
+# Check LCT BX shift
+import os
+if 'CMSSW_VERSION' not in os.environ:
+    raise RunTimeError('Could not determine CMSSW version.')
+cmssw_version = os.environ['CMSSW_VERSION']
+cmssw_version = cmssw_version[6:].split('_')[:3]
+cmssw_version = tuple(int(x) for x in cmssw_version)
+if cmssw_version < (10, 2, 0):
+    process.simEmtfDigis.CSCInputBXShift = cms.int32(-6)
 
 # ______________________________________________________________________________
 # Modify EMTF
@@ -163,6 +167,7 @@ if True:
 # ______________________________________________________________________________
 # Modify paths and schedule definitions
 print("[INFO] Using GlobalTag: %s" % process.GlobalTag.globaltag.value())
+print("[INFO] Using random number seed: %d" % process.RandomNumberGeneratorService.generator.initialSeed.value())
 if True:
     # Ntuplize
     process.load('L1TMuonSimulations.Analyzers.rpcintegration_cfi')
@@ -171,7 +176,7 @@ if True:
     process.TFileService = cms.Service('TFileService', fileName = cms.string(process.ntupler.outFileName.value()))
     # Modify sequences without any consequences
     process.doAllDigi = cms.Sequence(process.generatorSmeared+process.muonDigi)
-    process.SimL1TMuon = cms.Sequence(process.SimL1TMuonCommon+process.me0TriggerPseudoDigiSequence+process.simEmtfDigis)
+    process.SimL1TMuon = cms.Sequence(process.SimL1TMuonCommon+process.rpcRecHits+process.simTwinMuxDigis+process.me0TriggerPseudoDigiSequence+process.simEmtfDigis)
     process.SimL1EmulatorCore = cms.Sequence(process.SimL1TMuon)
     process.SimL1Emulator = cms.Sequence(process.SimL1EmulatorCore)
     process.ntuple_step = cms.Path(process.ntupler)
