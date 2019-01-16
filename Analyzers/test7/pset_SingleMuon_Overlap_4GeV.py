@@ -79,14 +79,14 @@ process.generator = cms.EDProducer("FlatRandomPtGunProducer2",
         MaxPt = cms.double(7000.0),
         MinEta = cms.double(0.8),
         MinPhi = cms.double(-3.14159265359),
-        MinPt = cms.double(2.0),
+        MinPt = cms.double(4.0),
         PartID = cms.vint32(-13),
         PtSpectrum = cms.string('flatOneOverPt'),
         RandomCharge = cms.bool(True)
     ),
     Verbosity = cms.untracked.int32(0),
     firstRun = cms.untracked.uint32(1),
-    psethack = cms.string('single muon+/- pt 2 to 7000 flat in 1/pt positive overlap')
+    psethack = cms.string('single muon+/- pt 4 to 7000 flat in 1/pt positive overlap')
 )
 
 
