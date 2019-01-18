@@ -23,6 +23,7 @@ kDT, kCSC, kRPC, kGEM, kME0 = 0, 1, 2, 3, 4
 eta_bins = (0.8, 1.2, 1.56, 1.7, 1.8, 1.98, 2.16, 2.4)
 eta_bins = eta_bins[::-1]
 pt_bins = (-0.5, -0.365, -0.26, -0.155, -0.07, 0.07, 0.155, 0.26, 0.365, 0.5)
+pt_bins_omtf = (-0.25, -0.2, -0.15, -0.10, -0.05, 0.05, 0.10, 0.15, 0.20, 0.25)  # starts from 4 GeV
 nlayers = 16  # 5 (CSC) + 4 (RPC) + 3 (GEM) + 4 (DT)
 algorithms = ('Phase 2 EMTF++', 'Backported to Run 3', 'Extended to OMTF')
 #superstrip_size = 32
@@ -31,6 +32,9 @@ assert(len(eta_bins) == 7+1)
 assert(len(pt_bins) == 9+1)
 
 # Functions
+def root_sum_square(x, y):
+  return np.sqrt(x*x + y*y)
+
 def delta_phi(lhs, rhs):  # in radians
   rad = lhs - rhs
   while rad <  -np.pi:  rad += np.pi*2
@@ -128,34 +132,22 @@ def find_pt_bin(pt):
   ipt = np.clip(ipt, 0, len(pt_bins)-2)
   return ipt
 
+def find_pt_bin_omtf(pt):
+  ipt = np.digitize((pt,), pt_bins_omtf[1:])[0]  # skip lowest edge
+  ipt = np.clip(ipt, 0, len(pt_bins_omtf)-2)
+  return ipt
+
 def find_eta_bin(eta):
   ieta = np.digitize((np.abs(eta),), eta_bins[1:])[0]  # skip lowest edge
   ieta = np.clip(ieta, 0, len(eta_bins)-2)
   return ieta
 
+def find_pattern_x(emtf_phi):
+  return (emtf_phi+16)//32  # divide by 'quadstrip' unit (4 * 8)
 
-# More functions
 
-# From https://stackoverflow.com/a/31539746
-def weighted_percentile(data, percents, weights=None):
-  ''' percents in units of 1%
-  weights specifies the frequency (count) of data.
-  '''
-  if weights is None:
-    return np.percentile(data, percents)
-  ind=np.argsort(data)
-  d=data[ind]
-  w=weights[ind]
-  p=1.*w.cumsum()/w.sum()*100
-  y=np.interp(percents, p, d)
-  return y
-
-def is_valid_for_run2(hit):
-  is_csc = (hit.type == kCSC)
-  is_rpc = (hit.type == kRPC)
-  is_irpc = (hit.type == kRPC) and ((hit.station == 3 or hit.station == 4) and hit.ring == 1)
-  is_omtf = (hit.type == kRPC) and ((hit.station == 1 or hit.station == 2) and hit.ring == 3)
-  return (is_csc or (is_rpc and not is_irpc and not is_omtf))
+# ______________________________________________________________________________
+# Long functions
 
 # Decide EMTF hit layer number
 class EMTFLayer(object):
@@ -194,8 +186,6 @@ class EMTFLayer(object):
     index = (hit.type, hit.station, hit.ring)
     entry = self.lut[index]
     return entry
-
-find_emtf_layer = EMTFLayer()
 
 # Decide EMTF hit zones
 class EMTFZone(object):
@@ -289,8 +279,6 @@ class EMTFZone(object):
       zones = zones[0]
     return zones
 
-find_emtf_zones = EMTFZone()
-
 # Decide EMTF hit bend
 class EMTFBend(object):
   def __init__(self):
@@ -320,13 +308,35 @@ class EMTFBend(object):
     elif hit.type == kME0:
       bend = hit.bend
     elif hit.type == kDT:
+      if hit.quality >= 4:
+        bend = hit.bend
+      else:
+        bend = 0
+    else:
+      bend = 0
+    return bend
+
+# Decide EMTF hit bend (old version)
+class EMTFOldBend(object):
+  def __init__(self):
+    self.lut = np.array([5, -5, 4, -4, 3, -3, 2, -2, 1, -1, 0], dtype=np.int32)
+
+  def __call__(self, hit):
+    if hit.type == kCSC:
+      clct = int(hit.pattern)
+      bend = self.lut[clct]
+    elif hit.type == kGEM:
+      bend = hit.bend
+      bend *= hit.endcap
+    elif hit.type == kME0:
+      bend = hit.bend
+    elif hit.type == kDT:
       bend = hit.bend
     else:
       bend = 0
     return bend
 
-find_emtf_bend = EMTFBend()
-
+# Decide EMTF hit z-position
 class EMTFZee(object):
   def __init__(self):
     self.lut = np.array([599.0, 696.8, 827.1, 937.5, 1027, 708.7, 790.9, 968.8, 1060, 566.4, 794.8, 539.3, 0, 0, 0, 0], dtype=np.float32)
@@ -335,15 +345,13 @@ class EMTFZee(object):
   def __call__(self, hit):
     return self.lut[hit.emtf_layer]
 
-find_emtf_zee = EMTFZee()
-
+# Decide EMTF hit phi (integer unit)
 class EMTFPhi(object):
-  def __init__(self):
-    pass
-
   def __call__(self, hit):
+    emtf_phi = hit.emtf_phi
     if hit.type == kCSC:
       if hit.station == 1:
+        #FIXME: check the coefficients
         if hit.ring == 1:
           bend_corr_lut = (-1.3861, 1.3692)  # ME1/1b (r,f)
         elif hit.ring == 4:
@@ -353,15 +361,45 @@ class EMTFPhi(object):
         bend_corr = bend_corr_lut[int(hit.fr)] * hit.bend
         bend_corr = bend_corr if hit.endcap == 1 else (bend_corr * -1)
         bend_corr = int(round(bend_corr))
-        return hit.emtf_phi + bend_corr
+        emtf_phi = emtf_phi + bend_corr
       else:
         pass
     else:
       pass
-    return hit.emtf_phi
+    return emtf_phi
 
-find_emtf_phi = EMTFPhi()
+# Decide EMTF hit theta (integer unit)
+class EMTFTheta(object):
+  def __call__(self, hit):
+    emtf_theta = hit.emtf_theta
+    if hit.type == kDT:
+      if hit.wire == -1:
+        if hit.station == 1:
+          emtf_theta = 112
+        elif hit.station == 2:
+          emtf_theta = 122
+        elif hit.station == 3:
+          emtf_theta = 131
+      else:
+        pass
+    else:
+      pass
+    return emtf_theta
 
+# Decide EMTF hit quality
+class EMTFQuality(object):
+  def __call__(self, hit):
+    emtf_quality = hit.quality
+    return emtf_quality
+
+# Decide EMTF hit time (integer unit)
+class EMTFTime(object):
+  def __call__(self, hit):
+    #emtf_time = hit.time
+    emtf_time = hit.bx
+    return emtf_time
+
+# Decide EMTF hit layer partner (to make pairs and calculate deflection angles)
 class EMTFLayerPartner(object):
   def __init__(self):
     self.lut = np.array([2, 2, 0, 0, 0, 0, 2, 3, 4, 0, 2, 0, 0, 0, 0, 0], dtype=np.int32)
@@ -374,8 +412,6 @@ class EMTFLayerPartner(object):
         partner = 1
     return partner
 
-find_emtf_layer_partner = EMTFLayerPartner()
-
 # Decide EMTF road quality (by pT)
 class EMTFRoadQuality(object):
   def __init__(self):
@@ -384,27 +420,36 @@ class EMTFRoadQuality(object):
   def __call__(self, ipt):
     return self.best_ipt - np.abs(ipt - self.best_ipt)
 
-find_emtf_road_quality = EMTFRoadQuality()
-
 # Decide EMTF road sort code
 class EMTFRoadSortCode(object):
   def __init__(self):
     # 11   10     9      8      7    6      5      4      3      2..0
     # ME0, ME1/1, GE1/1, ME1/2, ME2, GE2/1, ME3&4, RE1&2, RE3&4, qual
-    self.hits_to_mlayer = (10,8,7,5,5,4,4,3,3,9,6,11)
+    self.lut = np.array([10,8,7,5,5,4,4,3,3,9,6,11,11,11,11,11], dtype=np.int32)
+    assert(self.lut.shape[0] == nlayers)
 
   def __call__(self, mode, qual, hits):
     code = 0
     for hit in hits:
       hit_lay = hit.emtf_layer
-      mlayer = self.hits_to_mlayer[hit_lay]
+      mlayer = self.lut[hit_lay]
       code |= (1 << mlayer)
     code |= qual
     return code
 
+find_emtf_layer = EMTFLayer()
+find_emtf_zones = EMTFZone()
+find_emtf_bend = EMTFBend()
+find_emtf_old_bend = EMTFOldBend()
+find_emtf_zee = EMTFZee()
+find_emtf_phi = EMTFPhi()
+find_emtf_theta = EMTFTheta()
+find_emtf_quality = EMTFQuality()
+find_emtf_time = EMTFTime()
+find_emtf_layer_partner = EMTFLayerPartner()
+find_emtf_road_quality = EMTFRoadQuality()
 find_emtf_road_sort_code = EMTFRoadSortCode()
 
-# Decide EMTF road mode
 def is_emtf_singlemu(mode):
   return mode in (11,13,14,15)
 
@@ -414,7 +459,7 @@ def is_emtf_doublemu(mode):
 def is_emtf_muopen(mode):
   return mode in (3,5,6,9) + (7,10,12) + (11,13,14,15)
 
-def is_emtf_single(mode):
+def is_emtf_singlehit(mode):
   return bool(mode & (1 << 3))
 
 # Decide EMTF legit hit
@@ -427,27 +472,55 @@ def is_emtf_legit_hit(hit):
     else:
       return hit.bx == 0
   def check_emtf_phi(hit):
-    if hit.type == kDT:
+    if hit.type == kME0:
       return hit.emtf_phi > 0
-    elif hit.type == kME0:
+    elif hit.type == kDT:
       return hit.emtf_phi > 0
     else:
       return True
   return check_bx(hit) and check_emtf_phi(hit)
 
+def is_valid_for_run2(hit):
+  is_csc = (hit.type == kCSC)
+  is_rpc = (hit.type == kRPC)
+  is_irpc = (hit.type == kRPC) and ((hit.station == 3 or hit.station == 4) and hit.ring == 1)
+  is_omtf = (hit.type == kRPC) and ((hit.station == 1 or hit.station == 2) and hit.ring == 3)
+  return (is_csc or (is_rpc and not is_irpc and not is_omtf))
+
+# From https://stackoverflow.com/a/31539746
+def weighted_percentile(data, percents, weights=None):
+  ''' percents in units of 1%
+  weights specifies the frequency (count) of data.
+  '''
+  if weights is None:
+    return np.percentile(data, percents)
+  ind=np.argsort(data)
+  d=data[ind]
+  w=weights[ind]
+  p=1.*w.cumsum()/w.sum()*100
+  y=np.interp(percents, p, d)
+  return y
+
 
 # ______________________________________________________________________________
 # Data Formats
 
+PARTICLE_NVARS = 5
+
 class Particle(object):
-  def __init__(self, pt, eta, phi, q):
+  def __init__(self, pt, eta, phi, q, vx, vy, vz):
     self.pt = pt
     self.eta = eta
     self.phi = phi
     self.q = q
+    self.vx = vx
+    self.vy = vy
+    self.vz = vz
 
   def to_parameters(self):
-    parameters = np.array((np.true_divide(self.q, self.pt), self.phi, self.eta), dtype=np.float32)
+    # Convert into an entry in a numpy array
+    # (q/pT, phi, eta, dxy, dz)
+    parameters = np.array((np.true_divide(self.q, self.pt), self.phi, self.eta, root_sum_square(self.vx, self.vy), self.vz), dtype=np.float32)
     return parameters
 
 class PatternBank(object):
@@ -455,39 +528,45 @@ class PatternBank(object):
     with np.load(bankfile) as data:
       patterns_phi = data['patterns_phi']
       #patterns_theta = data['patterns_theta']
-      patterns_theta = np.zeros_like(patterns_phi)
       patterns_match = data['patterns_match']
     self.x_array = patterns_phi
-    self.y_array = patterns_theta
+    #self.y_array = patterns_theta
     self.z_array = patterns_match
     assert(self.x_array.dtype == np.int32)
-    assert(self.y_array.dtype == np.int32)
+    #assert(self.y_array.dtype == np.int32)
     assert(self.z_array.dtype == np.int32)
     assert(self.x_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
-    assert(self.y_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
+    #assert(self.y_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
     assert(self.z_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
 
 class Hit(object):
-  def __init__(self, _id, emtf_layer, emtf_phi, emtf_theta, emtf_bend, time, sim_tp):
+  def __init__(self, _id, emtf_layer, emtf_phi, emtf_theta, emtf_bend,
+               emtf_quality, emtf_time, old_emtf_phi, old_emtf_bend,
+               extra_emtf_theta, sim_tp):
     self.id = _id  # (_type, station, ring, sector, fr, bx)
     self.emtf_layer = emtf_layer
     self.emtf_phi = emtf_phi
     self.emtf_theta = emtf_theta
     self.emtf_bend = emtf_bend
-    self.time = time
+    self.emtf_quality = emtf_quality
+    self.emtf_time = emtf_time
+    self.old_emtf_phi = old_emtf_phi
+    self.old_emtf_bend = old_emtf_bend
+    self.extra_emtf_theta = extra_emtf_theta
     self.sim_tp = sim_tp
 
   def get_ring(self):
     return self.id[2]
-
   def get_sector(self):
     return self.id[3]
-
   def get_fr(self):
     return self.id[4]
-
   def get_bx(self):
     return self.id[5]
+
+ROAD_LAYER_NVARS = 10  # each layer in the road carries 10 variables
+ROAD_LAYER_NVARS_P1 = ROAD_LAYER_NVARS + 1  # plus layer mask
+ROAD_INFO_NVARS = 3
 
 class Road(object):
   def __init__(self, _id, hits, mode, mode_csc, quality, sort_code, theta_median):
@@ -500,6 +579,8 @@ class Road(object):
     self.theta_median = theta_median
 
   def to_variables(self):
+    # Convert into an entry in a numpy array
+    # At the moment, each entry carries (nlayers * 10) + 3 values
     amap = {}
     (endcap, sector, ipt, ieta, iphi) = self.id
     road_info = (ipt, ieta, iphi)
@@ -508,16 +589,15 @@ class Road(object):
       hit_lay = hit.emtf_layer
       if hit_lay not in amap:
         amap[hit_lay] = hit
-    #
-    arr = np.zeros((nlayers * 7) + 3, dtype=np.float32)
-    arr[0*nlayers:6*nlayers] = np.nan  # emtf_phi, emtf_theta, emtf_bend, time, ring, fr
-    arr[6*nlayers:7*nlayers] = 1.0     # mask
-    arr[7*nlayers:]          = road_info
+    arr = np.zeros((ROAD_LAYER_NVARS_P1 * nlayers) + ROAD_INFO_NVARS, dtype=np.float32)
+    arr[0*nlayers:ROAD_LAYER_NVARS*nlayers] = np.nan                # variables (n=nlayers * 10)
+    arr[ROAD_LAYER_NVARS*nlayers:ROAD_LAYER_NVARS_P1*nlayers] = 1.0 # mask      (n=nlayers * 1)
+    arr[ROAD_LAYER_NVARS_P1*nlayers:] = road_info                   # road info (n=3)
     for lay, hit in amap.iteritems():
-      ind = [i*nlayers + lay for i in xrange(6)]
-      arr[ind] = (hit.emtf_phi, hit.emtf_theta, hit.emtf_bend, hit.get_bx(), hit.get_ring(), hit.get_fr())
-      ind = (6*nlayers + lay)
-      arr[ind] = 0.0
+      ind = [i*nlayers + lay for i in xrange(ROAD_LAYER_NVARS)]
+      arr[ind] = (hit.emtf_phi, hit.emtf_theta, hit.emtf_bend, hit.emtf_quality, hit.emtf_time, hit.get_ring(), hit.get_fr(), hit.old_emtf_phi, hit.old_emtf_bend, hit.extra_emtf_theta)
+      ind = (ROAD_LAYER_NVARS*nlayers + lay)
+      arr[ind] = 0.0  # unmask
     return arr
 
 class Track(object):
@@ -536,14 +616,16 @@ class Track(object):
     self.phi = calc_phi_glob_deg(calc_phi_loc_deg(emtf_phi), _id[1])
     self.eta = calc_eta_from_theta_deg(calc_theta_deg_from_int(emtf_theta), _id[0])
 
+# Save particle list as a numpy array
 def particles_to_parameters(particles):
-  parameters = np.zeros((len(particles), 3), dtype=np.float32)
+  parameters = np.zeros((len(particles), PARTICLE_NVARS), dtype=np.float32)
   for i, part in enumerate(particles):
     parameters[i] = part.to_parameters()
   return parameters
 
+# Save road list as a numpy array
 def roads_to_variables(roads):
-  variables = np.zeros((len(roads), (nlayers * 7) + 3), dtype=np.float32)
+  variables = np.zeros((len(roads), (ROAD_LAYER_NVARS_P1 * nlayers) + ROAD_INFO_NVARS), dtype=np.float32)
   for i, road in enumerate(roads):
     variables[i] = road.to_variables()
   return variables
@@ -552,16 +634,24 @@ def roads_to_variables(roads):
 # ______________________________________________________________________________
 # Modules
 
+PATTERN_X_CENTRAL = 23  # pattern bin number 23 is the central
+PATTERN_X_SEARCH_MIN = 33
+PATTERN_X_SEARCH_MAX = 154-10
+
 # Pattern recognition module
 class PatternRecognition(object):
-  def __init__(self, bank):
+  def __init__(self, bank, run2_input=False):
     self.bank = bank
     self.cache = dict()  # cache for pattern results
+    self.run2_input = run2_input
 
   def _create_road_hit(self, hit):
     hit_id = (hit.type, hit.station, hit.ring, hit.endsec, hit.fr, hit.bx)
     hit_sim_tp = (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)
-    myhit = Hit(hit_id, hit.lay, hit.emtf_phi, hit.emtf_theta, hit.emtf_bend, hit.time, hit_sim_tp)
+    extra_emtf_theta = 0  #FIXME
+    myhit = Hit(hit_id, hit.lay, hit.emtf_phi, hit.emtf_theta, hit.emtf_bend,
+                hit.emtf_quality, hit.emtf_time, hit.old_emtf_phi, hit.old_emtf_bend,
+                extra_emtf_theta, hit_sim_tp)
     return myhit
 
   def _apply_patterns_in_zone(self, zone, hit_lay):
@@ -572,7 +662,7 @@ class PatternRecognition(object):
     # Retrieve patterns with (ipt, ieta, lay, pattern)
     patterns_x0 = self.bank.x_array[:, zone, hit_lay, 0, np.newaxis]
     patterns_x1 = self.bank.x_array[:, zone, hit_lay, 2, np.newaxis]
-    patterns_iphi = np.arange(-23, 23+1, dtype=np.int32)
+    patterns_iphi = np.arange(-PATTERN_X_CENTRAL, PATTERN_X_CENTRAL+1, dtype=np.int32)
     mask = (patterns_x0 <= patterns_iphi) & (patterns_iphi <= patterns_x1)
     result = np.transpose(np.nonzero(mask))
     self.cache[(zone, hit_lay)] = result
@@ -583,7 +673,7 @@ class PatternRecognition(object):
 
     # Loop over hits
     for ihit, hit in enumerate(sector_hits):
-      hit_x = (hit.emtf_phi+16)//32  # divide by 'quadstrip' unit (4 * 8)
+      hit_x = find_pattern_x(hit.emtf_phi)
       #hit_y = hit.emtf_theta
       hit_lay = hit.lay
       hit_zones = hit.zones
@@ -596,26 +686,25 @@ class PatternRecognition(object):
 
         for index in result:
           ipt, iphi = index
-          iphi = hit_x - (iphi - 23)  # iphi 0 starts at -23
+          iphi = hit_x - (iphi - PATTERN_X_CENTRAL)  # iphi 0 starts at -23
           ieta = zone
 
-          # Full range is 0 <= iphi <= 154. but this is sufficient (27% saving on patterns)
-          if 33 <= iphi <= (154-10):
-            # Create 'myhit'
+          # Full range is 0 <= iphi <= 154. but a reduced range is sufficient (27% saving on patterns)
+          if PATTERN_X_SEARCH_MIN <= iphi <= PATTERN_X_SEARCH_MAX:
+            # Create and associate 'myhit' to road ids
             if myhit is None:
               myhit = self._create_road_hit(hit)
-
-            # Associate 'myhit' to road ids
             road_id = (endcap, sector, ipt, ieta, iphi)
             amap.setdefault(road_id, []).append(myhit)  # append hit to road
 
-    # Create a road
+    # Create roads
     roads = []
     for road_id, road_hits in amap.iteritems():
       (endcap, sector, ipt, ieta, iphi) = road_id
       road_mode = 0
       road_mode_csc = 0
       road_mode_me0 = 0
+      road_mode_omtf = 0
       tmp_road_hits = []
       tmp_thetas = []
 
@@ -632,12 +721,25 @@ class PatternRecognition(object):
         elif _type == kCSC and station >= 2:
           road_mode_me0 |= (1 << 0)
 
+        if _type == kDT and station == 1:
+          road_mode_omtf |= (1 << 3)
+        elif _type == kDT and station >= 2:
+          road_mode_omtf |= (1 << 2)
+        elif _type == kCSC and station == 1 and ring == 3:
+          road_mode_omtf |= (1 << 1)
+        elif _type == kCSC and station == 2 and ring == 2:
+          road_mode_omtf |= (1 << 0)
+
         tmp_road_hits.append(hit)
         if _type == kCSC:
           tmp_thetas.append(hit.emtf_theta)
 
-      # Apply modified SingleMu requirement
-      if (is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc)) or (road_mode_me0 >= 6):
+      # Apply SingleMu requirement
+      # + (zones 0,1) any road with ME0 and ME1
+      # + (zone 6) any road with MB1+MB2, MB1+ME1/3, MB1+ME2/2, MB2+ME1/3, MB2+ME2/2, ME1/3+ME2/2
+      if ((is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
+          (ieta in (0,1) and road_mode_me0 >= 6) or
+          (ieta in (6,) and road_mode_omtf not in (1,2,4,8))):
         road_quality = find_emtf_road_quality(ipt)
         road_sort_code = find_emtf_road_sort_code(road_mode, road_quality, tmp_road_hits)
         tmp_theta = np.median(tmp_thetas, overwrite_input=True)
@@ -662,8 +764,12 @@ class PatternRecognition(object):
       hit.lay = find_emtf_layer(hit)
       assert(hit.lay != -99)
 
-      if (hit.type == kCSC or hit.type == kME0):
+      if hit.type == kCSC:
         sector_mode_array[hit.endsec] |= (1 << (4 - hit.station))
+      elif hit.type == kME0:
+        sector_mode_array[hit.endsec] |= (1 << (4 - 1))
+      elif hit.type == kDT and (hit.quality >= 4):
+        sector_mode_array[hit.endsec] |= (1 << (4 - 1))
       sector_hits_array[hit.endsec].append(hit)
 
     # Loop over sector processors
@@ -673,24 +779,26 @@ class PatternRecognition(object):
         sector_mode = sector_mode_array[endsec]
         sector_hits = sector_hits_array[endsec]
 
-        # Provide early exit (using csc-only 'mode')
-        if not is_emtf_muopen(sector_mode):
+        # Provide early exit if fail MuOpen and no hit in station 1 (check CSC, ME0, DT)
+        if not is_emtf_muopen(sector_mode) and not is_emtf_singlehit(sector_mode):
           continue
 
         # Remove all RPC hits
         #sector_hits = [hit for hit in sector_hits if hit.type != kRPC]
 
         # Remove all non-Run 2 hits
-        only_use_run2 = False
-        if only_use_run2:
+        if self.run2_input:
           sector_hits = list(filter(is_valid_for_run2, sector_hits))
 
         # Loop over sector hits
         for ihit, hit in enumerate(sector_hits):
           hit.old_emtf_phi = hit.emtf_phi
-          #hit.emtf_zee = find_emtf_zee(hit)
           hit.emtf_phi = find_emtf_phi(hit)
+          hit.emtf_theta = find_emtf_theta(hit)
           hit.emtf_bend = find_emtf_bend(hit)
+          hit.emtf_quality = find_emtf_quality(hit)
+          hit.emtf_time = find_emtf_time(hit)
+          hit.old_emtf_bend = find_emtf_old_bend(hit)
           hit.zones = find_emtf_zones(hit)
 
         # Apply patterns
@@ -783,10 +891,10 @@ class RoadCleaning(object):
             break
 
         if keep:
-          # Do not share ME1/1, ME1/2 or ME0
+          # Do not share ME1/1, ME1/2, ME0, MB1, MB2
           for j, road_to_check in enumerate(clean_roads[:i]):
-            hits_i = [(hit.emtf_layer, hit.emtf_phi) for hit in road.hits if hit.emtf_layer in (0,1,11)]
-            hits_j = [(hit.emtf_layer, hit.emtf_phi) for hit in road_to_check.hits if hit.emtf_layer in (0,1,11)]
+            hits_i = [(hit.emtf_layer, hit.emtf_phi) for hit in road.hits if hit.emtf_layer in (0,1,11,12,13)]
+            hits_j = [(hit.emtf_layer, hit.emtf_phi) for hit in road_to_check.hits if hit.emtf_layer in (0,1,11,12,13)]
             if set(hits_i).intersection(hits_j):
               keep = False
               break
@@ -1155,9 +1263,9 @@ class DummyAnalysis(object):
 
 
 # ______________________________________________________________________________
-# Analysis: road
+# Analysis: roads
 
-class RoadAnalysis(object):
+class RoadsAnalysis(object):
   def run(self):
     # Book histograms
     histograms = {}
@@ -1207,7 +1315,7 @@ class RoadAnalysis(object):
       part.invpt = np.true_divide(part.q, part.pt)
 
       if len(slim_roads) > 0:
-        mypart = Particle(part.pt, part.eta, part.phi, part.q)
+        mypart = Particle(part.pt, part.eta, part.phi, part.q, part.vx, part.vy, part.vz)
         out_particles.append(mypart)
         out_roads.append(slim_roads[0])
 
@@ -1728,8 +1836,8 @@ use_condor = ('CONDOR_EXEC' in os.environ)
 algo = 2
 
 # Analysis mode
-analysis = 'dummy'
-#analysis = 'application'
+#analysis = 'dummy'
+analysis = 'roads'
 #analysis = 'rates'
 #analysis = 'effie'
 #analysis = 'mixing'
@@ -1744,7 +1852,8 @@ if use_condor:
 
 
 # Input files
-bankfile = 'pattern_bank.20.npz'
+#bankfile = 'pattern_bank.20.npz'
+bankfile = 'pattern_bank_omtf.21.npz'
 
 kerasfile = ['model.20.json', 'model_weights.20.h5']
 
@@ -1789,7 +1898,7 @@ def load_pgun_batch(j):
 
 def load_pgun_omtf():
   global infile_r
-  infile = 'ntuple_SingleMuon_Overlap_2GeV_add.1.root'
+  infile = 'ntuple_SingleMuon_Overlap_2GeV_add.2.root'
   #if use_condor:
   #  infile = 'root://cmsio5.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/'+infile
   infile_r = root_open(infile)
@@ -1870,8 +1979,8 @@ if __name__ == "__main__":
     forrest = DummyAnalysis()
     forrest.run()
 
-  elif analysis == 'road':
-    forrest = RoadAnalysis()
+  elif analysis == 'roads':
+    forrest = RoadsAnalysis()
     forrest.run()
 
   elif analysis == 'rates':
