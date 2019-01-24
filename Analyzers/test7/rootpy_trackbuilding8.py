@@ -211,7 +211,7 @@ class EMTFZone(object):
     lut[1,2,1][3] = 34,43   # ME2/1
     lut[1,2,1][4] = 41,49   # ME2/1
     lut[1,2,2][5] = 53,88   # ME2/2
-    lut[1,2,2][6] = 84,111  # ME2/2
+    lut[1,2,2][6] = 83,111  # ME2/2
     #
     lut[1,3,1][0] = 4,17    # ME3/1
     lut[1,3,1][1] = 16,25   # ME3/1
@@ -219,7 +219,7 @@ class EMTFZone(object):
     lut[1,3,1][3] = 34,40   # ME3/1
     lut[1,3,2][4] = 44,54   # ME3/2
     lut[1,3,2][5] = 52,88   # ME3/2
-    lut[1,3,2][6] = 84,96   # ME3/2
+    lut[1,3,2][6] = 83,96   # ME3/2
     #
     lut[1,4,1][0] = 4,17    # ME4/1
     lut[1,4,1][1] = 16,25   # ME4/1
@@ -288,7 +288,7 @@ class EMTFBend(object):
     if hit.type == kCSC:
       #clct = int(hit.pattern)
       #bend = self.lut[clct]
-      bend = hit.bend
+      bend = np.int32(hit.bend)
       if hit.station == 1:
         # Special case for ME1/1a:
         # rescale the bend to the same scale as ME1/1b
@@ -309,7 +309,7 @@ class EMTFBend(object):
       bend = hit.bend
     elif hit.type == kDT:
       if hit.quality >= 4:
-        bend = hit.bend
+        bend = np.clip(hit.bend, -512, 511)
       else:
         bend = 0
     else:
@@ -348,7 +348,7 @@ class EMTFZee(object):
 # Decide EMTF hit phi (integer unit)
 class EMTFPhi(object):
   def __call__(self, hit):
-    emtf_phi = hit.emtf_phi
+    emtf_phi = np.int32(hit.emtf_phi)
     if hit.type == kCSC:
       if hit.station == 1:
         #FIXME: check the coefficients
@@ -371,7 +371,7 @@ class EMTFPhi(object):
 # Decide EMTF hit theta (integer unit)
 class EMTFTheta(object):
   def __call__(self, hit):
-    emtf_theta = hit.emtf_theta
+    emtf_theta = np.int32(hit.emtf_theta)
     if hit.type == kDT:
       if hit.wire == -1:
         if hit.station == 1:
@@ -389,14 +389,14 @@ class EMTFTheta(object):
 # Decide EMTF hit quality
 class EMTFQuality(object):
   def __call__(self, hit):
-    emtf_quality = hit.quality
+    emtf_quality = np.int32(hit.quality)
     return emtf_quality
 
 # Decide EMTF hit time (integer unit)
 class EMTFTime(object):
   def __call__(self, hit):
     #emtf_time = hit.time
-    emtf_time = hit.bx
+    emtf_time = np.int32(hit.bx)
     return emtf_time
 
 # Decide EMTF hit layer partner (to make pairs and calculate deflection angles)
@@ -425,7 +425,7 @@ class EMTFRoadSortCode(object):
   def __init__(self):
     # 11   10     9      8      7    6      5      4      3      2..0
     # ME0, ME1/1, GE1/1, ME1/2, ME2, GE2/1, ME3&4, RE1&2, RE3&4, qual
-    self.lut = np.array([10,8,7,5,5,4,4,3,3,9,6,11,11,11,11,11], dtype=np.int32)
+    self.lut = np.array([10,8,7,5,5,4,4,3,3,9,6,11,11,10,9,9], dtype=np.int32)
     assert(self.lut.shape[0] == nlayers)
 
   def __call__(self, mode, qual, hits):
@@ -468,7 +468,7 @@ def is_emtf_legit_hit(hit):
     if hit.type == kCSC:
       return hit.bx in (-1,0)
     elif hit.type == kDT:
-      return hit.bx == 0 # allow BX mis-assignment?
+      return hit.bx in (-1,0)
     else:
       return hit.bx == 0
   def check_emtf_phi(hit):
@@ -569,11 +569,10 @@ ROAD_LAYER_NVARS_P1 = ROAD_LAYER_NVARS + 1  # plus layer mask
 ROAD_INFO_NVARS = 3
 
 class Road(object):
-  def __init__(self, _id, hits, mode, mode_csc, quality, sort_code, theta_median):
+  def __init__(self, _id, hits, mode, quality, sort_code, theta_median):
     self.id = _id  # (endcap, sector, ipt, ieta, iphi)
     self.hits = hits
     self.mode = mode
-    self.mode_csc = mode_csc
     self.quality = quality
     self.sort_code = sort_code
     self.theta_median = theta_median
@@ -601,11 +600,12 @@ class Road(object):
     return arr
 
 class Track(object):
-  def __init__(self, _id, hits, mode, xml_pt, pt, q, emtf_phi, emtf_theta, ndof, chi2):
+  def __init__(self, _id, hits, mode, zone, xml_pt, pt, q, emtf_phi, emtf_theta, ndof, chi2):
     assert(pt > 0.)
     self.id = _id  # (endcap, sector)
     self.hits = hits
     self.mode = mode
+    self.zone = zone
     self.xml_pt = xml_pt
     self.pt = pt
     self.q = q
@@ -711,6 +711,7 @@ class PatternRecognition(object):
       for hit in road_hits:
         (_type, station, ring, endsec, fr, bx) = hit.id
         road_mode |= (1 << (4 - station))
+
         if _type == kCSC or _type == kME0:
           road_mode_csc |= (1 << (4 - station))
 
@@ -723,8 +724,10 @@ class PatternRecognition(object):
 
         if _type == kDT and station == 1:
           road_mode_omtf |= (1 << 3)
-        elif _type == kDT and station >= 2:
+        elif _type == kDT and station == 2:
           road_mode_omtf |= (1 << 2)
+        elif _type == kDT and station == 3:
+          road_mode_omtf |= (1 << 1)
         elif _type == kCSC and station == 1 and ring == 3:
           road_mode_omtf |= (1 << 1)
         elif _type == kCSC and station == 2 and ring == 2:
@@ -736,7 +739,7 @@ class PatternRecognition(object):
 
       # Apply SingleMu requirement
       # + (zones 0,1) any road with ME0 and ME1
-      # + (zone 6) any road with MB1+MB2, MB1+ME1/3, MB1+ME2/2, MB2+ME1/3, MB2+ME2/2, ME1/3+ME2/2
+      # + (zone 6) any road with MB1+MB2, MB1+ME1/3, MB1+ME2/2, MB2+MB3, MB2+ME1/3, MB2+ME2/2, ME1/3+ME2/2
       if ((is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
           (ieta in (0,1) and road_mode_me0 >= 6) or
           (ieta in (6,) and road_mode_omtf not in (1,2,4,8))):
@@ -744,7 +747,7 @@ class PatternRecognition(object):
         road_sort_code = find_emtf_road_sort_code(road_mode, road_quality, tmp_road_hits)
         tmp_theta = np.median(tmp_thetas, overwrite_input=True)
 
-        myroad = Road(road_id, tmp_road_hits, road_mode, road_mode_csc, road_quality, road_sort_code, tmp_theta)
+        myroad = Road(road_id, tmp_road_hits, road_mode, road_quality, road_sort_code, tmp_theta)
         roads.append(myroad)
     return roads
 
@@ -768,7 +771,7 @@ class PatternRecognition(object):
         sector_mode_array[hit.endsec] |= (1 << (4 - hit.station))
       elif hit.type == kME0:
         sector_mode_array[hit.endsec] |= (1 << (4 - 1))
-      elif hit.type == kDT and (hit.quality >= 4):
+      elif hit.type == kDT:
         sector_mode_array[hit.endsec] |= (1 << (4 - 1))
       sector_hits_array[hit.endsec].append(hit)
 
@@ -873,6 +876,7 @@ class RoadCleaning(object):
     clean_roads = list(filter(select_bx_zero, clean_roads))
 
     if clean_roads:
+      # Sort by 'sort code'
       clean_roads.sort(key=lambda road: road.sort_code, reverse=True)
 
       # Iterate over clean_roads
@@ -1018,7 +1022,7 @@ class RoadSlimming(object):
           assert(len(hits_array[hit_lay]) == 1)
           slim_road_hits.append(hits_array[hit_lay][0])
 
-      slim_road = Road(road.id, slim_road_hits, road.mode, road.mode_csc, road.quality, road.sort_code, road.theta_median)
+      slim_road = Road(road.id, slim_road_hits, road.mode, road.quality, road.sort_code, road.theta_median)
       slim_roads.append(slim_road)
     return slim_roads
 
@@ -1227,19 +1231,49 @@ class TrackProducer(object):
         trk_q = np.sign(y_meas)
         trk_emtf_phi = myroad.id[4]
         trk_emtf_theta = myroad.theta_median
-        trk = Track(myroad.id, myroad.hits, mode, xml_pt, pt, trk_q, trk_emtf_phi, trk_emtf_theta, ndof, y_discr)
+        trk = Track(myroad.id, myroad.hits, mode, zone, xml_pt, pt, trk_q, trk_emtf_phi, trk_emtf_theta, ndof, y_discr)
         tracks.append(trk)
     return tracks
+
+
+# Ghost busting module
+class GhostBusting(object):
+  def __init__(self):
+    pass
+
+  def run(self, tracks):
+    tracks_after_gb = []
+
+    # Sort by (zone, chi2)
+    tracks.sort(key=lambda track: (track.zone, track.chi2), reverse=True)
+
+    # Iterate over tracks and remove duplicates (ghosts)
+    for i, track in enumerate(tracks):
+      keep = True
+
+      # Do not share ME1/1, ME1/2, ME0, MB1, MB2
+      for j, track_to_check in enumerate(tracks[:i]):
+        hits_i = [(hit.emtf_layer, hit.emtf_phi) for hit in road.hits if hit.emtf_layer in (0,1,11,12,13)]
+        hits_j = [(hit.emtf_layer, hit.emtf_phi) for hit in road_to_check.hits if hit.emtf_layer in (0,1,11,12,13)]
+        if set(hits_i).intersection(hits_j):
+          keep = False
+          break
+
+      if keep:
+        tracks_after_gb.append(track)
+    return tracks_after_gb
 
 
 # ______________________________________________________________________________
 # Analysis: dummy
 
 class DummyAnalysis(object):
-  def run(self):
+  def run(self, omtf_input=False, run2_input=False):
     # Load tree
-    #tree = load_pgun()
-    tree = load_pgun_omtf()
+    if omtf_input:
+      tree = load_pgun_omtf()
+    else:
+      tree = load_pgun()
 
     # Loop over events
     for ievt, evt in enumerate(tree):
@@ -1266,7 +1300,7 @@ class DummyAnalysis(object):
 # Analysis: roads
 
 class RoadsAnalysis(object):
-  def run(self):
+  def run(self, omtf_input=False, run2_input=False):
     # Book histograms
     histograms = {}
     eff_pt_bins = (0., 0.5, 1., 1.5, 2., 3., 4., 5., 6., 7., 8., 10., 12., 14., 16., 18., 20., 22., 24., 27., 30., 34., 40., 48., 60., 80., 120.)
@@ -1285,12 +1319,14 @@ class RoadsAnalysis(object):
       histograms[hname].Sumw2()
 
     # Load tree
-    #tree = load_pgun()
-    tree = load_pgun_batch(jobid)
+    if omtf_input:
+      tree = load_pgun_batch_omtf(jobid)
+    else:
+      tree = load_pgun_batch(jobid)
 
     # Workers
     bank = PatternBank(bankfile)
-    recog = PatternRecognition(bank)
+    recog = PatternRecognition(bank, run2_input=run2_input)
     clean = RoadCleaning()
     slim = RoadSlimming(bank)
     out_particles = []
@@ -1319,10 +1355,15 @@ class RoadsAnalysis(object):
         out_particles.append(mypart)
         out_roads.append(slim_roads[0])
 
-      is_important = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0) and (part.pt > 5.)
-
-      is_possible = lambda hits: any([((hit.type == kCSC or hit.type == kME0) and hit.station == 1) for hit in hits]) and \
-          any([(hit.type == kCSC and hit.station >= 2) for hit in hits])
+      if omtf_input:
+        is_important = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0) and (part.pt > 4.)
+        is_possible = lambda hits: any([((hit.type == kDT and 1 <= hit.station <= 2) or (hit.type == kCSC and hit.station == 1)) for hit in hits]) and \
+            any([((hit.type == kDT and 2 <= hit.station <= 3) or (hit.type == kCSC and 1 <= hit.station <= 3)) for hit in hits]) and \
+            sum([(hit.type == kDT or hit.type == kCSC) for hit in hits]) >= 2
+      else:
+        is_important = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0) and (part.pt > 5.)
+        is_possible = lambda hits: any([((hit.type == kCSC or hit.type == kME0) and hit.station == 1) for hit in hits]) and \
+            any([(hit.type == kCSC and hit.station >= 2) for hit in hits])
 
       if ievt < 20 or (len(clean_roads) == 0 and is_important(part) and is_possible(evt.hits)):
         print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
@@ -1340,7 +1381,7 @@ class RoadsAnalysis(object):
         for ihit, hit in enumerate(evt.hits):
           hit_id = (hit.type, hit.station, hit.ring, find_endsec(hit.endcap, hit.sector), hit.fr, hit.bx)
           hit_sim_tp = (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)
-          print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, hit_id, find_emtf_layer(hit), hit.emtf_phi, hit.emtf_theta, hit_sim_tp))
+          print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bd: {5} qual: {6} tp: {7}".format(ihit, hit_id, find_emtf_layer(hit), hit.emtf_phi, hit.emtf_theta, find_emtf_bend(hit), find_emtf_quality(hit), hit_sim_tp))
         for iroad, myroad in enumerate(sorted(roads, key=lambda x: x.id)):
           print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
         for iroad, myroad in enumerate(clean_roads):
@@ -1415,7 +1456,7 @@ class RoadsAnalysis(object):
 # Analysis: rates
 
 class RatesAnalysis(object):
-  def run(self):
+  def run(self, omtf_input=False, run2_input=False):
     # Book histograms
     histograms = {}
     hname = "nevents"
@@ -1439,11 +1480,12 @@ class RatesAnalysis(object):
 
     # Workers
     bank = PatternBank(bankfile)
-    recog = PatternRecognition(bank)
+    recog = PatternRecognition(bank, run2_input=run2_input)
     clean = RoadCleaning()
     slim = RoadSlimming(bank)
     ptassign = PtAssignment(kerasfile)
     trkprod = TrackProducer()
+    ghost = GhostBusting()
     out_variables = []
     out_predictions = []
 
@@ -1462,6 +1504,7 @@ class RatesAnalysis(object):
       variables = roads_to_variables(slim_roads)
       variables_mod, predictions, other_vars = ptassign.run(variables)
       emtf2026_tracks = trkprod.run(slim_roads, variables_mod, predictions, other_vars)
+      emtf2026_tracks = ghost.run(emtf2026_tracks)
 
       found_high_pt_tracks = any(map(lambda trk: trk.pt > 20., emtf2026_tracks))
 
@@ -1583,7 +1626,7 @@ class RatesAnalysis(object):
 # Analysis: effie
 
 class EffieAnalysis(object):
-  def run(self):
+  def run(self, omtf_input=False, run2_input=False):
     # Book histograms
     histograms = {}
     for m in ("emtf", "emtf2026"):
@@ -1601,16 +1644,19 @@ class EffieAnalysis(object):
       hname = "%s_l1ptres_vs_genpt" % m
       histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -1, 2, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
 
-    #tree = load_pgun()
-    tree = load_pgun_batch(jobid)
+    if omtf_input:
+      tree = load_pgun_batch_omtf(jobid)
+    else:
+      tree = load_pgun_batch(jobid)
 
     # Workers
     bank = PatternBank(bankfile)
-    recog = PatternRecognition(bank)
+    recog = PatternRecognition(bank, run2_input=run2_input)
     clean = RoadCleaning()
     slim = RoadSlimming(bank)
     ptassign = PtAssignment(kerasfile)
     trkprod = TrackProducer()
+    ghost = GhostBusting()
 
     # Event range
     n = -1
@@ -1630,6 +1676,7 @@ class EffieAnalysis(object):
       variables = roads_to_variables(slim_roads)
       variables_mod, predictions, other_vars = ptassign.run(variables)
       emtf2026_tracks = trkprod.run(slim_roads, variables_mod, predictions, other_vars)
+      emtf2026_tracks = ghost.run(emtf2026_tracks)
 
       if ievt < 20 and False:
         print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2026_tracks)))
@@ -1731,17 +1778,15 @@ class EffieAnalysis(object):
 # Analysis: mixing
 
 class MixingAnalysis(object):
-  def run(self):
+  def run(self, omtf_input=False, run2_input=False):
     #tree = load_minbias_batch(jobid)
     tree = load_minbias_batch_for_mixing(jobid)
 
     # Workers
     bank = PatternBank(bankfile)
-    recog = PatternRecognition(bank)
+    recog = PatternRecognition(bank, run2_input=run2_input)
     clean = RoadCleaning()
     slim = RoadSlimming(bank)
-    #ptassign = PtAssignment(kerasfile)
-    #trkprod = TrackProducer()
     out_particles = []
     out_roads = []
     npassed, ntotal = 0, 0
@@ -1758,34 +1803,36 @@ class MixingAnalysis(object):
       roads = recog.run(evt.hits)
       clean_roads = clean.run(roads)
       slim_roads = slim.run(clean_roads)
-      #variables = roads_to_variables(slim_roads)
-      #variables_mod, predictions, other_vars = ptassign.run(variables)
-      #emtf2026_tracks = trkprod.run(slim_roads, variables_mod, predictions, other_vars)
+      assert(len(clean_roads) == len(slim_roads))
 
       def find_highest_part_pt():
         highest_pt = -999999.
         for ipart, part in enumerate(evt.particles):
-          if select(part):
+          if select_part(part):
             if highest_pt < part.pt:
               highest_pt = part.pt
         if highest_pt > 0.:
           highest_pt = min(100.-1e-3, highest_pt)
           return highest_pt
 
-      select = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
-      highest_part_pt = find_highest_part_pt()
-
       def find_highest_track_pt():
         highest_pt = -999999.
         for itrk, trk in enumerate(evt.tracks):
-          if select(trk):
+          if select_track(trk):
             if highest_pt < trk.pt:  # using scaled pT
               highest_pt = trk.pt
         if highest_pt > 0.:
           highest_pt = min(100.-1e-3, highest_pt)
           return highest_pt
 
-      select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
+      if omtf_input:
+        select_part = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0)
+        select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and (trk.bx == 0) and (trk.mode > 0)
+      else:
+        select_part = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
+        select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
+
+      highest_part_pt = find_highest_part_pt()
       highest_track_pt = find_highest_track_pt()
 
       if len(slim_roads) > 0:
@@ -1793,7 +1840,7 @@ class MixingAnalysis(object):
         out_particles += [part for _ in xrange(len(slim_roads))]
         out_roads += slim_roads
 
-      debug_event_list = [2826, 2937, 3675, 4581, 4838, 5379, 7640]
+      debug_event_list = set([2826, 2937, 3675, 4581, 4838, 5379, 7640])
 
       if ievt < 20 or ievt in debug_event_list:
         print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), '?'))
@@ -1913,6 +1960,26 @@ def load_pgun_omtf():
   #tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
   return tree
 
+def load_pgun_batch_omtf(j):
+  #global infile_r
+  #infile_r = root_open('pippo.root', 'w')
+
+  jj = np.split(np.arange(1000), 100)[j]
+  infiles = []
+  for j in jj:
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Overlap_4GeV/ParticleGuns/CRAB3/190116_043113/%04i/ntuple_SingleMuon_Overlap_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Overlap2_4GeV/ParticleGuns/CRAB3/190116_043217/%04i/ntuple_SingleMuon_Overlap2_%i.root' % ((j+1)/1000, (j+1)))
+
+  tree = TreeChain('ntupler/tree', infiles)
+  print('[INFO] Opening file: %s' % ' '.join(infiles))
+
+  # Define collection
+  tree.define_collection(name='hits', prefix='vh_', size='vh_size')
+  tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
+  tree.define_collection(name='particles', prefix='vp_', size='vp_size')
+  #tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
+  return tree
+
 def load_minbias_batch(j):
   global infile_r
   pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/180925_011729/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
@@ -1968,32 +2035,42 @@ def unload_tree():
 # Main
 
 if __name__ == "__main__":
-  print('[INFO] Using cmssw     : %s' % os.environ['CMSSW_VERSION'])
-  print('[INFO] Using condor    : %i' % use_condor)
-  print('[INFO] Using max events: %i' % maxEvents)
-  print('[INFO] Using algo      : %s' % algorithms[algo])
-  print('[INFO] Using analysis  : %s' % analysis)
-  print('[INFO] Using job id    : %i' % jobid)
+  print('[INFO] Using cmssw     : {0}'.format(os.environ['CMSSW_VERSION']))
+  print('[INFO] Using condor    : {0}'.format(use_condor))
+  print('[INFO] Using max events: {0}'.format(maxEvents))
+  print('[INFO] Using algo      : {0}'.format(algorithms[algo]))
+  print('[INFO] Using analysis  : {0}'.format(analysis))
+  print('[INFO] Using job id    : {0}'.format(jobid))
+
+  if algo == 1:
+    run2_input = True
+  else:
+    run2_input = False
+
+  if algo == 2:
+    omtf_input = True
+  else:
+    omtf_input = False
 
   if analysis == 'dummy':
-    forrest = DummyAnalysis()
-    forrest.run()
+    analysis = DummyAnalysis()
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input)
 
   elif analysis == 'roads':
-    forrest = RoadsAnalysis()
-    forrest.run()
+    analysis = RoadsAnalysis()
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input)
 
   elif analysis == 'rates':
-    forrest = RatesAnalysis()
-    forrest.run()
+    analysis = RatesAnalysis()
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input)
 
   elif analysis == 'effie':
-    forrest = EffieAnalysis()
-    forrest.run()
+    analysis = EffieAnalysis()
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input)
 
   elif analysis == 'mixing':
-    forrest = MixingAnalysis()
-    forrest.run()
+    analysis = MixingAnalysis()
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input)
 
   else:
-    raise RunTimeError('Cannot recognize analysis: %s' % analysis)
+    raise RunTimeError('Cannot recognize analysis: {0}'.format(analysis))
