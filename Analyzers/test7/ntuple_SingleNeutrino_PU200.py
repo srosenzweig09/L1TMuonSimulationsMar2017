@@ -154,11 +154,15 @@ if True:
     #process.schedule = cms.Schedule(process.step1)
 
 # ______________________________________________________________________________
-# Modify CSC Trigger Primitives
-if True:
-    process.simCscTriggerPrimitiveDigis.commonParam.runME11ILT = False
-    process.simCscTriggerPrimitiveDigis.commonParam.runME21ILT = False
-    process.simCscTriggerPrimitiveDigis.commonParam.runME3141ILT = False
+# Check LCT BX shift
+import os
+if 'CMSSW_VERSION' not in os.environ:
+    raise RunTimeError('Could not determine CMSSW version.')
+cmssw_version = os.environ['CMSSW_VERSION']
+cmssw_version = cmssw_version[6:].split('_')[:3]
+cmssw_version = tuple(int(x) for x in cmssw_version)
+if cmssw_version < (10, 2, 0):
+    process.simEmtfDigis.CSCInputBXShift = cms.int32(-6)
 
 # ______________________________________________________________________________
 # Modify EMTF
@@ -176,7 +180,10 @@ if True:
     process.ntupler.verbosity = 0
     process.TFileService = cms.Service('TFileService', fileName = cms.string(process.ntupler.outFileName.value()))
     # Modify sequences without any consequences
-    process.SimL1Emulator = cms.Sequence(process.simCscTriggerPrimitiveDigis + process.simEmtfDigis)
+    #process.SimL1TMuon = cms.Sequence(process.simCscTriggerPrimitiveDigis + process.simEmtfDigis)
+    process.SimL1TMuon = cms.Sequence(process.SimL1TMuonCommon + process.rpcRecHits + process.simTwinMuxDigis + process.me0TriggerPseudoDigiSequence + process.simEmtfDigis)
+    process.SimL1EmulatorCore = cms.Sequence(process.SimL1TMuon)
+    process.SimL1Emulator = cms.Sequence(process.SimL1EmulatorCore)
     process.ntuple_step = cms.Path(process.ntupler)
     process.schedule = cms.Schedule(process.L1simulation_step, process.ntuple_step)
 
