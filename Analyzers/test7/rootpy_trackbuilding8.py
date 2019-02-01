@@ -1621,6 +1621,8 @@ class EffieAnalysis(object):
         for k in ("denom", "numer"):
           hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
+          hname = "%s_eff_vs_genphi_l1pt%i_%s" % (m,l,k)
+          histograms[hname] = Hist(70, -210, 210, name=hname, title="; gen #phi {gen p_{T} > 20 GeV}", type='F')
           hname = "%s_eff_vs_geneta_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(70, 1.1, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
           hname = "%s_eff_vs_geneta_genpt30_l1pt%i_%s" % (m,l,k)
@@ -1682,6 +1684,15 @@ class EffieAnalysis(object):
           if trigger:
             numer.fill(part.pt)
 
+      def fill_efficiency_phi():
+        trigger = any([select(trk) for trk in tracks])  # using scaled pT
+        denom = histograms[hname + "_denom"]
+        numer = histograms[hname + "_numer"]
+        if (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0):
+          denom.fill(np.rad2deg(part.phi))
+          if trigger:
+            numer.fill(np.rad2deg(part.phi))
+
       def fill_efficiency_eta():
         trigger = any([select(trk) for trk in tracks])  # using scaled pT
         denom = histograms[hname + "_denom"]
@@ -1706,6 +1717,8 @@ class EffieAnalysis(object):
         hname = "emtf_eff_vs_genpt_l1pt%i" % (l)
         fill_efficiency_pt()
         if part.pt > 20.:
+          hname = "emtf_eff_vs_genphi_l1pt%i" % (l)
+          fill_efficiency_phi()
           hname = "emtf_eff_vs_geneta_l1pt%i" % (l)
           fill_efficiency_eta()
         if part.pt > 30.:
@@ -1722,6 +1735,8 @@ class EffieAnalysis(object):
         hname = "emtf2026_eff_vs_genpt_l1pt%i" % (l)
         fill_efficiency_pt()
         if part.pt > 20.:
+          hname = "emtf2026_eff_vs_genphi_l1pt%i" % (l)
+          fill_efficiency_phi()
           hname = "emtf2026_eff_vs_geneta_l1pt%i" % (l)
           fill_efficiency_eta()
         if part.pt > 30.:
