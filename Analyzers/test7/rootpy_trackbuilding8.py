@@ -203,6 +203,7 @@ class EMTFZone(object):
     lut[1,1,1][4] = 41,53   # ME1/1b
     lut[1,1,2][4] = 46,54   # ME1/2
     lut[1,1,2][5] = 52,88   # ME1/2
+    lut[1,1,2][6] = 80,88   # ME1/2
     lut[1,1,3][6] = 98,125  # ME1/3
     #
     lut[1,2,1][0] = 4,17    # ME2/1
@@ -641,9 +642,10 @@ PATTERN_X_SEARCH_MAX = 154-10
 
 # Pattern recognition module
 class PatternRecognition(object):
-  def __init__(self, bank, run2_input=False):
+  def __init__(self, bank, omtf_input=False, run2_input=False):
     self.bank = bank
     self.cache = dict()  # cache for pattern results
+    self.omtf_input = omtf_input
     self.run2_input = run2_input
 
   def _create_road_hit(self, hit):
@@ -683,6 +685,13 @@ class PatternRecognition(object):
 
       # Loop over the zones that the hit is belong to
       for zone in hit_zones:
+        if self.omtf_input:
+          if zone != 6:  # only zone 6
+            continue
+        else:
+          if zone == 6:  # ignore zone 6
+            continue
+
         result = self._apply_patterns_in_zone(zone, hit_lay)
 
         for index in result:
@@ -805,7 +814,7 @@ class PatternRecognition(object):
           hit.old_emtf_bend = find_emtf_old_bend(hit)
           hit.zones = find_emtf_zones(hit)
 
-        # Apply patterns
+        # Apply patterns to the sector hits
         sector_roads = self._apply_patterns(endcap, sector, sector_hits)
         roads += sector_roads
     return roads
@@ -1178,7 +1187,7 @@ class TrackProducer(object):
       valid = ~x_mask
       return valid.sum()
 
-    def get_mode_from_x_mask(x_mask):
+    def get_mode_from_x_mask(x_mask):  #FIXME
       assert(x_mask.shape[0] == nlayers)
       assert(x_mask.dtype == np.bool)
       valid = ~x_mask
@@ -1327,7 +1336,7 @@ class RoadsAnalysis(object):
 
     # Workers
     bank = PatternBank(bankfile)
-    recog = PatternRecognition(bank, run2_input=run2_input)
+    recog = PatternRecognition(bank, omtf_input=omtf_input, run2_input=run2_input)
     clean = RoadCleaning()
     slim = RoadSlimming(bank)
     out_particles = []
@@ -1467,7 +1476,7 @@ class RatesAnalysis(object):
 
     # Workers
     bank = PatternBank(bankfile)
-    recog = PatternRecognition(bank, run2_input=run2_input)
+    recog = PatternRecognition(bank, omtf_input=omtf_input, run2_input=run2_input)
     clean = RoadCleaning()
     slim = RoadSlimming(bank)
     ptassign = PtAssignment(kerasfile)
@@ -1640,7 +1649,7 @@ class EffieAnalysis(object):
 
     # Workers
     bank = PatternBank(bankfile)
-    recog = PatternRecognition(bank, run2_input=run2_input)
+    recog = PatternRecognition(bank, omtf_input=omtf_input, run2_input=run2_input)
     clean = RoadCleaning()
     slim = RoadSlimming(bank)
     ptassign = PtAssignment(kerasfile)
@@ -1786,7 +1795,7 @@ class MixingAnalysis(object):
 
     # Workers
     bank = PatternBank(bankfile)
-    recog = PatternRecognition(bank, run2_input=run2_input)
+    recog = PatternRecognition(bank, omtf_input=omtf_input, run2_input=run2_input)
     clean = RoadCleaning()
     slim = RoadSlimming(bank)
     out_particles = []
@@ -1980,8 +1989,7 @@ def load_pgun_batch_omtf(j):
     infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Overlap_4GeV/ParticleGuns/CRAB3/190125_014345/%04i/ntuple_SingleMuon_Overlap_%i.root' % ((j+1)/1000, (j+1)))
     infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Overlap2_4GeV/ParticleGuns/CRAB3/190125_014447/%04i/ntuple_SingleMuon_Overlap2_%i.root' % ((j+1)/1000, (j+1)))
 
-  infiles = purge_bad_files(infiles)
-
+  #infiles = purge_bad_files(infiles)
   tree = TreeChain('ntupler/tree', infiles)
   print('[INFO] Opening file: %s' % ' '.join(infiles))
 
@@ -1994,8 +2002,7 @@ def load_pgun_batch_omtf(j):
 
 def load_minbias_batch(j):
   global infile_r
-  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/ParticleGuns/CRAB3/190125_231746/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
-  #pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU140/ParticleGuns/CRAB3/190126_171018/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(56)]  # all jobs failed
+  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190125_231746/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
   infile = pufiles[j]
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
@@ -2018,8 +2025,8 @@ def load_minbias_batch_for_mixing(j):
   #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU300/SingleNeutrino/CRAB3/190126_171137/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(20)]  # up to 20/53
   pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleElectron_PU140/SingleE_FlatPt-2to100/CRAB3/190125_215246/0000/ntuple_SingleElectron_PU140_%i.root' % (i+1) for i in xrange(28)]
   pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleElectron_PU200/SingleE_FlatPt-2to100/CRAB3/190125_215355/0000/ntuple_SingleElectron_PU200_%i.root' % (i+1) for i in xrange(27)]
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU140/SinglePhoton_FlatPt-8to150/CRAB3/190125_215455/0000/ntuple_SinglePhoton_PU140_%i.root' % (i+1) for i in xrange(27)]
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU200/SinglePhoton_FlatPt-8to150/CRAB3/190125_215559/0000/ntuple_SinglePhoton_PU200_%i.root' % (i+1) for i in xrange(27)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU140/SinglePhoton_FlatPt-8to150/CRAB3/190125_215455/0000/ntuple_SinglePhoton_PU140_%i.root' % (i+1) for i in xrange(27)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU200/SinglePhoton_FlatPt-8to150/CRAB3/190125_215559/0000/ntuple_SinglePhoton_PU200_%i.root' % (i+1) for i in xrange(27)]
 
   # For testing purposes (SingleNeutrino, PU200)
   pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190125_231746/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30,63)]  # from 30/63
