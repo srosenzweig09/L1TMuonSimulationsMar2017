@@ -74,19 +74,19 @@ process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic', '')
 process.generator = cms.EDProducer("FlatRandomPtGunProducer2",
     AddAntiParticle = cms.bool(False),
     PGunParameters = cms.PSet(
-        MaxEta = cms.double(1.3),
+        MaxEta = cms.double(2.5),
         MaxPhi = cms.double(3.14159265359),
         MaxPt = cms.double(7000.0),
-        MinEta = cms.double(0.8),
+        MinEta = cms.double(1.2),
         MinPhi = cms.double(-3.14159265359),
-        MinPt = cms.double(4.0),
+        MinPt = cms.double(2.0),
         PartID = cms.vint32(-13),
         PtSpectrum = cms.string('flatOneOverPt'),
         RandomCharge = cms.bool(True)
     ),
     Verbosity = cms.untracked.int32(0),
     firstRun = cms.untracked.uint32(1),
-    psethack = cms.string('single muon+/- pt 4 to 7000 flat in 1/pt positive overlap')
+    psethack = cms.string('single muon+/- pt 2 to 7000 flat in 1/pt positive endcap')
 )
 
 
@@ -171,12 +171,12 @@ print("[INFO] Using random number seed: %d" % process.RandomNumberGeneratorServi
 if True:
     # Ntuplize
     process.load('L1TMuonSimulations.Analyzers.rpcintegration_cfi')
-    process.ntupler.outFileName = 'ntuple_SingleMuon_Overlap.root'
+    process.ntupler.outFileName = 'ntuple_SingleMuon_Endcap.root'
     process.ntupler.verbosity = 0
     process.TFileService = cms.Service('TFileService', fileName = cms.string(process.ntupler.outFileName.value()))
     # Modify sequences without any consequences
     process.doAllDigi = cms.Sequence(process.generatorSmeared+process.muonDigi)
-    process.SimL1TMuon = cms.Sequence(process.SimL1TMuonCommon+process.rpcRecHits+process.simTwinMuxDigis+process.me0TriggerPseudoDigiSequence+process.simEmtfDigis+process.simOmtfDigis)
+    process.SimL1TMuon = cms.Sequence(process.SimL1TMuonCommon+process.rpcRecHits+process.simTwinMuxDigis+process.me0TriggerPseudoDigiSequence+process.simEmtfDigis)
     process.SimL1EmulatorCore = cms.Sequence(process.SimL1TMuon)
     process.SimL1Emulator = cms.Sequence(process.SimL1EmulatorCore)
     process.ntuple_step = cms.Path(process.ntupler)

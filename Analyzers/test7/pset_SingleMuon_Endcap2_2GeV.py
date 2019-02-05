@@ -171,7 +171,7 @@ print("[INFO] Using random number seed: %d" % process.RandomNumberGeneratorServi
 if True:
     # Ntuplize
     process.load('L1TMuonSimulations.Analyzers.rpcintegration_cfi')
-    process.ntupler.outFileName = 'ntuple_SingleMuon_Toy2.root'
+    process.ntupler.outFileName = 'ntuple_SingleMuon_Endcap2.root'
     process.ntupler.verbosity = 0
     process.TFileService = cms.Service('TFileService', fileName = cms.string(process.ntupler.outFileName.value()))
     # Modify sequences without any consequences
