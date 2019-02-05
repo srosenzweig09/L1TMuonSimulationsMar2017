@@ -4,8 +4,6 @@ logger = getLogger()
 # ______________________________________________________________________________
 # Globals
 
-adjust_scale = 3
-
 #learning_rate = 0.00113
 #learning_rate = 0.0033
 learning_rate = 0.0063
@@ -15,6 +13,8 @@ gradient_clip_norm = 100.
 mask_value = 100.
 
 discr_pt_cut = 8.
+
+discr_pt_cut_high = 14.
 
 reg_pt_scale = 100.
 
@@ -31,6 +31,10 @@ l2_reg = 0.0
 infile_muon = '../test7/histos_tba.20.npz'
 
 infile_pileup = '../test7/histos_tbd.20.npz'
+
+infile_muon_omtf = '../test7/histos_tba_omtf.22.npz'
+
+infile_pileup_omtf = '../test7/histos_tbd_omtf.22.npz'
 
 
 # ______________________________________________________________________________
@@ -62,7 +66,8 @@ logger.info('Using scipy {0}'.format(scipy.__version__))
 import sklearn
 logger.info('Using sklearn {0}'.format(sklearn.__version__))
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
-#from matplotlib import colors
+logger.info('Using matplotlib {0}'.format(mpl.__version__))
 #%matplotlib inline
 

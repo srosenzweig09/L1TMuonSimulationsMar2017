@@ -282,6 +282,46 @@ def create_model_bn(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, no
   return model
 
 # ______________________________________________________________________________
+def create_model_bn2(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0,
+                     l1_reg=0.0, l2_reg=0.0, use_bn=True, use_dropout=False):
+  # Only 1 BN layer, right after the input layer
+  regularizer = regularizers.L1L2(l1=l1_reg, l2=l2_reg)
+  inputs = Input(shape=(nvariables,), dtype='float32')
+
+  x = inputs
+  if use_bn:
+    x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)
+
+  x = Dense(nodes1, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False)(x)
+  if use_bn: x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)  #FIXME
+  x = Activation('tanh')(x)
+  if nodes2:
+    x = Dense(nodes2, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False)(x)
+    if use_bn: x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)  #FIXME
+    x = Activation('tanh')(x)
+    if nodes3:
+      x = Dense(nodes3, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False)(x)
+      if use_bn: x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)  #FIXME
+      x = Activation('tanh')(x)
+
+  # Output nodes
+  regr = Dense(1, activation='linear', kernel_initializer='glorot_uniform', name='regr')(x)
+  discr = Dense(1, activation='sigmoid', kernel_initializer='glorot_uniform', name='discr')(x)
+
+  # Create model
+  model = Model(inputs=inputs, outputs=[regr, discr])
+
+  # Set loss and optimizers
+  adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
+  model.compile(optimizer=adam,
+    loss={'regr': masked_huber_loss, 'discr': masked_binary_crossentropy},
+    loss_weights={'regr': 1.0/discr_loss_weight, 'discr': 1.0},
+    #metrics={'regr': ['acc', 'mse', 'mae'], 'discr': ['acc',]}
+    )
+  model.summary()
+  return model
+
+# ______________________________________________________________________________
 def create_model_pruned(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0,
                         l1_reg=0.0, l2_reg=0.0, use_bn=True, use_dropout=False,
                         constraint1=None, constraint2=None, constraint3=None):
