@@ -233,9 +233,9 @@ class EMTFZone(object):
     lut[2,1,3][6] = 100,120 # RE1/3
     lut[2,2,2][5] = 56,88   # RE2/2
     lut[2,2,3][6] = 88,112  # RE2/3
-    lut[2,3,1][0] = 4,20    # RE3/1
-    lut[2,3,1][1] = 20,24   # RE3/1
-    lut[2,3,1][2] = 24,32   # RE3/1
+    lut[2,3,1][0] = 4,17    # RE3/1
+    lut[2,3,1][1] = 16,25   # RE3/1
+    lut[2,3,1][2] = 24,36   # RE3/1
     lut[2,3,2][3] = 40,40   # RE3/2
     lut[2,3,2][4] = 40,52   # RE3/2
     lut[2,3,2][5] = 48,84   # RE3/2
@@ -243,9 +243,9 @@ class EMTFZone(object):
     lut[2,3,3][4] = 40,52   # RE3/3
     lut[2,3,3][5] = 48,84   # RE3/3
     lut[2,3,3][6] = 80,92   # RE3/3
-    lut[2,4,1][0] = 8,16    # RE4/1
-    lut[2,4,1][1] = 16,28   # RE4/1
-    lut[2,4,1][2] = 24,28   # RE4/1
+    lut[2,4,1][0] = 4,17    # RE4/1
+    lut[2,4,1][1] = 16,25   # RE4/1
+    lut[2,4,1][2] = 24,31   # RE4/1
     lut[2,4,2][3] = 36,44   # RE4/2
     lut[2,4,2][4] = 44,52   # RE4/2
     lut[2,4,2][5] = 52,84   # RE4/2
@@ -357,6 +357,8 @@ class EMTFPhi(object):
           bend_corr_lut = (-1.3861, 1.3692)  # ME1/1b (r,f)
         elif hit.ring == 4:
           bend_corr_lut = (-1.6419, 1.6012)  # ME1/1a (r,f)
+        elif hit.ring == 3:
+          bend_corr_lut = (-0.9237, 0.8287)  # ME1/3 (r,f)  #FIXME
         else:
           bend_corr_lut = (-0.9237, 0.8287)  # ME1/2 (r,f)
         bend_corr = bend_corr_lut[int(hit.fr)] * hit.bend
@@ -738,9 +740,9 @@ class PatternRecognition(object):
           road_mode_omtf |= (1 << 2)
         elif _type == kDT and station == 3:
           road_mode_omtf |= (1 << 1)
-        elif _type == kCSC and station == 1 and ring == 3:
+        elif _type == kCSC and station == 1 and (ring == 2 or ring == 3):
           road_mode_omtf |= (1 << 1)
-        elif _type == kCSC and station == 2 and ring == 2:
+        elif _type == kCSC and (station == 2 or station == 3) and ring == 2:
           road_mode_omtf |= (1 << 0)
 
         tmp_road_hits.append(hit)
@@ -752,7 +754,7 @@ class PatternRecognition(object):
       # + (zone 6) any road with MB1+MB2, MB1+ME1/3, MB1+ME2/2, MB2+MB3, MB2+ME1/3, MB2+ME2/2, ME1/3+ME2/2
       if ((is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
           (ieta in (0,1) and road_mode_me0 >= 6) or
-          (ieta in (6,) and road_mode_omtf not in (1,2,4,8))):
+          (ieta in (6,) and road_mode_omtf not in (0,1,2,4,8))):
         road_quality = find_emtf_road_quality(ipt)
         road_sort_code = find_emtf_road_sort_code(road_mode, road_quality, tmp_road_hits)
         tmp_theta = np.median(tmp_thetas, overwrite_input=True)
@@ -1371,7 +1373,7 @@ class RoadsAnalysis(object):
             any([((hit.type == kDT and 2 <= hit.station <= 3) or (hit.type == kCSC and 1 <= hit.station <= 3)) for hit in hits]) and \
             sum([(hit.type == kDT or hit.type == kCSC) for hit in hits]) >= 2
       else:
-        is_important = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0) and (part.pt > 5.)
+        is_important = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0) and (part.pt > 4.)
         is_possible = lambda hits: any([((hit.type == kCSC or hit.type == kME0) and hit.station == 1) for hit in hits]) and \
             any([(hit.type == kCSC and hit.station >= 2) for hit in hits])
 
@@ -1391,7 +1393,7 @@ class RoadsAnalysis(object):
         for ihit, hit in enumerate(evt.hits):
           hit_id = (hit.type, hit.station, hit.ring, find_endsec(hit.endcap, hit.sector), hit.fr, hit.bx)
           hit_sim_tp = (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)
-          print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} bd: {5} qual: {6} tp: {7}".format(ihit, hit_id, find_emtf_layer(hit), hit.emtf_phi, hit.emtf_theta, find_emtf_bend(hit), find_emtf_quality(hit), hit_sim_tp))
+          print(".. .. hit {0} id: {1} lay: {2} ph: {3} ({4}) th: {5} bd: {6} qual: {7} tp: {8}".format(ihit, hit_id, find_emtf_layer(hit), hit.emtf_phi, find_pattern_x(hit.emtf_phi), hit.emtf_theta, find_emtf_bend(hit), find_emtf_quality(hit), hit_sim_tp))
         for iroad, myroad in enumerate(sorted(roads, key=lambda x: x.id)):
           print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
         for iroad, myroad in enumerate(clean_roads):
@@ -1930,6 +1932,7 @@ def purge_bad_files(infiles):
 def load_pgun():
   global infile_r
   infile = 'ntuple_SingleMuon_Toy_2GeV_add.6.root'
+  #infile = 'ntuple_SingleMuon_Endcap_2GeV_add.4.root'
   if use_condor:
     infile = 'root://cmsio5.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/'+infile
   infile_r = root_open(infile)
@@ -1967,6 +1970,7 @@ def load_pgun_batch(j):
 def load_pgun_omtf():
   global infile_r
   infile = 'ntuple_SingleMuon_Overlap_4GeV_add.3.root'
+  #infile = 'ntuple_SingleMuon_Overlap_3GeV_add.4.root'
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
   #tree = TreeChain('ntupler/tree', [infile])
