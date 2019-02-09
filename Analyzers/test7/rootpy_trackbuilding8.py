@@ -20,7 +20,7 @@ TH1.AddDirectory(False)
 kDT, kCSC, kRPC, kGEM, kME0 = 0, 1, 2, 3, 4
 
 # Globals
-eta_bins = (0.8, 1.2, 1.56, 1.7, 1.8, 1.98, 2.16, 2.4)
+eta_bins = (0.8, 1.24, 1.56, 1.7, 1.8, 1.98, 2.16, 2.4)
 eta_bins = eta_bins[::-1]
 pt_bins = (-0.5, -0.365, -0.26, -0.155, -0.07, 0.07, 0.155, 0.26, 0.365, 0.5)
 pt_bins_omtf = (-0.25, -0.2, -0.15, -0.10, -0.05, 0.05, 0.10, 0.15, 0.20, 0.25)  # starts from 4 GeV
@@ -203,7 +203,7 @@ class EMTFZone(object):
     lut[1,1,1][4] = 41,53   # ME1/1b
     lut[1,1,2][4] = 46,54   # ME1/2
     lut[1,1,2][5] = 52,88   # ME1/2
-    lut[1,1,2][6] = 80,88   # ME1/2
+    lut[1,1,2][6] = 78,88   # ME1/2
     lut[1,1,3][6] = 98,125  # ME1/3
     #
     lut[1,2,1][0] = 4,17    # ME2/1
@@ -212,7 +212,7 @@ class EMTFZone(object):
     lut[1,2,1][3] = 34,43   # ME2/1
     lut[1,2,1][4] = 41,49   # ME2/1
     lut[1,2,2][5] = 53,90   # ME2/2
-    lut[1,2,2][6] = 83,111  # ME2/2
+    lut[1,2,2][6] = 77,111  # ME2/2
     #
     lut[1,3,1][0] = 4,17    # ME3/1
     lut[1,3,1][1] = 16,25   # ME3/1
@@ -220,7 +220,7 @@ class EMTFZone(object):
     lut[1,3,1][3] = 34,40   # ME3/1
     lut[1,3,2][4] = 44,54   # ME3/2
     lut[1,3,2][5] = 52,90   # ME3/2
-    lut[1,3,2][6] = 83,96   # ME3/2
+    lut[1,3,2][6] = 76,96   # ME3/2
     #
     lut[1,4,1][0] = 4,17    # ME4/1
     lut[1,4,1][1] = 16,25   # ME4/1
@@ -230,9 +230,9 @@ class EMTFZone(object):
     lut[1,4,2][5] = 52,90   # ME4/2
     #
     lut[2,1,2][5] = 52,84   # RE1/2
-    lut[2,1,3][6] = 100,120 # RE1/3
+    lut[2,1,3][6] = 80,120  # RE1/3
     lut[2,2,2][5] = 56,88   # RE2/2
-    lut[2,2,3][6] = 88,112  # RE2/3
+    lut[2,2,3][6] = 76,112  # RE2/3
     lut[2,3,1][0] = 4,17    # RE3/1
     lut[2,3,1][1] = 16,25   # RE3/1
     lut[2,3,1][2] = 24,36   # RE3/1
@@ -352,15 +352,14 @@ class EMTFPhi(object):
     emtf_phi = np.int32(hit.emtf_phi)
     if hit.type == kCSC:
       if hit.station == 1:
-        #FIXME: check the coefficients
         if hit.ring == 1:
-          bend_corr_lut = (-1.3861, 1.3692)  # ME1/1b (r,f)
+          bend_corr_lut = (-2.0832, 2.0497)  # ME1/1b (r,f)
         elif hit.ring == 4:
-          bend_corr_lut = (-1.6419, 1.6012)  # ME1/1a (r,f)
-        elif hit.ring == 3:
-          bend_corr_lut = (-0.9237, 0.8287)  # ME1/3 (r,f)  #FIXME
+          bend_corr_lut = (-2.4640, 2.3886)  # ME1/1a (r,f)
+        elif hit.ring == 2:
+          bend_corr_lut = (-1.3774, 1.2447)  # ME1/2 (r,f)
         else:
-          bend_corr_lut = (-0.9237, 0.8287)  # ME1/2 (r,f)
+          bend_corr_lut = (-0, 0)            # ME1/3 (r,f): no correction
         bend_corr = bend_corr_lut[int(hit.fr)] * hit.bend
         bend_corr = bend_corr if hit.endcap == 1 else (bend_corr * -1)
         bend_corr = int(round(bend_corr))
@@ -391,8 +390,39 @@ class EMTFTheta(object):
 
 # Decide EMTF hit quality
 class EMTFQuality(object):
-  def __call__(self, hit):
+  def __call__(self, hit, zone):
     emtf_quality = np.int32(hit.quality)
+    if zone != 6:
+      if hit.type == kCSC:
+        if hit.station == 1:
+          # front chamber -> +1
+          # rear chamber  -> -1
+          if int(hit.fr) == 1:
+            emtf_quality = emtf_quality * +1
+          else:
+            emtf_quality = emtf_quality * -1
+        else:
+          # ring 2,3 -> +1
+          # ring 1,4 -> -1
+          if int(hit.ring) == 2 or int(hit.ring) == 3:
+            emtf_quality = emtf_quality * +1
+          else:
+            emtf_quality = emtf_quality * -1
+      else:
+        pass
+    else:  # zone 6
+      if hit.type == kCSC:
+        if hit.station == 1:
+          # ring 3 -> +1
+          # ring 2 -> -1
+          if int(hit.ring) == 3:
+            emtf_quality = emtf_quality * +1
+          else:
+            emtf_quality = emtf_quality * -1
+        else:
+          pass
+      else:
+        pass
     return emtf_quality
 
 # Decide EMTF hit time (integer unit)
@@ -650,13 +680,17 @@ class PatternRecognition(object):
     self.omtf_input = omtf_input
     self.run2_input = run2_input
 
-  def _create_road_hit(self, hit):
+  def _create_road_hit(self, hit, zone):
     hit_id = (hit.type, hit.station, hit.ring, hit.endsec, hit.fr, hit.bx)
-    hit_sim_tp = (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)
+    emtf_bend = find_emtf_bend(hit)
+    emtf_quality = find_emtf_quality(hit, zone=zone)
+    emtf_time = find_emtf_time(hit)
+    old_emtf_bend = find_emtf_old_bend(hit)
     extra_emtf_theta = 0  #FIXME
-    myhit = Hit(hit_id, hit.lay, hit.emtf_phi, hit.emtf_theta, hit.emtf_bend,
-                hit.emtf_quality, hit.emtf_time, hit.old_emtf_phi, hit.old_emtf_bend,
-                extra_emtf_theta, hit_sim_tp)
+    sim_tp = (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)
+    myhit = Hit(hit_id, hit.lay, hit.emtf_phi, hit.emtf_theta, emtf_bend,
+                emtf_quality, emtf_time, hit.old_emtf_phi, old_emtf_bend,
+                extra_emtf_theta, sim_tp)
     return myhit
 
   def _apply_patterns_in_zone(self, zone, hit_lay):
@@ -705,7 +739,7 @@ class PatternRecognition(object):
           if PATTERN_X_SEARCH_MIN <= iphi <= PATTERN_X_SEARCH_MAX:
             # Create and associate 'myhit' to road ids
             if myhit is None:
-              myhit = self._create_road_hit(hit)
+              myhit = self._create_road_hit(hit, zone=zone)
             road_id = (endcap, sector, ipt, ieta, iphi)
             amap.setdefault(road_id, []).append(myhit)  # append hit to road
 
@@ -810,10 +844,6 @@ class PatternRecognition(object):
           hit.old_emtf_phi = hit.emtf_phi
           hit.emtf_phi = find_emtf_phi(hit)
           hit.emtf_theta = find_emtf_theta(hit)
-          hit.emtf_bend = find_emtf_bend(hit)
-          hit.emtf_quality = find_emtf_quality(hit)
-          hit.emtf_time = find_emtf_time(hit)
-          hit.old_emtf_bend = find_emtf_old_bend(hit)
           hit.zones = find_emtf_zones(hit)
 
         # Apply patterns to the sector hits
@@ -1257,7 +1287,8 @@ class GhostBusting(object):
     tracks_after_gb = []
 
     # Sort by (zone, chi2)
-    tracks.sort(key=lambda track: (track.zone, track.chi2), reverse=True)
+    # zone is reordered such that zone 6 has the lowest priority.
+    tracks.sort(key=lambda track: ((track.zone+1) % 7, track.chi2), reverse=True)
 
     # Iterate over tracks and remove duplicates (ghosts)
     for i, track in enumerate(tracks):
@@ -1371,7 +1402,7 @@ class RoadsAnalysis(object):
         is_important = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0) and (part.pt > 4.)
         is_possible = lambda hits: any([((hit.type == kDT and 1 <= hit.station <= 2) or (hit.type == kCSC and hit.station == 1)) for hit in hits]) and \
             any([((hit.type == kDT and 2 <= hit.station <= 3) or (hit.type == kCSC and 1 <= hit.station <= 3)) for hit in hits]) and \
-            sum([(hit.type == kDT or hit.type == kCSC) for hit in hits]) >= 2
+            sum([(hit.type == kDT or hit.type == kCSC) and (hit.bx in (-1,0)) for hit in hits]) >= 2
       else:
         is_important = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0) and (part.pt > 4.)
         is_possible = lambda hits: any([((hit.type == kCSC or hit.type == kME0) and hit.station == 1) for hit in hits]) and \
@@ -1393,7 +1424,7 @@ class RoadsAnalysis(object):
         for ihit, hit in enumerate(evt.hits):
           hit_id = (hit.type, hit.station, hit.ring, find_endsec(hit.endcap, hit.sector), hit.fr, hit.bx)
           hit_sim_tp = (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)
-          print(".. .. hit {0} id: {1} lay: {2} ph: {3} ({4}) th: {5} bd: {6} qual: {7} tp: {8}".format(ihit, hit_id, find_emtf_layer(hit), hit.emtf_phi, find_pattern_x(hit.emtf_phi), hit.emtf_theta, find_emtf_bend(hit), find_emtf_quality(hit), hit_sim_tp))
+          print(".. .. hit {0} id: {1} lay: {2} ph: {3} ({4}) th: {5} bd: {6} qual: {7} tp: {8}".format(ihit, hit_id, find_emtf_layer(hit), hit.emtf_phi, find_pattern_x(hit.emtf_phi), hit.emtf_theta, find_emtf_bend(hit), find_emtf_quality(hit, zone=0), hit_sim_tp))
         for iroad, myroad in enumerate(sorted(roads, key=lambda x: x.id)):
           print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
         for iroad, myroad in enumerate(clean_roads):
@@ -1913,9 +1944,9 @@ if use_condor:
 
 # Input files
 #bankfile = 'pattern_bank.20.npz'
-bankfile = 'pattern_bank_omtf.22.npz'
+bankfile = 'pattern_bank_omtf.23.npz'
 
-kerasfile = ['model.20.json', 'model_weights.20.h5']
+kerasfile = ['model.23.json', 'model_weights.23.h5', 'model_omtf.23.json', 'model_omtf_weights.23.h5']
 
 infile_r = None  # input file handle
 
@@ -1931,13 +1962,9 @@ def purge_bad_files(infiles):
 
 def load_pgun():
   global infile_r
-  infile = 'ntuple_SingleMuon_Toy_2GeV_add.6.root'
-  #infile = 'ntuple_SingleMuon_Endcap_2GeV_add.4.root'
-  if use_condor:
-    infile = 'root://cmsio5.rc.ufl.edu//store/user/jiafulow/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/'+infile
+  infile = 'ntuple_SingleMuon_Endcap_2GeV_add.4.root'
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
-  #tree = TreeChain('ntupler/tree', [infile])
   print('[INFO] Opening file: %s' % infile)
 
   # Define collection
@@ -1954,8 +1981,8 @@ def load_pgun_batch(j):
   jj = np.split(np.arange(2000), 200)[j]
   infiles = []
   for j in jj:
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/ParticleGuns/CRAB3/180813_212614/%04i/ntuple_SingleMuon_Toy_%i.root' % ((j+1)/1000, (j+1)))
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy2_2GeV/ParticleGuns/CRAB3/180813_212740/%04i/ntuple_SingleMuon_Toy2_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Endcap_2GeV/ParticleGuns/CRAB3/190207_042919/%04i/ntuple_SingleMuon_Endcap_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Endcap2_2GeV/ParticleGuns/CRAB3/190207_043023/%04i/ntuple_SingleMuon_Endcap2_%i.root' % ((j+1)/1000, (j+1)))
 
   tree = TreeChain('ntupler/tree', infiles)
   print('[INFO] Opening file: %s' % ' '.join(infiles))
@@ -1969,11 +1996,9 @@ def load_pgun_batch(j):
 
 def load_pgun_omtf():
   global infile_r
-  infile = 'ntuple_SingleMuon_Overlap_4GeV_add.3.root'
-  #infile = 'ntuple_SingleMuon_Overlap_3GeV_add.4.root'
+  infile = 'ntuple_SingleMuon_Overlap_3GeV_add.4.root'
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
-  #tree = TreeChain('ntupler/tree', [infile])
   print('[INFO] Opening file: %s' % infile)
 
   # Define collection
@@ -1990,8 +2015,8 @@ def load_pgun_batch_omtf(j):
   jj = np.split(np.arange(1000), 100)[j]
   infiles = []
   for j in jj:
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Overlap_4GeV/ParticleGuns/CRAB3/190125_014345/%04i/ntuple_SingleMuon_Overlap_%i.root' % ((j+1)/1000, (j+1)))
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Overlap2_4GeV/ParticleGuns/CRAB3/190125_014447/%04i/ntuple_SingleMuon_Overlap2_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Overlap_3GeV/ParticleGuns/CRAB3/190206_065727/%04i/ntuple_SingleMuon_Overlap_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Overlap2_3GeV/ParticleGuns/CRAB3/190206_065829/%04i/ntuple_SingleMuon_Overlap2_%i.root' % ((j+1)/1000, (j+1)))
 
   #infiles = purge_bad_files(infiles)
   tree = TreeChain('ntupler/tree', infiles)
@@ -2006,7 +2031,7 @@ def load_pgun_batch_omtf(j):
 
 def load_minbias_batch(j):
   global infile_r
-  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190125_231746/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
+  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190209_121428/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
   infile = pufiles[j]
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
@@ -2023,17 +2048,19 @@ def load_minbias_batch_for_mixing(j):
   global infile_r
   pufiles = []
   # For training purposes
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU140/SingleNeutrino/CRAB3/190126_171018/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(20)]  # up to 20/56
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190125_231746/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30)]  # up to 30/63
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU250/SingleNeutrino/CRAB3/190125_231746/0000/ntuple_SingleNeutrino_PU250_%i.root' % (i+1) for i in xrange(20)]  # up to 20/50
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU300/SingleNeutrino/CRAB3/190126_171137/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(20)]  # up to 20/53
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleElectron_PU140/SingleE_FlatPt-2to100/CRAB3/190125_215246/0000/ntuple_SingleElectron_PU140_%i.root' % (i+1) for i in xrange(28)]
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleElectron_PU200/SingleE_FlatPt-2to100/CRAB3/190125_215355/0000/ntuple_SingleElectron_PU200_%i.root' % (i+1) for i in xrange(27)]
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU140/SinglePhoton_FlatPt-8to150/CRAB3/190125_215455/0000/ntuple_SinglePhoton_PU140_%i.root' % (i+1) for i in xrange(27)]
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU200/SinglePhoton_FlatPt-8to150/CRAB3/190125_215559/0000/ntuple_SinglePhoton_PU200_%i.root' % (i+1) for i in xrange(27)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU140/SingleNeutrino/CRAB3/190209_121318/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(20)]  # up to 20/56
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190209_121428/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30)]  # up to 30/63
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU250/SingleNeutrino/CRAB3/190209_121524/0000/ntuple_SingleNeutrino_PU250_%i.root' % (i+1) for i in xrange(20)]  # up to 20/50
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU300/SingleNeutrino/CRAB3/190209_121619/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(20)]  # up to 20/53
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleElectron_PU140/SingleE_FlatPt-2to100/CRAB3/190211_021652/0000/ntuple_SingleElectron_PU140_%i.root' % (i+1) for i in xrange(28)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleElectron_PU200/SingleE_FlatPt-2to100/CRAB3/190211_182015/0000/ntuple_SingleElectron_PU200_%i.root' % (i+1) for i in xrange(27)]
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU140/SingleMu_FlatPt-2to100/CRAB3/190211_182130/0000/ntuple_SingleMuon_PU140_%i.root' % (i+1) for i in xrange(25)]
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU200/SingleMu_FlatPt-2to100/CRAB3/190211_182229/0000/ntuple_SingleMuon_PU200_%i.root' % (i+1) for i in xrange(26)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU140/SinglePhoton_FlatPt-8to150/CRAB3/190211_182324/0000/ntuple_SinglePhoton_PU140_%i.root' % (i+1) for i in xrange(27)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU200/SinglePhoton_FlatPt-8to150/CRAB3/190211_182443/0000/ntuple_SinglePhoton_PU200_%i.root' % (i+1) for i in xrange(27)]
 
   # For testing purposes (SingleNeutrino, PU200)
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190125_231746/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30,63)]  # from 30/63
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190209_121428/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30,63)]  # from 30/63
 
   infile = pufiles[j]
   infile_r = root_open(infile)
