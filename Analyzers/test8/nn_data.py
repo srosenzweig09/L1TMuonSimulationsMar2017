@@ -10,7 +10,7 @@ from nn_encode import Encoder
 
 
 # ______________________________________________________________________________
-def muon_data(filename, adjust_scale=0, reg_pt_scale=1.0, correct_for_eta=False):
+def muon_data(filename, reg_pt_scale=1.0, correct_for_eta=False):
   try:
     logger.info('Loading muon data from {0} ...'.format(filename))
     loaded = np.load(filename)
@@ -23,7 +23,7 @@ def muon_data(filename, adjust_scale=0, reg_pt_scale=1.0, correct_for_eta=False)
 
   assert(the_variables.shape[0] == the_parameters.shape[0])
 
-  encoder = Encoder(the_variables, the_parameters, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale)
+  encoder = Encoder(the_variables, the_parameters, reg_pt_scale=reg_pt_scale)
   if correct_for_eta:
     x, y, w, x_mask = encoder.get_x(), encoder.get_y_corrected_for_eta(), encoder.get_w(), encoder.get_x_mask()
   else:
@@ -34,8 +34,8 @@ def muon_data(filename, adjust_scale=0, reg_pt_scale=1.0, correct_for_eta=False)
   return x, y, w, x_mask
 
 
-def muon_data_split(filename, adjust_scale=0, reg_pt_scale=1.0, test_size=0.5, correct_for_eta=False):
-  x, y, w, x_mask = muon_data(filename, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale, correct_for_eta=correct_for_eta)
+def muon_data_split(filename, reg_pt_scale=1.0, test_size=0.5, correct_for_eta=False):
+  x, y, w, x_mask = muon_data(filename, reg_pt_scale=reg_pt_scale, correct_for_eta=correct_for_eta)
 
   # Split dataset in training and testing
   x_train, x_test, y_train, y_test, w_train, w_test, x_mask_train, x_mask_test = train_test_split(x, y, w, x_mask, test_size=test_size)
@@ -59,12 +59,12 @@ def muon_data_split(filename, adjust_scale=0, reg_pt_scale=1.0, test_size=0.5, c
 
 
 # ______________________________________________________________________________
-def pileup_data(filename, adjust_scale=0, reg_pt_scale=1.0):
+def pileup_data(filename, reg_pt_scale=1.0):
   try:
     logger.info('Loading pileup data from {0} ...'.format(filename))
     loaded = np.load(filename)
     the_variables = loaded['variables']
-    the_parameters = np.zeros((the_variables.shape[0], 3), dtype=np.float32)
+    the_parameters = np.zeros((the_variables.shape[0], 1), dtype=np.float32)
     the_aux = loaded['aux']
     logger.info('Loaded the variables with shape {0}'.format(the_variables.shape))
     logger.info('Loaded the auxiliary PU info with shape {0}'.format(the_aux.shape))
@@ -74,7 +74,7 @@ def pileup_data(filename, adjust_scale=0, reg_pt_scale=1.0):
   assert(the_variables.shape[0] == the_aux.shape[0])
   assert(the_aux.shape[1] == 4)  # jobid, ievt, highest_part_pt, highest_track_pt
 
-  encoder = Encoder(the_variables, the_parameters, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale)
+  encoder = Encoder(the_variables, the_parameters, reg_pt_scale=reg_pt_scale)
   x, y, w, x_mask = encoder.get_x(), encoder.get_y(), encoder.get_w(), encoder.get_x_mask()
   logger.info('Loaded the encoded variables with shape {0}'.format(x.shape))
   logger.info('Loaded the encoded auxiliary PU info with shape {0}'.format(the_aux.shape))
@@ -82,8 +82,8 @@ def pileup_data(filename, adjust_scale=0, reg_pt_scale=1.0):
   return x, the_aux, w, x_mask
 
 
-def pileup_data_split(filename, adjust_scale=0, reg_pt_scale=1.0, test_job=50):
-  x, aux, w, x_mask = pileup_data(filename, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale)
+def pileup_data_split(filename, reg_pt_scale=1.0, test_job=50):
+  x, aux, w, x_mask = pileup_data(filename, reg_pt_scale=reg_pt_scale)
 
   # Split dataset in training and testing
   split = aux[:,0].astype(np.int32) < test_job

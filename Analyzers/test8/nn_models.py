@@ -293,15 +293,15 @@ def create_model_bn2(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, n
     x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)
 
   x = Dense(nodes1, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False)(x)
-  if use_bn: x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)  #FIXME
+  if use_bn: x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)
   x = Activation('tanh')(x)
   if nodes2:
     x = Dense(nodes2, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False)(x)
-    if use_bn: x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)  #FIXME
+    if use_bn: x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)
     x = Activation('tanh')(x)
     if nodes3:
       x = Dense(nodes3, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False)(x)
-      if use_bn: x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)  #FIXME
+      if use_bn: x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)
       x = Activation('tanh')(x)
 
   # Output nodes
