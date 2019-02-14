@@ -25,8 +25,7 @@ eta_bins = eta_bins[::-1]
 pt_bins = (-0.5, -0.365, -0.26, -0.155, -0.07, 0.07, 0.155, 0.26, 0.365, 0.5)
 pt_bins_omtf = (-0.25, -0.2, -0.15, -0.10, -0.05, 0.05, 0.10, 0.15, 0.20, 0.25)  # starts from 4 GeV
 nlayers = 16  # 5 (CSC) + 4 (RPC) + 3 (GEM) + 4 (DT)
-algorithms = ('Phase 2 EMTF++', 'Backported to Run 3', 'Extended to OMTF')
-#superstrip_size = 32
+#superstrip_size = 32  # 'quadstrip' unit (4 * 8)
 
 assert(len(eta_bins) == 7+1)
 assert(len(pt_bins) == 9+1)
@@ -268,7 +267,7 @@ class EMTFZone(object):
     #
     lut[0,1,1][6] = 92,130  # MB1
     lut[0,2,1][6] = 108,138 # MB2
-    lut[0,3,1][6] = 126,138 # MB3
+    lut[0,3,1][6] = 126,144 # MB3
     self.lut = lut
 
   def __call__(self, hit):
@@ -282,40 +281,28 @@ class EMTFZone(object):
 
 # Decide EMTF hit bend
 class EMTFBend(object):
-  def __init__(self):
-    self.lut = np.array([5, -5, 4, -4, 3, -3, 2, -2, 1, -1, 0], dtype=np.int32)
-
   def __call__(self, hit):
+    emtf_bend = np.int32(hit.bend)
     if hit.type == kCSC:
-      #clct = int(hit.pattern)
-      #bend = self.lut[clct]
-      bend = np.int32(hit.bend)
-      if hit.station == 1:
-        # Special case for ME1/1a:
-        # rescale the bend to the same scale as ME1/1b
-        if hit.ring == 4:
-          bend *= 0.026331/0.014264
-      elif hit.station in (2,3,4):
-        if -8 <= bend <= 8:
-          bend = 0
-        elif bend > 8:
-          bend = +1
-        else:
-          bend = -1
-      bend *= hit.endcap
+      # Special case for ME1/1a:
+      # rescale the bend to the same scale as ME1/1b
+      if hit.station == 1 and hit.ring == 4:
+        emtf_bend = np.round(emtf_bend.astype(np.float32) * 0.026331/0.014264).astype(np.int32)
+      emtf_bend *= hit.endcap
+      emtf_bend /= 2  # from 1/32-strip unit to 1/16-strip unit
     elif hit.type == kGEM:
-      bend = hit.bend
-      bend *= hit.endcap
+      emtf_bend *= hit.endcap
     elif hit.type == kME0:
-      bend = hit.bend
+      pass  # currently in 1/2-strip unit
     elif hit.type == kDT:
       if hit.quality >= 4:
-        bend = np.clip(hit.bend, -512, 511)
+        emtf_bend = np.clip(emtf_bend, -512, 511)
       else:
-        bend = 0
-    else:
-      bend = 0
-    return bend
+        #emtf_bend = 0
+        emtf_bend = np.clip(emtf_bend, -512, 511)
+    else:  # kRPC
+      emtf_bend = 0
+    return emtf_bend
 
 # Decide EMTF hit bend (old version)
 class EMTFOldBend(object):
@@ -326,6 +313,7 @@ class EMTFOldBend(object):
     if hit.type == kCSC:
       clct = int(hit.pattern)
       bend = self.lut[clct]
+      bend *= hit.endcap
     elif hit.type == kGEM:
       bend = hit.bend
       bend *= hit.endcap
@@ -333,7 +321,7 @@ class EMTFOldBend(object):
       bend = hit.bend
     elif hit.type == kDT:
       bend = hit.bend
-    else:
+    else:  # kRPC
       bend = 0
     return bend
 
@@ -390,39 +378,15 @@ class EMTFTheta(object):
 
 # Decide EMTF hit quality
 class EMTFQuality(object):
-  def __call__(self, hit, zone):
+  def __call__(self, hit):
     emtf_quality = np.int32(hit.quality)
-    if zone != 6:
-      if hit.type == kCSC:
-        if hit.station == 1:
-          # front chamber -> +1
-          # rear chamber  -> -1
-          if int(hit.fr) == 1:
-            emtf_quality = emtf_quality * +1
-          else:
-            emtf_quality = emtf_quality * -1
-        else:
-          # ring 2,3 -> +1
-          # ring 1,4 -> -1
-          if int(hit.ring) == 2 or int(hit.ring) == 3:
-            emtf_quality = emtf_quality * +1
-          else:
-            emtf_quality = emtf_quality * -1
+    if hit.type == kCSC or hit.type == kME0:
+      # front chamber -> +1
+      # rear chamber  -> -1
+      if int(hit.fr) == 1:
+        emtf_quality = emtf_quality * +1
       else:
-        pass
-    else:  # zone 6
-      if hit.type == kCSC:
-        if hit.station == 1:
-          # ring 3 -> +1
-          # ring 2 -> -1
-          if int(hit.ring) == 3:
-            emtf_quality = emtf_quality * +1
-          else:
-            emtf_quality = emtf_quality * -1
-        else:
-          pass
-      else:
-        pass
+        emtf_quality = emtf_quality * -1
     return emtf_quality
 
 # Decide EMTF hit time (integer unit)
@@ -494,6 +458,9 @@ def is_emtf_muopen(mode):
 
 def is_emtf_singlehit(mode):
   return bool(mode & (1 << 3))
+
+def is_emtf_singlehit_me2(mode):
+  return bool(mode & (1 << 2))
 
 # Decide EMTF legit hit
 def is_emtf_legit_hit(hit):
@@ -680,10 +647,10 @@ class PatternRecognition(object):
     self.omtf_input = omtf_input
     self.run2_input = run2_input
 
-  def _create_road_hit(self, hit, zone):
+  def _create_road_hit(self, hit):
     hit_id = (hit.type, hit.station, hit.ring, hit.endsec, hit.fr, hit.bx)
     emtf_bend = find_emtf_bend(hit)
-    emtf_quality = find_emtf_quality(hit, zone=zone)
+    emtf_quality = find_emtf_quality(hit)
     emtf_time = find_emtf_time(hit)
     old_emtf_bend = find_emtf_old_bend(hit)
     extra_emtf_theta = 0  #FIXME
@@ -739,7 +706,7 @@ class PatternRecognition(object):
           if PATTERN_X_SEARCH_MIN <= iphi <= PATTERN_X_SEARCH_MAX:
             # Create and associate 'myhit' to road ids
             if myhit is None:
-              myhit = self._create_road_hit(hit, zone=zone)
+              myhit = self._create_road_hit(hit)
             road_id = (endcap, sector, ipt, ieta, iphi)
             amap.setdefault(road_id, []).append(myhit)  # append hit to road
 
@@ -778,6 +745,10 @@ class PatternRecognition(object):
           road_mode_omtf |= (1 << 1)
         elif _type == kCSC and (station == 2 or station == 3) and ring == 2:
           road_mode_omtf |= (1 << 0)
+        elif _type == kRPC and station == 1 and (ring == 2 or ring == 3):
+          road_mode_omtf |= (1 << 1)
+        elif _type == kRPC and (station == 2 or station == 3) and (ring == 2 or ring == 3):
+          road_mode_omtf |= (1 << 0)
 
         tmp_road_hits.append(hit)
         if _type == kCSC:
@@ -785,7 +756,7 @@ class PatternRecognition(object):
 
       # Apply SingleMu requirement
       # + (zones 0,1) any road with ME0 and ME1
-      # + (zone 6) any road with MB1+MB2, MB1+ME1/3, MB1+ME2/2, MB2+MB3, MB2+ME1/3, MB2+ME2/2, ME1/3+ME2/2
+      # + (zone 6) any road with MB1+MB2, MB1+MB3, MB1+ME1/3, MB1+ME2/2, MB2+MB3, MB2+ME1/3, MB2+ME2/2, ME1/3+ME2/2
       if ((is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
           (ieta in (0,1) and road_mode_me0 >= 6) or
           (ieta in (6,) and road_mode_omtf not in (0,1,2,4,8))):
@@ -828,8 +799,10 @@ class PatternRecognition(object):
         sector_mode = sector_mode_array[endsec]
         sector_hits = sector_hits_array[endsec]
 
-        # Provide early exit if fail MuOpen and no hit in station 1 (check CSC, ME0, DT)
-        if not is_emtf_muopen(sector_mode) and not is_emtf_singlehit(sector_mode):
+        # Provide early exit if fail MuOpen and no hit in stations 1&2 (check CSC, ME0, DT)
+        if not is_emtf_muopen(sector_mode) and \
+            not is_emtf_singlehit(sector_mode) and \
+            not is_emtf_singlehit_me2(sector_mode):
           continue
 
         # Remove all RPC hits
@@ -1399,10 +1372,10 @@ class RoadsAnalysis(object):
         out_roads.append(slim_roads[0])
 
       if omtf_input:
-        is_important = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0) and (part.pt > 4.)
-        is_possible = lambda hits: any([((hit.type == kDT and 1 <= hit.station <= 2) or (hit.type == kCSC and hit.station == 1)) for hit in hits]) and \
-            any([((hit.type == kDT and 2 <= hit.station <= 3) or (hit.type == kCSC and 1 <= hit.station <= 3)) for hit in hits]) and \
-            sum([(hit.type == kDT or hit.type == kCSC) and (hit.bx in (-1,0)) for hit in hits]) >= 2
+        is_important = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0) and (part.pt > 5.)
+        is_possible = lambda hits: (any([(hit.type == kDT and hit.station == 1) for hit in hits]) and any([(hit.type == kDT and 2 <= hit.station <= 3) for hit in hits])) or \
+            (any([(hit.type == kCSC and hit.station == 1) for hit in hits]) and any([(hit.type == kDT and 1 <= hit.station <= 2) for hit in hits])) or \
+            (any([(hit.type == kCSC and hit.station == 1) for hit in hits]) and any([(hit.type == kCSC and 2 <= hit.station <= 3) for hit in hits]))
       else:
         is_important = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0) and (part.pt > 4.)
         is_possible = lambda hits: any([((hit.type == kCSC or hit.type == kME0) and hit.station == 1) for hit in hits]) and \
@@ -1424,7 +1397,7 @@ class RoadsAnalysis(object):
         for ihit, hit in enumerate(evt.hits):
           hit_id = (hit.type, hit.station, hit.ring, find_endsec(hit.endcap, hit.sector), hit.fr, hit.bx)
           hit_sim_tp = (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)
-          print(".. .. hit {0} id: {1} lay: {2} ph: {3} ({4}) th: {5} bd: {6} qual: {7} tp: {8}".format(ihit, hit_id, find_emtf_layer(hit), hit.emtf_phi, find_pattern_x(hit.emtf_phi), hit.emtf_theta, find_emtf_bend(hit), find_emtf_quality(hit, zone=0), hit_sim_tp))
+          print(".. .. hit {0} id: {1} lay: {2} ph: {3} ({4}) th: {5} bd: {6} qual: {7} tp: {8}".format(ihit, hit_id, find_emtf_layer(hit), hit.emtf_phi, find_pattern_x(hit.emtf_phi), hit.emtf_theta, find_emtf_bend(hit), find_emtf_quality(hit), hit_sim_tp))
         for iroad, myroad in enumerate(sorted(roads, key=lambda x: x.id)):
           print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
         for iroad, myroad in enumerate(clean_roads):
@@ -1922,11 +1895,14 @@ maxEvents = 1000
 # Condor or not
 use_condor = ('CONDOR_EXEC' in os.environ)
 
-# Algorithm, pick one from
-# algorithms = ('Phase 2 EMTF++', 'Backported to Run 3', 'Extended to OMTF')
-algo = 2
+# Algorithm (pick one)
+#algo = 'default'  # phase 2
+#algo = 'run3'
+algo = 'omtf'
+if use_condor:
+  algo = sys.argv[1]
 
-# Analysis mode
+# Analysis mode (pick one)
 #analysis = 'dummy'
 analysis = 'roads'
 #analysis = 'rates'
@@ -1934,16 +1910,15 @@ analysis = 'roads'
 #analysis = 'mixing'
 #analysis = 'images'
 if use_condor:
-  analysis = sys.argv[1]
+  analysis = sys.argv[2]
 
-# Job
+# Job id
 jobid = 0
 if use_condor:
-  jobid = int(sys.argv[2])
+  jobid = int(sys.argv[3])
 
 
 # Input files
-#bankfile = 'pattern_bank.20.npz'
 bankfile = 'pattern_bank_omtf.23.npz'
 
 kerasfile = ['model.23.json', 'model_weights.23.h5', 'model_omtf.23.json', 'model_omtf_weights.23.h5']
@@ -2089,16 +2064,16 @@ if __name__ == "__main__":
   print('[INFO] Using cmssw     : {0}'.format(os.environ['CMSSW_VERSION']))
   print('[INFO] Using condor    : {0}'.format(use_condor))
   print('[INFO] Using max events: {0}'.format(maxEvents))
-  print('[INFO] Using algo      : {0}'.format(algorithms[algo]))
+  print('[INFO] Using algo      : {0}'.format(algo))
   print('[INFO] Using analysis  : {0}'.format(analysis))
   print('[INFO] Using job id    : {0}'.format(jobid))
 
-  if algo == 1:
+  if algo == 'run3':
     run2_input = True
   else:
     run2_input = False
 
-  if algo == 2:
+  if algo == 'omtf':
     omtf_input = True
   else:
     omtf_input = False
