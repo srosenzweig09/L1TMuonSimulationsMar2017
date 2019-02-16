@@ -6,7 +6,8 @@ logger = getLogger()
 
 #learning_rate = 0.00113
 #learning_rate = 0.0033
-learning_rate = 0.0063
+#learning_rate = 0.0063
+learning_rate = 0.0081
 
 gradient_clip_norm = 100.
 

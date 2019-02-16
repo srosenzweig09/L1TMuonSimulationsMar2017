@@ -66,7 +66,7 @@ class Encoder(object):
 
     # ________________________________________________________________________
     # Drop detectors
-    x_dropit = self.x_mask
+    x_dropit = self.x_mask.copy()
     if drop_ge11:
       x_dropit[:, 9] = 1  # 9: GE1/1
     if drop_ge21:
@@ -102,11 +102,13 @@ class Encoder(object):
     self.x_phi_median    = self.x_road[:, 2] * 32  # multiply by 'quadstrip' unit (4 * 8)
     self.x_phi_median    = self.x_phi_median[:, np.newaxis]
     self.x_phi          -= self.x_phi_median
+    self.x_phi          /= 32
 
     # Subtract median theta from hit thetas
     self.x_theta_median  = np.nanmedian(self.x_theta, axis=1)
     self.x_theta_median  = self.x_theta_median[:, np.newaxis]
-    self.x_theta        -= self.x_theta_median
+    #self.x_theta        -= self.x_theta_median
+    self.x_theta        /= 8
 
     # ________________________________________________________________________
     # Zero out certain variables
