@@ -288,6 +288,7 @@ class EMTFBend(object):
       # rescale the bend to the same scale as ME1/1b
       if hit.station == 1 and hit.ring == 4:
         emtf_bend = np.round(emtf_bend.astype(np.float32) * 0.026331/0.014264).astype(np.int32)
+        emtf_bend = np.clip(emtf_bend, -32, 31)
       emtf_bend *= hit.endcap
       emtf_bend /= 2  # from 1/32-strip unit to 1/16-strip unit
     elif hit.type == kGEM:
@@ -420,13 +421,16 @@ class EMTFRoadQuality(object):
 # Decide EMTF road sort code
 class EMTFRoadSortCode(object):
   def __init__(self):
-    # 11   10     9      8      7    6      5      4      3      2..0
-    # ME0, ME1/1, GE1/1, ME1/2, ME2, GE2/1, ME3&4, RE1&2, RE3&4, qual
-    self.lut = np.array([10,8,7,5,5,4,4,3,3,9,6,11,11,10,9,9], dtype=np.int32)
+    # 9    8      7      6    5      4    3    2..0
+    #      ME1/1  ME1/2  ME2         ME3  ME4  qual
+    #                         RE1&2  RE3  RE4
+    # ME0         GE1/1       GE2/1
+    # MB1  MB2                MB3&4
+    self.lut = np.array([8,7,6,4,3,5,5,4,3,7,5,9,9,8,5,5], dtype=np.int32)
     assert(self.lut.shape[0] == nlayers)
 
   def __call__(self, mode, qual, hits):
-    code = 0
+    code = np.int32(0)
     for hit in hits:
       hit_lay = hit.emtf_layer
       mlayer = self.lut[hit_lay]
@@ -1919,9 +1923,9 @@ if use_condor:
 
 
 # Input files
-bankfile = 'pattern_bank_omtf.23.npz'
+bankfile = 'pattern_bank_omtf.24.npz'
 
-kerasfile = ['model.23.json', 'model_weights.23.h5', 'model_omtf.23.json', 'model_omtf_weights.23.h5']
+kerasfile = ['model.24.json', 'model_weights.24.h5', 'model_omtf.24.json', 'model_omtf_weights.24.h5']
 
 infile_r = None  # input file handle
 
