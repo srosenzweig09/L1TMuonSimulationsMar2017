@@ -7,7 +7,7 @@ logger = getLogger()
 #learning_rate = 0.00113
 #learning_rate = 0.0033
 #learning_rate = 0.0063
-learning_rate = 0.0081
+learning_rate = 0.0091
 
 gradient_clip_norm = 100.
 
@@ -29,13 +29,13 @@ l1_reg = 0.0
 
 l2_reg = 0.0
 
-infile_muon = '../test7/histos_tba.23.npz'
+infile_muon = '../test7/histos_tba.24.npz'
 
-infile_pileup = '../test7/histos_tbd.23.npz'
+infile_pileup = '../test7/histos_tbd.24.npz'
 
-infile_muon_omtf = '../test7/histos_tba_omtf.23.npz'
+infile_muon_omtf = '../test7/histos_tba_omtf.24.npz'
 
-infile_pileup_omtf = '../test7/histos_tbd_omtf.23.npz'
+infile_pileup_omtf = '../test7/histos_tbd_omtf.24.npz'
 
 
 # ______________________________________________________________________________

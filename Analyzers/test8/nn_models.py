@@ -275,7 +275,7 @@ def create_model_bn(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, no
   adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
   model.compile(optimizer=adam,
     loss={'regr': masked_huber_loss, 'discr': masked_binary_crossentropy},
-    loss_weights={'regr': 1.0/discr_loss_weight, 'discr': 1.0},
+    loss_weights={'regr': 1.0, 'discr': discr_loss_weight},
     #metrics={'regr': ['acc', 'mse', 'mae'], 'discr': ['acc',]}
     )
   model.summary()
@@ -284,13 +284,12 @@ def create_model_bn(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, no
 # ______________________________________________________________________________
 def create_model_bn2(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0,
                      l1_reg=0.0, l2_reg=0.0, use_bn=True, use_dropout=False):
-  # Only 1 BN layer, right after the input layer
+  # Adding 1 BN layer right after the input layer
   regularizer = regularizers.L1L2(l1=l1_reg, l2=l2_reg)
   inputs = Input(shape=(nvariables,), dtype='float32')
 
   x = inputs
-  if use_bn:
-    x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)
+  if use_bn: x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)
 
   x = Dense(nodes1, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False)(x)
   if use_bn: x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)
@@ -315,7 +314,7 @@ def create_model_bn2(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, n
   adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
   model.compile(optimizer=adam,
     loss={'regr': masked_huber_loss, 'discr': masked_binary_crossentropy},
-    loss_weights={'regr': 1.0/discr_loss_weight, 'discr': 1.0},
+    loss_weights={'regr': 1.0, 'discr': discr_loss_weight},
     #metrics={'regr': ['acc', 'mse', 'mae'], 'discr': ['acc',]}
     )
   model.summary()
@@ -467,6 +466,37 @@ def create_model_sequential_bn(nvariables, lr=0.001, clipnorm=10., nodes1=64, no
       if use_bn: model.add(BatchNormalization(epsilon=1e-4, momentum=0.9))
       model.add(Activation('tanh'))
       if use_dropout: model.add(Dropout(0.2))
+
+  # Output node
+  model.add(Dense(1, activation='linear', kernel_initializer='glorot_uniform'))
+
+  # Set loss and optimizers
+  adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
+  model.compile(optimizer=adam, loss=huber_loss, metrics=['acc'])
+  #model.compile(optimizer=adam, loss=unmasked_huber_loss, metrics=['acc'])
+  model.summary()
+  return model
+
+# ______________________________________________________________________________
+def create_model_sequential_bn2(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, nodes3=16,
+                                l1_reg=0.0, l2_reg=0.0, use_bn=True, use_dropout=False):
+  # Adding 1 BN layer right after the input layer
+  regularizer = regularizers.L1L2(l1=l1_reg, l2=l2_reg)
+
+  model = Sequential()
+  if use_bn: model.add(BatchNormalization(input_shape=(nvariables,), epsilon=1e-4, momentum=0.9))
+
+  model.add(Dense(nodes1, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False))
+  if use_bn: model.add(BatchNormalization(epsilon=1e-4, momentum=0.9))
+  model.add(Activation('tanh'))
+  if nodes2:
+    model.add(Dense(nodes2, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False))
+    if use_bn: model.add(BatchNormalization(epsilon=1e-4, momentum=0.9))
+    model.add(Activation('tanh'))
+    if nodes3:
+      model.add(Dense(nodes3, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False))
+      if use_bn: model.add(BatchNormalization(epsilon=1e-4, momentum=0.9))
+      model.add(Activation('tanh'))
 
   # Output node
   model.add(Dense(1, activation='linear', kernel_initializer='glorot_uniform'))

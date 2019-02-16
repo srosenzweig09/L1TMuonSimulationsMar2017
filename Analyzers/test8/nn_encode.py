@@ -110,6 +110,10 @@ class Encoder(object):
     #self.x_theta        -= self.x_theta_median
     self.x_theta        /= 8
 
+    # Rescale ME0 & DT bending angles
+    self.x_bend[:, 11:12] /= 4
+    self.x_bend[:, 12:16] /= 32
+
     # ________________________________________________________________________
     # Zero out certain variables
     self.x_bend[:, 5:11]  = 0 # no bend for RPC, GEM

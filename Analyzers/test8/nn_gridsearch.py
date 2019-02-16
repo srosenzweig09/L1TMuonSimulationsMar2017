@@ -1,7 +1,7 @@
 """
-export SCRAM_ARCH=slc6_amd64_gcc630
-cmsrel CMSSW_10_1_7
-cd CMSSW_10_1_7/src
+export SCRAM_ARCH=slc6_amd64_gcc700
+cmsrel CMSSW_10_4_0
+cd CMSSW_10_4_0/src
 cmsenv
 virtualenv venv
 source venv/bin/activate
@@ -23,9 +23,7 @@ from nn_encode import nlayers, nvariables
 
 from nn_data import (muon_data_split, pileup_data_split, mix_training_inputs)
 
-from nn_models import (create_model, create_model_bn, create_model_pruned,
-                       create_model_sequential, create_model_sequential_bn,
-                       lr_decay, modelbestcheck, modelbestcheck_weights)
+from nn_models import (create_model_sequential_bn2, lr_decay, modelbestcheck, modelbestcheck_weights)
 
 from nn_training import train_model
 
@@ -36,32 +34,29 @@ from nn_pruning import prune_model
 import skopt
 logger.info('Using skopt {0}'.format(skopt.__version__))
 
-use_hpe = ('SLURM_JOB_ID' in os.environ)
-
-if use_hpe:
-  infile_muon = '/scratch/CMS/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/histos_tba.18.npz'
-  infile_pileup = '/scratch/CMS/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/histos_tbd.18.npz'
+infile_muon = 'histos_tba.23.npz'
+infile_pileup = 'histos_tbd.23.npz'
 
 
 # ______________________________________________________________________________
-# Import muon data
-# 'x' is the input variables with shape (n, 87), 'y' is the q/pT with shape (n, 1)
+## Import muon data
+## 'x' is the array of input variables, 'y' is the q/pT
 #x_train, x_test, y_train, y_test, w_train, w_test, x_mask_train, x_mask_test = \
-#    muon_data_split(infile_muon, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale, test_size=0.31)
+#      muon_data_split(infile_muon, reg_pt_scale=reg_pt_scale, test_size=0.31)
 
 # Use ShuffleSplit as the CV iterator
 from nn_data import muon_data
 from sklearn.model_selection import ShuffleSplit
-x, y, w, x_mask = muon_data(infile_muon, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale, correct_for_eta=False)
+x, y, w, x_mask = muon_data(infile_muon, reg_pt_scale=reg_pt_scale, correct_for_eta=False)
 cv = ShuffleSplit(n_splits=1, test_size=0.31)
 
 # ______________________________________________________________________________
 # Create KerasRegressor
 
 from nn_models import NewKerasRegressor
-estimator = NewKerasRegressor(build_fn=create_model_sequential_bn,
+estimator = NewKerasRegressor(build_fn=create_model_sequential_bn2,
                               nvariables=nvariables, lr=learning_rate, clipnorm=gradient_clip_norm, l1_reg=l1_reg, l2_reg=l2_reg,
-                              nodes1=40, nodes2=30, nodes3=20,
+                              nodes1=30, nodes2=25, nodes3=20,
                               epochs=100, batch_size=4096, verbose=0)
 callbacks_list = [lr_decay,modelbestcheck]
 
@@ -74,10 +69,11 @@ from sklearn.model_selection import cross_val_score, cross_validate, KFold, Grid
 nodes1 = [30,40,60,80]
 nodes2 = [20,30,40]
 nodes3 = [10,20,30]
-lr = [0.001, 0.01]
-batches = [256, 512, 1024, 4096]
-param_grid = dict(lr=lr, nodes1=nodes1, nodes2=nodes2, nodes3=nodes3)
-#param_grid = dict(lr=lr, batch_size=batches)
+lr = [0.001, 0.01, 0.1]
+batches = [256, 1024, 4096, 8192]
+#param_grid = dict(lr=lr)
+param_grid = dict(lr=lr, batch_size=batches)
+#param_grid = dict(lr=lr, nodes1=nodes1, nodes2=nodes2, nodes3=nodes3)
 logger.info('Using parameter grid: %r' % param_grid)
 
 opt = GridSearchCV(estimator=estimator, param_grid=param_grid,
