@@ -684,7 +684,7 @@ class PatternRecognition(object):
     return result
 
   def _apply_patterns(self, endcap, sector, sector_hits):
-    amap = {}  # road_id -> list of 'myhit'
+    amap = {}  # road_id -> road_hits
 
     # Loop over hits
     for ihit, hit in enumerate(sector_hits):
@@ -726,6 +726,10 @@ class PatternRecognition(object):
       road_mode = 0
       road_mode_csc = 0
       road_mode_me0 = 0
+      road_mode_mb1 = 0
+      road_mode_mb2 = 0
+      road_mode_me13 = 0
+      road_mode_me22 = 0
       road_mode_omtf = 0
       tmp_road_hits = []
       tmp_thetas = []
@@ -738,43 +742,66 @@ class PatternRecognition(object):
           road_mode_csc |= (1 << (4 - station))
 
         if _type == kME0:
-          road_mode_me0 |= (1 << 2)
-        elif _type == kCSC and station == 1 and (ring == 1 or ring == 4):
           road_mode_me0 |= (1 << 1)
-        elif _type == kCSC and station >= 2:
+        elif _type == kCSC and station == 1 and (ring == 1 or ring == 4):
           road_mode_me0 |= (1 << 0)
 
         if _type == kDT and station == 1:
-          road_mode_omtf |= (1 << 3)
-        elif _type == kDT and station == 2:
-          road_mode_omtf |= (1 << 2)
-        elif _type == kDT and station == 3:
-          road_mode_omtf |= (1 << 1)
-        elif _type == kCSC and station == 1 and (ring == 2 or ring == 3):
-          road_mode_omtf |= (1 << 1)
-        elif _type == kCSC and (station == 2 or station == 3) and ring == 2:
-          road_mode_omtf |= (1 << 0)
+          road_mode_mb1 |= (1 << 1)
+        elif _type == kDT and station >= 2:
+          road_mode_mb1 |= (1 << 0)
+        elif _type == kCSC and station >= 1 and (ring == 2 or ring == 3):
+          road_mode_mb1 |= (1 << 0)
+        elif _type == kRPC and station >= 1 and (ring == 2 or ring == 3):
+          road_mode_mb1 |= (1 << 0)
+
+        if _type == kDT and station == 2:
+          road_mode_mb2 |= (1 << 1)
+        elif _type == kDT and station >= 3:
+          road_mode_mb2 |= (1 << 0)
+        elif _type == kCSC and station >= 1 and (ring == 2 or ring == 3):
+          road_mode_mb2 |= (1 << 0)
+        elif _type == kRPC and station >= 1 and (ring == 2 or ring == 3):
+          road_mode_mb2 |= (1 << 0)
+
+        if _type == kCSC and station == 1 and (ring == 2 or ring == 3):
+          road_mode_me13 |= (1 << 1)
+        elif _type == kCSC and station >= 2 and (ring == 2 or ring == 3):
+          road_mode_me13 |= (1 << 0)
         elif _type == kRPC and station == 1 and (ring == 2 or ring == 3):
-          road_mode_omtf |= (1 << 1)
-        elif _type == kRPC and (station == 2 or station == 3) and (ring == 2 or ring == 3):
-          road_mode_omtf |= (1 << 0)
+          road_mode_me13 |= (1 << 1)
+        elif _type == kRPC and station >= 2 and (ring == 2 or ring == 3):
+          road_mode_me13 |= (1 << 0)
+
+        #if _type == kCSC and station == 2 and (ring == 2 or ring == 3):
+        #  road_mode_me22 |= (1 << 1)
+        #elif _type == kCSC and station >= 3 and (ring == 2 or ring == 3):
+        #  road_mode_me22 |= (1 << 0)
+        #elif _type == kRPC and station == 2 and (ring == 2 or ring == 3):
+        #  road_mode_me22 |= (1 << 1)
+        #elif _type == kRPC and station >= 3 and (ring == 2 or ring == 3):
+        #  road_mode_me22 |= (1 << 0)
+
+        road_mode_omtf = np.max((road_mode_mb1, road_mode_mb2, road_mode_me13))
 
         tmp_road_hits.append(hit)
-        if _type == kCSC:
-          tmp_thetas.append(hit.emtf_theta)
+
+        tmp_thetas.append(hit.emtf_theta)
+        continue  # end loop over road_hits
 
       # Apply SingleMu requirement
       # + (zones 0,1) any road with ME0 and ME1
       # + (zone 6) any road with MB1+MB2, MB1+MB3, MB1+ME1/3, MB1+ME2/2, MB2+MB3, MB2+ME1/3, MB2+ME2/2, ME1/3+ME2/2
       if ((is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
-          (ieta in (0,1) and road_mode_me0 >= 6) or
-          (ieta in (6,) and road_mode_omtf not in (0,1,2,4,8))):
+          (ieta in (0,1) and road_mode_me0 == 3) or
+          (ieta in (6,) and road_mode_omtf == 3)):
         road_quality = find_emtf_road_quality(ipt)
         road_sort_code = find_emtf_road_sort_code(road_mode, road_quality, tmp_road_hits)
         tmp_theta = np.median(tmp_thetas, overwrite_input=True)
 
         myroad = Road(road_id, tmp_road_hits, road_mode, road_quality, road_sort_code, tmp_theta)
         roads.append(myroad)
+      continue  # end loop over map of road_id -> road_hits
     return roads
 
   def run(self, hits):
@@ -1185,9 +1212,9 @@ class TrackProducer(object):
 
     (mode, mode_me0, mode_omtf) = modes
     if self.omtf_input:
-      mode_ok = (mode in (11,13,14,15)) or (mode_omtf not in (0,1,2,4,8))
+      mode_ok = (mode in (11,13,14,15)) or (mode_omtf == 3)
     else:
-      mode_ok = (mode in (11,13,14,15)) or (mode_me0 >= 6)
+      mode_ok = (mode in (11,13,14,15)) or (mode_me0 == 3)
 
     strg_ok = quality2 <= (quality1+1)
 
@@ -1230,23 +1257,35 @@ class TrackProducer(object):
 
       mode_me0 = np.int32(0)
       if valid[11]: # ME0
-        mode_me0 |= (1 << 2)
-      if valid[0]:  # ME1/1
         mode_me0 |= (1 << 1)
-      if np.any((valid[2], valid[3], valid[4])):  # ME2, ME3, ME4
+      if valid[0]:  # ME1/1
         mode_me0 |= (1 << 0)
 
-      mode_omtf = np.int32(0)
+      mode_mb1 = np.int32(0)
       if valid[12]: # MB1
-        mode_omtf |= (1 << 3)
+        mode_mb1 |= (1 << 1)
+      if np.any((valid[1], valid[2], valid[3], valid[5], valid[6], valid[7], valid[13], valid[14])):
+        mode_mb1 |= (1 << 0)
+
+      mode_mb2 = np.int32(0)
       if valid[13]: # MB2
-        mode_omtf |= (1 << 2)
-      if valid[14]: # MB3
-        mode_omtf |= (1 << 1)
-      if valid[1]:  # ME1/3
-        mode_omtf |= (1 << 1)
-      if np.any((valid[2], valid[3])):  # ME2, ME3
-        mode_omtf |= (1 << 0)
+        mode_mb2 |= (1 << 1)
+      if np.any((valid[1], valid[2], valid[3], valid[5], valid[6], valid[7], valid[14])):
+        mode_mb2 |= (1 << 0)
+
+      mode_me13 = np.int32(0)
+      if np.any((valid[1], valid[5])):  # ME1/2+3, RE1/2+3
+        mode_me13 |= (1 << 1)
+      if np.any((valid[2], valid[3], valid[6], valid[7])):
+        mode_me13 |= (1 << 0)
+
+      #mode_me22 = np.int32(0)
+      #if np.any((valid[2], valid[6])):  # ME2/2, RE2/2+3
+      #  mode_me22 |= (1 << 1)
+      #if np.any((valid[3], valid[7])):
+      #  mode_me22 |= (1 << 0)
+
+      mode_omtf = np.max((mode_mb1, mode_mb2, mode_me13))
       return (mode, mode_me0, mode_omtf)
 
     # __________________________________________________________________________
@@ -1489,13 +1528,17 @@ class RoadsAnalysis(object):
 # Analysis: rates
 
 class RatesAnalysis(object):
-  def run(self, omtf_input=False, run2_input=False):
+  def run(self, omtf_input=False, run2_input=False, pileup=200):
     # Book histograms
     histograms = {}
     hname = "nevents"
     histograms[hname] = Hist(5, 0, 5, name=hname, title="; count", type='F')
     for m in ("emtf", "emtf2026"):
+      hname = "highest_%s_absEtaMin0.8_absEtaMax2.4_qmin12_pt" % m
+      histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
       hname = "highest_%s_absEtaMin1.24_absEtaMax2.4_qmin12_pt" % m
+      histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
+      hname = "highest_%s_absEtaMin0.8_absEtaMax1.24_qmin12_pt" % m
       histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
       hname = "highest_%s_absEtaMin1.24_absEtaMax1.65_qmin12_pt" % m
       histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
@@ -1506,10 +1549,10 @@ class RatesAnalysis(object):
 
       for l in xrange(14,22+1):
         hname = "%s_ptmin%i_qmin12_eta" % (m,l)
-        histograms[hname] = Hist(10, 1.55, 2.55, name=hname, title="; |#eta|; entries", type='F')
+        histograms[hname] = Hist(18, 0.75, 2.55, name=hname, title="; |#eta|; entries", type='F')
 
     # Load tree
-    tree = load_minbias_batch(jobid)
+    tree = load_minbias_batch(jobid, pileup=pileup)
 
     # Workers
     bank = PatternBank(bankfile)
@@ -1583,9 +1626,9 @@ class RatesAnalysis(object):
 
       def fill_eta():
         h = histograms[hname]
-        eta_bins = [False] * (10+2)
+        eta_bins = [False] * (h.GetNbinsX()+2)
         for itrk, trk in enumerate(tracks):
-          if select(trk):
+          if select(trk):  # using scaled pT
             b = h.FindFixBin(abs(trk.eta))
             eta_bins[b] = True
         for b in xrange(len(eta_bins)):
@@ -1594,8 +1637,14 @@ class RatesAnalysis(object):
 
       tracks = evt.tracks
       #
+      select = lambda trk: trk and (0.8 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
+      hname = "highest_emtf_absEtaMin0.8_absEtaMax2.4_qmin12_pt"
+      fill_highest_pt()
       select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
       hname = "highest_emtf_absEtaMin1.24_absEtaMax2.4_qmin12_pt"
+      fill_highest_pt()
+      select = lambda trk: trk and (0.8 <= abs(trk.eta) < 1.24) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
+      hname = "highest_emtf_absEtaMin0.8_absEtaMax1.24_qmin12_pt"
       fill_highest_pt()
       select = lambda trk: trk and (1.24 <= abs(trk.eta) < 1.65) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
       hname = "highest_emtf_absEtaMin1.24_absEtaMax1.65_qmin12_pt"
@@ -1607,14 +1656,20 @@ class RatesAnalysis(object):
       hname = "highest_emtf_absEtaMin2.15_absEtaMax2.4_qmin12_pt"
       fill_highest_pt()
       for l in xrange(14,22+1):
-        select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l))
+        select = lambda trk: trk and (0 <= abs(trk.eta) <= 9.9) and (trk.bx == 0) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l))
         hname = "emtf_ptmin%i_qmin12_eta" % (l)
         fill_eta()
 
       tracks = emtf2026_tracks
       #
+      select = lambda trk: trk and (0.8 <= abs(trk.eta) <= 2.4)
+      hname = "highest_emtf2026_absEtaMin0.8_absEtaMax2.4_qmin12_pt"
+      fill_highest_pt()
       select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4)
       hname = "highest_emtf2026_absEtaMin1.24_absEtaMax2.4_qmin12_pt"
+      fill_highest_pt()
+      select = lambda trk: trk and (0.8 <= abs(trk.eta) < 1.24)
+      hname = "highest_emtf2026_absEtaMin0.8_absEtaMax1.24_qmin12_pt"
       fill_highest_pt()
       select = lambda trk: trk and (1.24 <= abs(trk.eta) < 1.65)
       hname = "highest_emtf2026_absEtaMin1.24_absEtaMax1.65_qmin12_pt"
@@ -1626,7 +1681,7 @@ class RatesAnalysis(object):
       hname = "highest_emtf2026_absEtaMin2.15_absEtaMax2.4_qmin12_pt"
       fill_highest_pt()
       for l in xrange(14,22+1):
-        select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.pt > float(l))
+        select = lambda trk: trk and (0 <= abs(trk.eta) <= 9.9) and (trk.pt > float(l))
         hname = "emtf2026_ptmin%i_qmin12_eta" % (l)
         fill_eta()
 
@@ -1644,7 +1699,11 @@ class RatesAnalysis(object):
       hname = "nevents"
       hnames.append("nevents")
       for m in ("emtf", "emtf2026"):
+        hname = "highest_%s_absEtaMin0.8_absEtaMax2.4_qmin12_pt" % m
+        hnames.append(hname)
         hname = "highest_%s_absEtaMin1.24_absEtaMax2.4_qmin12_pt" % m
+        hnames.append(hname)
+        hname = "highest_%s_absEtaMin0.8_absEtaMax1.24_qmin12_pt" % m
         hnames.append(hname)
         hname = "highest_%s_absEtaMin1.24_absEtaMax1.65_qmin12_pt" % m
         hnames.append(hname)
@@ -1800,10 +1859,12 @@ class EffieAnalysis(object):
         tracks = emtf2026_tracks
         if omtf_input:
           select_part = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0)
-          select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and (trk.pt > float(l))
+          #select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and (trk.pt > float(l))
+          select_track = lambda trk: trk and (0.75 <= abs(trk.eta) <= 1.4) and (trk.pt > float(l))
         else:
           select_part = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
-          select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.pt > float(l))
+          #select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.pt > float(l))
+          select_track = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.4) and (trk.pt > float(l))
         #
         hname = "emtf2026_eff_vs_genpt_l1pt%i" % (l)
         fill_efficiency_pt()
@@ -1856,7 +1917,6 @@ class EffieAnalysis(object):
 
 class MixingAnalysis(object):
   def run(self, omtf_input=False, run2_input=False):
-    #tree = load_minbias_batch(jobid)
     tree = load_minbias_batch_for_mixing(jobid)
 
     # Workers
@@ -2064,9 +2124,19 @@ def load_pgun_batch_omtf(j):
   #tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
   return tree
 
-def load_minbias_batch(j):
+def load_minbias_batch(j, pileup=200):
   global infile_r
-  pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190209_121428/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
+  if pileup == 140:
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU140/SingleNeutrino/CRAB3/190209_121318/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(56)]
+  elif pileup == 200:
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190209_121428/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
+  elif pileup == 250:
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU250/SingleNeutrino/CRAB3/190209_121524/0000/ntuple_SingleNeutrino_PU250_%i.root' % (i+1) for i in xrange(50)]
+  elif pileup == 300:
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU300/SingleNeutrino/CRAB3/190209_121619/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(53)]
+  else:
+    raise RunTimeError('Cannot recognize pileup: {0}'.format(pileup))
+
   infile = pufiles[j]
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
@@ -2148,7 +2218,16 @@ if __name__ == "__main__":
 
   elif analysis == 'rates':
     analysis = RatesAnalysis()
-    analysis.run(omtf_input=omtf_input, run2_input=run2_input)
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input, pileup=200)
+  elif analysis == 'rates140':
+    analysis = RatesAnalysis()
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input, pileup=140)
+  elif analysis == 'rates250':
+    analysis = RatesAnalysis()
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input, pileup=250)
+  elif analysis == 'rates300':
+    analysis = RatesAnalysis()
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input, pileup=300)
 
   elif analysis == 'effie':
     analysis = EffieAnalysis()
