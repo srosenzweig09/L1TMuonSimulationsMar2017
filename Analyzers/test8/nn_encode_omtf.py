@@ -190,6 +190,10 @@ class Encoder(object):
     x_mask = self.x_mask.copy()
     return x_mask
 
+  def get_x_road(self):
+    x_road = np.hstack((self.x_straightness, self.x_zone, self.x_theta_median))
+    return x_road
+
   def get_y(self):
     y_new = self.y_pt.copy()
     return y_new

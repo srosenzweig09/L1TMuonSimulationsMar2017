@@ -25,20 +25,20 @@ def muon_data(filename, reg_pt_scale=1.0, correct_for_eta=False):
 
   encoder = Encoder(the_variables, the_parameters, reg_pt_scale=reg_pt_scale)
   if correct_for_eta:
-    x, y, w, x_mask = encoder.get_x(), encoder.get_y_corrected_for_eta(), encoder.get_w(), encoder.get_x_mask()
+    x, y, w, x_mask, x_road = encoder.get_x(), encoder.get_y_corrected_for_eta(), encoder.get_w(), encoder.get_x_mask(), encoder.get_x_road()
   else:
-    x, y, w, x_mask = encoder.get_x(), encoder.get_y(), encoder.get_w(), encoder.get_x_mask()
+    x, y, w, x_mask, x_road = encoder.get_x(), encoder.get_y(), encoder.get_w(), encoder.get_x_mask(), encoder.get_x_road()
   logger.info('Loaded the encoded variables with shape {0}'.format(x.shape))
   logger.info('Loaded the encoded parameters with shape {0}'.format(y.shape))
   assert(np.isfinite(x).all())
-  return x, y, w, x_mask
+  return x, y, w, x_mask, x_road
 
 
 def muon_data_split(filename, reg_pt_scale=1.0, test_size=0.5, correct_for_eta=False):
-  x, y, w, x_mask = muon_data(filename, reg_pt_scale=reg_pt_scale, correct_for_eta=correct_for_eta)
+  x, y, w, x_mask, x_road = muon_data(filename, reg_pt_scale=reg_pt_scale, correct_for_eta=correct_for_eta)
 
   # Split dataset in training and testing
-  x_train, x_test, y_train, y_test, w_train, w_test, x_mask_train, x_mask_test = train_test_split(x, y, w, x_mask, test_size=test_size)
+  x_train, x_test, y_train, y_test, w_train, w_test, x_mask_train, x_mask_test, x_road_train, x_road_test = train_test_split(x, y, w, x_mask, x_road, test_size=test_size)
   logger.info('Loaded # of training and testing events: {0}'.format((x_train.shape[0], x_test.shape[0])))
 
   # Check for cases where the number of events in the last batch could be too few
@@ -55,7 +55,7 @@ def muon_data_split(filename, reg_pt_scale=1.0, test_size=0.5, correct_for_eta=F
   if (train_num_samples%batch_size) < 100:
     logger.warning('The last batch for training after mixing could be too few! ({0}%{1})={2}. Please change test_size.'.format(train_num_samples, batch_size, train_num_samples%batch_size))
     logger.warning('Try this formula: int(int({0}*{1})*2*{2}) % 128'.format(x.shape[0], 1.0-test_size, 1.0-validation_split))
-  return x_train, x_test, y_train, y_test, w_train, w_test, x_mask_train, x_mask_test
+  return x_train, x_test, y_train, y_test, w_train, w_test, x_mask_train, x_mask_test, x_road_train, x_road_test
 
 
 # ______________________________________________________________________________
@@ -75,21 +75,21 @@ def pileup_data(filename, reg_pt_scale=1.0):
   assert(the_aux.shape[1] == 4)  # jobid, ievt, highest_part_pt, highest_track_pt
 
   encoder = Encoder(the_variables, the_parameters, reg_pt_scale=reg_pt_scale)
-  x, y, w, x_mask = encoder.get_x(), encoder.get_y(), encoder.get_w(), encoder.get_x_mask()
+  x, y, w, x_mask, x_road = encoder.get_x(), encoder.get_y(), encoder.get_w(), encoder.get_x_mask(), encoder.get_x_road()
   logger.info('Loaded the encoded variables with shape {0}'.format(x.shape))
   logger.info('Loaded the encoded auxiliary PU info with shape {0}'.format(the_aux.shape))
   assert(np.isfinite(x).all())
-  return x, the_aux, w, x_mask
+  return x, the_aux, w, x_mask, x_road
 
 
 def pileup_data_split(filename, reg_pt_scale=1.0, test_job=50):
-  x, aux, w, x_mask = pileup_data(filename, reg_pt_scale=reg_pt_scale)
+  x, aux, w, x_mask, x_road = pileup_data(filename, reg_pt_scale=reg_pt_scale)
 
   # Split dataset in training and testing
   split = aux[:,0].astype(np.int32) < test_job
-  x_train, x_test, aux_train, aux_test, w_train, w_test, x_mask_train, x_mask_test = x[split], x[~split], aux[split], aux[~split], w[split], w[~split], x_mask[split], x_mask[~split]
+  x_train, x_test, aux_train, aux_test, w_train, w_test, x_mask_train, x_mask_test, x_road_train, x_road_test = x[split], x[~split], aux[split], aux[~split], w[split], w[~split], x_mask[split], x_mask[~split], x_road[split], x_road[~split]
   logger.info('Loaded # of training and testing events: {0}'.format((x_train.shape[0], x_test.shape[0])))
-  return x_train, x_test, aux_train, aux_test, w_train, w_test, x_mask_train, x_mask_test
+  return x_train, x_test, aux_train, aux_test, w_train, w_test, x_mask_train, x_mask_test, x_road_train, x_road_test
 
 
 # ______________________________________________________________________________

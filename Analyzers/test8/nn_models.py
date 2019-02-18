@@ -283,13 +283,13 @@ def create_model_bn(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, no
 
 # ______________________________________________________________________________
 def create_model_bn2(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, nodes3=16, discr_loss_weight=1.0,
-                     l1_reg=0.0, l2_reg=0.0, use_bn=True, use_dropout=False):
+                     l1_reg=0.0, l2_reg=0.0, use_bn=True):
   # Adding 1 BN layer right after the input layer
   regularizer = regularizers.L1L2(l1=l1_reg, l2=l2_reg)
   inputs = Input(shape=(nvariables,), dtype='float32')
 
   x = inputs
-  if use_bn: x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)
+  x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)
 
   x = Dense(nodes1, kernel_initializer='glorot_uniform', kernel_regularizer=regularizer, use_bias=False)(x)
   if use_bn: x = BatchNormalization(epsilon=1e-4, momentum=0.9)(x)
@@ -520,12 +520,11 @@ def save_my_model(model, name='model'):
     outfile.write(model.to_json())
   return
 
-def load_my_model(name='model', weights_name='model_weights'):
-  with open(name + '.json', 'r') as f:
+def load_my_model(name='model.json', weights_name='model_weights.h5'):
+  with open(name, 'r') as f:
     json_string = json.dumps(json.load(f))
     model = model_from_json(json_string)
-  #model = load_model(name + '.h5')
-  model.load_weights(weights_name + '.h5')
+  model.load_weights(weights_name)
   return model
 
 

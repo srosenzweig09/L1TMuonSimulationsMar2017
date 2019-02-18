@@ -41,13 +41,13 @@ infile_pileup = 'histos_tbd.23.npz'
 # ______________________________________________________________________________
 # Import muon data
 # 'x' is the array of input variables, 'y' is the q/pT
-x_train, x_test, y_train, y_test, w_train, w_test, x_mask_train, x_mask_test = \
+x_train, x_test, y_train, y_test, w_train, w_test, x_mask_train, x_mask_test, x_road_train, x_road_test = \
       muon_data_split(infile_muon, reg_pt_scale=reg_pt_scale, test_size=0.31)
 
 ## Use ShuffleSplit as the CV iterator
 #from nn_data import muon_data
 #from sklearn.model_selection import ShuffleSplit
-#x, y, w, x_mask = muon_data(infile_muon, reg_pt_scale=reg_pt_scale, correct_for_eta=False)
+#x, y, w, x_mask, x_road = muon_data(infile_muon, reg_pt_scale=reg_pt_scale, correct_for_eta=False)
 #cv = ShuffleSplit(n_splits=1, test_size=0.31)
 
 # ______________________________________________________________________________
