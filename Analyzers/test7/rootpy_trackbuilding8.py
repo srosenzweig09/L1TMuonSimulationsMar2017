@@ -12,6 +12,10 @@ from ROOT import gROOT, TH1
 gROOT.SetBatch(True)
 TH1.AddDirectory(False)
 
+import logging
+mpl_logger = logging.getLogger('matplotlib')
+mpl_logger.setLevel(logging.WARNING)
+
 
 # ______________________________________________________________________________
 # Utilities
@@ -22,7 +26,8 @@ kDT, kCSC, kRPC, kGEM, kME0 = 0, 1, 2, 3, 4
 # Globals
 eta_bins = (0.8, 1.24, 1.56, 1.7, 1.8, 1.98, 2.16, 2.4)
 eta_bins = eta_bins[::-1]
-pt_bins = (-0.5, -0.365, -0.26, -0.155, -0.07, 0.07, 0.155, 0.26, 0.365, 0.5)
+#pt_bins = (-0.5, -0.365, -0.26, -0.155, -0.07, 0.07, 0.155, 0.26, 0.365, 0.5)
+pt_bins = (-0.49349323, -0.38373062, -0.28128058, -0.18467896, -0.07760702, 0.07760702, 0.18467896, 0.28128058, 0.38373062, 0.49349323)
 pt_bins_omtf = (-0.25, -0.2, -0.15, -0.10, -0.05, 0.05, 0.10, 0.15, 0.20, 0.25)  # starts from 4 GeV
 nlayers = 16  # 5 (CSC) + 4 (RPC) + 3 (GEM) + 4 (DT)
 #superstrip_size = 32  # 'quadstrip' unit (4 * 8)
@@ -1048,59 +1053,84 @@ class RoadSlimming(object):
 
 # pT assignment module
 class PtAssignment(object):
-  def __init__(self, kerasfile):
-    (model_file, model_weights_file) = kerasfile
+  def __init__(self, kerasfile, omtf_input=False, run2_input=False):
+    (model_file, model_weights_file, model_omtf_file, model_omtf_weights_file) = kerasfile
+    self.omtf_input = omtf_input
+    self.run2_input = run2_input
 
-    adjust_scale = 3
+    self.reg_pt_scale = 100.
 
-    reg_pt_scale = 100.
-
-    # Get encoder
+    # Get encoders
     from nn_encode import Encoder
+    from nn_encode_omtf import Encoder as EncoderOmtf
 
-    # Get custom objects
-    from nn_models import update_keras_custom_objects
-    update_keras_custom_objects()
-
-    # Load Keras model
+    # Load Keras models
     from nn_models import load_my_model, update_keras_custom_objects
     update_keras_custom_objects()
-    self.loaded_model = load_my_model(model_file.replace('.json',''), model_weights_file.replace('.h5',''))
+
+    # First model (EMTF mode)
+    self.loaded_model = load_my_model(name=model_file, weights_name=model_weights_file)
     self.loaded_model.trainable = False
     assert not self.loaded_model.updates
 
     def create_encoder(x):
       nentries = x.shape[0]
-      y = np.zeros((nentries, 3), dtype=np.float32)  # dummy
-      encoder = Encoder(x, y, adjust_scale=adjust_scale, reg_pt_scale=reg_pt_scale)
+      y = np.zeros((nentries, 1), dtype=np.float32)  # dummy
+      encoder = Encoder(x, y, reg_pt_scale=self.reg_pt_scale)
       return encoder
     self.create_encoder = create_encoder
 
-    def predict(x):
-      y = self.loaded_model.predict(x)
-      assert len(y) == 2
-      y[0] /= reg_pt_scale
-      y = np.moveaxis(np.asarray(y),0,-1)  # shape (2, n, 1) -> shape (n, 1, 2)
-      return y
-    self.predict = predict
+    # Second model (OMTF mode)
+    self.loaded_model_omtf = load_my_model(name=model_omtf_file, weights_name=model_omtf_weights_file)
+    self.loaded_model_omtf.trainable = False
+    assert not self.loaded_model_omtf.updates
+
+    def create_encoder_omtf(x):
+      nentries = x.shape[0]
+      y = np.zeros((nentries, 1), dtype=np.float32)  # dummy
+      encoder = EncoderOmtf(x, y, reg_pt_scale=self.reg_pt_scale)
+      return encoder
+    self.create_encoder_omtf = create_encoder_omtf
+
+  def predict(self, x):
+    if self.omtf_input:
+      encoder = self.create_encoder_omtf(x)
+      loaded_model = self.loaded_model_omtf
+    else:
+      encoder = self.create_encoder(x)
+      loaded_model = self.loaded_model
+
+    x_new = encoder.get_x()
+    y = loaded_model.predict(x_new)
+    z = encoder.get_x_mask()
+    t = encoder.get_x_road()
+
+    assert len(y) == 2
+    y[0] /= self.reg_pt_scale
+    y = np.moveaxis(np.asarray(y),0,-1)  # shape (2, n, 1) -> shape (n, 1, 2)
+    return (x_new, y, z, t)
 
   def run(self, x):
     x_new = np.array([], dtype=np.float32)
     y = np.array([], dtype=np.float32)
     z = np.array([], dtype=np.float32)
+    t = np.array([], dtype=np.float32)
     if len(x) == 0:
-      return (x_new, y, z)
+      return (x_new, y, z, t)
 
-    encoder = self.create_encoder(x)
-    x_new = encoder.get_x()
-    y = self.predict(x_new)
-    x_mask = encoder.get_x_mask()
-    return (x_new, y, x_mask)
+    (x_new, y, z, t) = self.predict(x)
+    return (x_new, y, z, t)
 
 
 # Track producer module
 class TrackProducer(object):
-  def __init__(self):
+  def __init__(self, omtf_input=False, run2_input=False):
+    self.omtf_input = omtf_input
+    self.run2_input = run2_input
+
+    self.discr_pt_cut = 8.
+    self.discr_pt_cut_high = 14.
+
     self.s_min = 0.
     self.s_max = 60.
     self.s_nbins = 120
@@ -1147,48 +1177,36 @@ class TrackProducer(object):
     pt = interpolate(xml_pt, x0, x1, y0, y1)
     return pt
 
-  def pass_trigger(self, strg, ndof, mode, theta_median, y_meas, y_discr, discr_pt_cut=14.):
+  def pass_trigger(self, ndof, modes, strg, zone, theta_median, y_meas, y_discr):
     ipt1 = strg
     ipt2 = find_pt_bin(y_meas)
     quality1 = find_emtf_road_quality(ipt1)
     quality2 = find_emtf_road_quality(ipt2)
 
-    if mode in (11,13,14,15) and quality2 <= (quality1+1):
-      if np.abs(1.0/y_meas) > 14:
-        trigger = (y_discr > 0.9136) # 98.0% coverage
-      elif np.abs(1.0/y_meas) > discr_pt_cut:
-        trigger = (y_discr > 0.7415) # 98.0% coverage
+    (mode, mode_me0, mode_omtf) = modes
+    if self.omtf_input:
+      mode_ok = (mode in (11,13,14,15)) or (mode_omtf not in (0,1,2,4,8))
+    else:
+      mode_ok = (mode in (11,13,14,15)) or (mode_me0 >= 6)
+
+    strg_ok = quality2 <= (quality1+1)
+
+    if mode_ok:
+      if np.abs(1.0/y_meas) > self.discr_pt_cut_high:  # >14 GeV
+        trigger = (y_discr > 0.7556) # 97.0% coverage
+      elif np.abs(1.0/y_meas) > self.discr_pt_cut:  # 8-14 GeV
+        trigger = (y_discr > 0.3333) # 97.0% coverage
       else:
-        trigger = (y_discr >= 0.)  # True
+        #trigger = (y_discr >= 0.)  # True
+        trigger = (y_discr >= 0.) and strg_ok
     else:
       trigger = (y_discr < 0.)  # False
     return trigger
 
-  def run(self, slim_roads, variables, predictions, other_vars):
+  def run(self, slim_roads, variables, predictions, x_mask_vars, x_road_vars):
 
     # __________________________________________________________________________
     # Extra pieces
-    nvariables = (nlayers * 6) + 3 - 36
-
-    discr_pt_cut = 8.
-
-    def get_theta_median_from_x(x):
-      assert(x.shape[0] == nvariables)
-      theta_median = x[-1] # last variable
-      theta_median = (theta_median * 83) + 3
-      return theta_median.astype(np.int32)
-
-    def get_zone_from_x(x):
-      assert(x.shape[0] == nvariables)
-      zone = x[-2] # second last variable
-      zone = (zone * 5) + 0
-      return zone.astype(np.int32)
-
-    def get_straightness_from_x(x):
-      assert(x.shape[0] == nvariables)
-      straightness = x[-3] # third last variable
-      straightness = (straightness * 4) + 4
-      return straightness.astype(np.int32)
 
     def get_ndof_from_x_mask(x_mask):
       assert(x_mask.shape[0] == nlayers)
@@ -1196,61 +1214,70 @@ class TrackProducer(object):
       valid = ~x_mask
       return valid.sum()
 
-    def get_mode_from_x_mask(x_mask):  #FIXME
+    def get_modes_from_x_mask(x_mask):
       assert(x_mask.shape[0] == nlayers)
       assert(x_mask.dtype == np.bool)
       valid = ~x_mask
       mode = np.int32(0)
-      if np.any([valid[0], valid[1], valid[5], valid[9], valid[11]]):   # ME1/1, ME1/2, RE1/2, GE1/1, ME0
+      if np.any((valid[0], valid[1], valid[5], valid[9], valid[11])):   # ME1/1, ME1/2, RE1/2, GE1/1, ME0
         mode |= (1<<3)
-      if np.any([valid[2], valid[6], valid[10]]):  # ME2, RE2, GE2/1
+      if np.any((valid[2], valid[6], valid[10])):  # ME2, RE2, GE2/1
         mode |= (1<<2)
-      if np.any([valid[3], valid[7]]):  # ME3, RE3
+      if np.any((valid[3], valid[7])):  # ME3, RE3
         mode |= (1<<1)
-      if np.any([valid[4], valid[8]]):  # ME4, RE4
+      if np.any((valid[4], valid[8])):  # ME4, RE4
         mode |= (1<<0)
 
-      # Apply modified SingleMu requirement
       mode_me0 = np.int32(0)
       if valid[11]: # ME0
         mode_me0 |= (1 << 2)
       if valid[0]:  # ME1/1
         mode_me0 |= (1 << 1)
-      if np.any([valid[2], valid[3], valid[4]]):  # ME2, ME3, ME4
+      if np.any((valid[2], valid[3], valid[4])):  # ME2, ME3, ME4
         mode_me0 |= (1 << 0)
-      if mode not in (11,13,14,15) and mode_me0 == 7:
-        mode = 11  # pretend as mode 11
-      return mode
+
+      mode_omtf = np.int32(0)
+      if valid[12]: # MB1
+        mode_omtf |= (1 << 3)
+      if valid[13]: # MB2
+        mode_omtf |= (1 << 2)
+      if valid[14]: # MB3
+        mode_omtf |= (1 << 1)
+      if valid[1]:  # ME1/3
+        mode_omtf |= (1 << 1)
+      if np.any((valid[2], valid[3])):  # ME2, ME3
+        mode_omtf |= (1 << 0)
+      return (mode, mode_me0, mode_omtf)
 
     # __________________________________________________________________________
     assert(len(slim_roads) == len(variables))
     assert(len(slim_roads) == len(predictions))
-    assert(len(slim_roads) == len(other_vars))
+    assert(len(slim_roads) == len(x_mask_vars))
+    assert(len(slim_roads) == len(x_road_vars))
 
     tracks = []
 
-    for myroad, myvars, mypreds, myother in zip(slim_roads, variables, predictions, other_vars):
-      assert(len(myvars.shape) == 1)
-      x = myvars
-      x_mask = myother
-      y_meas = np.asscalar(mypreds[...,0])
-      y_discr = np.asscalar(mypreds[...,1])
+    for myroad, x, y, x_mask, x_road in zip(slim_roads, variables, predictions, x_mask_vars, x_road_vars):
+      assert(len(x.shape) == 1)
+      assert(y.shape == (1,2))
+      assert(x_mask.shape == (nlayers,))
+      assert(x_road.shape == (3,))
 
-      theta_median = get_theta_median_from_x(x)
-      zone = get_zone_from_x(x)
-      strg = get_straightness_from_x(x)
+      y_meas = np.asscalar(y[0,0])
+      y_discr = np.asscalar(y[0,1])
       ndof = get_ndof_from_x_mask(x_mask)
-      mode = get_mode_from_x_mask(x_mask)
+      modes = get_modes_from_x_mask(x_mask)
+      strg, zone, theta_median = x_road
 
-      passed = self.pass_trigger(strg, ndof, mode, theta_median, y_meas, y_discr, discr_pt_cut=discr_pt_cut)
+      passed = self.pass_trigger(ndof, modes, strg, zone, theta_median, y_meas, y_discr)
       xml_pt = np.abs(1.0/y_meas)
       pt = self.get_trigger_pt(x, y_meas)
 
       if passed:
         trk_q = np.sign(y_meas)
         trk_emtf_phi = myroad.id[4]
-        trk_emtf_theta = myroad.theta_median
-        trk = Track(myroad.id, myroad.hits, mode, zone, xml_pt, pt, trk_q, trk_emtf_phi, trk_emtf_theta, ndof, y_discr)
+        trk_emtf_theta = theta_median
+        trk = Track(myroad.id, myroad.hits, modes[0], zone, xml_pt, pt, trk_q, trk_emtf_phi, trk_emtf_theta, ndof, y_discr)
         tracks.append(trk)
     return tracks
 
@@ -1273,8 +1300,8 @@ class GhostBusting(object):
 
       # Do not share ME1/1, ME1/2, ME0, MB1, MB2
       for j, track_to_check in enumerate(tracks[:i]):
-        hits_i = [(hit.emtf_layer, hit.emtf_phi) for hit in road.hits if hit.emtf_layer in (0,1,11,12,13)]
-        hits_j = [(hit.emtf_layer, hit.emtf_phi) for hit in road_to_check.hits if hit.emtf_layer in (0,1,11,12,13)]
+        hits_i = [(hit.emtf_layer, hit.emtf_phi) for hit in track.hits if hit.emtf_layer in (0,1,11,12,13)]
+        hits_j = [(hit.emtf_layer, hit.emtf_phi) for hit in track_to_check.hits if hit.emtf_layer in (0,1,11,12,13)]
         if set(hits_i).intersection(hits_j):
           keep = False
           break
@@ -1486,14 +1513,12 @@ class RatesAnalysis(object):
 
     # Workers
     bank = PatternBank(bankfile)
-    recog = PatternRecognition(bank, omtf_input=omtf_input, run2_input=run2_input)
+    recog1, recog2 = PatternRecognition(bank, omtf_input=False, run2_input=run2_input), PatternRecognition(bank, omtf_input=True, run2_input=run2_input)
     clean = RoadCleaning()
     slim = RoadSlimming(bank)
-    ptassign = PtAssignment(kerasfile)
-    trkprod = TrackProducer()
+    ptassig1, ptassig2 = PtAssignment(kerasfile, omtf_input=False, run2_input=run2_input), PtAssignment(kerasfile, omtf_input=True, run2_input=run2_input)
+    trkprod1, trkprod2 = TrackProducer(omtf_input=False, run2_input=run2_input), TrackProducer(omtf_input=True, run2_input=run2_input)
     ghost = GhostBusting()
-    out_variables = []
-    out_predictions = []
 
     # Event range
     n = -1
@@ -1504,19 +1529,26 @@ class RatesAnalysis(object):
       if n != -1 and ievt == n:
         break
 
-      roads = recog.run(evt.hits)
+      # EMTF mode
+      roads = recog1.run(evt.hits)
       clean_roads = clean.run(roads)
       slim_roads = slim.run(clean_roads)
       variables = roads_to_variables(slim_roads)
-      variables_mod, predictions, other_vars = ptassign.run(variables)
-      emtf2026_tracks = trkprod.run(slim_roads, variables_mod, predictions, other_vars)
-      emtf2026_tracks = ghost.run(emtf2026_tracks)
+      variables, predictions, x_mask_vars, x_road_vars = ptassig1.run(variables)
+      tracks = trkprod1.run(slim_roads, variables, predictions, x_mask_vars, x_road_vars)
+
+      # OMTF mode
+      roads2 = recog2.run(evt.hits)
+      clean_roads2 = clean.run(roads2)
+      slim_roads2 = slim.run(clean_roads2)
+      variables2 = roads_to_variables(slim_roads2)
+      variables2, predictions2, x_mask_vars2, x_road_vars2 = ptassig2.run(variables2)
+      tracks2 = trkprod2.run(slim_roads2, variables2, predictions2, x_mask_vars2, x_road_vars2)
+
+      # Ghost busting
+      emtf2026_tracks = ghost.run(tracks + tracks2)
 
       found_high_pt_tracks = any(map(lambda trk: trk.pt > 20., emtf2026_tracks))
-
-      #if found_high_pt_tracks:
-      #  out_variables.append(variables)
-      #  out_predictions.append(predictions)
 
       if found_high_pt_tracks:
         print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2026_tracks)))
@@ -1535,7 +1567,7 @@ class RatesAnalysis(object):
         for itrk, mytrk in enumerate(evt.tracks):
           print(".. otrk {0} id: {1} mode: {2} pt: {3}".format(itrk, (mytrk.endcap, mytrk.sector), mytrk.mode, mytrk.pt))
 
-
+      # ________________________________________________________________________
       # Fill histograms
       histograms["nevents"].fill(1.0)
 
@@ -1602,7 +1634,7 @@ class RatesAnalysis(object):
     unload_tree()
 
     # __________________________________________________________________________
-    # Plot histograms
+    # Save histograms
     outfile = 'histos_tbb.root'
     if use_condor:
       outfile = 'histos_tbb_%i.root' % jobid
@@ -1635,23 +1667,26 @@ class EffieAnalysis(object):
   def run(self, omtf_input=False, run2_input=False):
     # Book histograms
     histograms = {}
+    eff_pt_bins = (0., 0.5, 1., 1.5, 2., 3., 4., 5., 6., 7., 8., 10., 12., 14., 16., 18., 20., 22., 24., 27., 30., 34., 40., 48., 60., 80., 120.)
+
     for m in ("emtf", "emtf2026"):
       for l in (0, 10, 15, 20, 30, 40, 50):
         for k in ("denom", "numer"):
           hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
           hname = "%s_eff_vs_genphi_l1pt%i_%s" % (m,l,k)
-          histograms[hname] = Hist(70, -210, 210, name=hname, title="; gen #phi {gen p_{T} > 20 GeV}", type='F')
+          histograms[hname] = Hist(76, -190, 190, name=hname, title="; gen #phi {gen p_{T} > 20 GeV}", type='F')
           hname = "%s_eff_vs_geneta_l1pt%i_%s" % (m,l,k)
-          histograms[hname] = Hist(70, 1.1, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
+          histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
           hname = "%s_eff_vs_geneta_genpt30_l1pt%i_%s" % (m,l,k)
-          histograms[hname] = Hist(70, 1.1, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 30 GeV}", type='F')
+          histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 30 GeV}", type='F')
 
       hname = "%s_l1pt_vs_genpt" % m
       histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -0.5, 0.5, name=hname, title="; gen 1/p_{T} [1/GeV]; 1/p_{T} [1/GeV]", type='F')
       hname = "%s_l1ptres_vs_genpt" % m
       histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -1, 2, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
 
+    # Load tree
     if omtf_input:
       tree = load_pgun_batch_omtf(jobid)
     else:
@@ -1659,11 +1694,11 @@ class EffieAnalysis(object):
 
     # Workers
     bank = PatternBank(bankfile)
-    recog = PatternRecognition(bank, omtf_input=omtf_input, run2_input=run2_input)
+    recog1, recog2 = PatternRecognition(bank, omtf_input=False, run2_input=run2_input), PatternRecognition(bank, omtf_input=True, run2_input=run2_input)
     clean = RoadCleaning()
     slim = RoadSlimming(bank)
-    ptassign = PtAssignment(kerasfile)
-    trkprod = TrackProducer()
+    ptassig1, ptassig2 = PtAssignment(kerasfile, omtf_input=False, run2_input=run2_input), PtAssignment(kerasfile, omtf_input=True, run2_input=run2_input)
+    trkprod1, trkprod2 = TrackProducer(omtf_input=False, run2_input=run2_input), TrackProducer(omtf_input=True, run2_input=run2_input)
     ghost = GhostBusting()
 
     # Event range
@@ -1675,16 +1710,27 @@ class EffieAnalysis(object):
       if n != -1 and ievt == n:
         break
 
-      part = evt.particles[0]  # particle gun
-      part.invpt = np.true_divide(part.q, part.pt)
-
-      roads = recog.run(evt.hits)
+      # EMTF mode
+      roads = recog1.run(evt.hits)
       clean_roads = clean.run(roads)
       slim_roads = slim.run(clean_roads)
       variables = roads_to_variables(slim_roads)
-      variables_mod, predictions, other_vars = ptassign.run(variables)
-      emtf2026_tracks = trkprod.run(slim_roads, variables_mod, predictions, other_vars)
-      emtf2026_tracks = ghost.run(emtf2026_tracks)
+      variables, predictions, x_mask_vars, x_road_vars = ptassig1.run(variables)
+      tracks = trkprod1.run(slim_roads, variables, predictions, x_mask_vars, x_road_vars)
+
+      # OMTF mode
+      roads2 = recog2.run(evt.hits)
+      clean_roads2 = clean.run(roads2)
+      slim_roads2 = slim.run(clean_roads2)
+      variables2 = roads_to_variables(slim_roads2)
+      variables2, predictions2, x_mask_vars2, x_road_vars2 = ptassig2.run(variables2)
+      tracks2 = trkprod2.run(slim_roads2, variables2, predictions2, x_mask_vars2, x_road_vars2)
+
+      # Ghost busting
+      emtf2026_tracks = ghost.run(tracks + tracks2)
+
+      part = evt.particles[0]  # particle gun
+      part.invpt = np.true_divide(part.q, part.pt)
 
       if ievt < 20 and False:
         print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2026_tracks)))
@@ -1693,45 +1739,48 @@ class EffieAnalysis(object):
           y_pred = np.true_divide(mytrk.q, mytrk.xml_pt)
           print(".. {0} {1}".format(y, y_pred))
 
+      # ________________________________________________________________________
       # Fill histograms
       def fill_efficiency_pt():
-        trigger = any([select(trk) for trk in tracks])  # using scaled pT
-        denom = histograms[hname + "_denom"]
-        numer = histograms[hname + "_numer"]
-        if (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0):
+        if select_part(part):
+          trigger = any([select_track(trk) for trk in tracks])  # using scaled pT
+          denom = histograms[hname + "_denom"]
+          numer = histograms[hname + "_numer"]
           denom.fill(part.pt)
           if trigger:
             numer.fill(part.pt)
 
       def fill_efficiency_phi():
-        trigger = any([select(trk) for trk in tracks])  # using scaled pT
-        denom = histograms[hname + "_denom"]
-        numer = histograms[hname + "_numer"]
-        if (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0):
+        if select_part(part):
+          trigger = any([select_track(trk) for trk in tracks])  # using scaled pT
+          denom = histograms[hname + "_denom"]
+          numer = histograms[hname + "_numer"]
           denom.fill(np.rad2deg(part.phi))
           if trigger:
             numer.fill(np.rad2deg(part.phi))
 
       def fill_efficiency_eta():
-        trigger = any([select(trk) for trk in tracks])  # using scaled pT
-        denom = histograms[hname + "_denom"]
-        numer = histograms[hname + "_numer"]
         if (part.bx == 0):
+          trigger = any([select_track(trk) for trk in tracks])  # using scaled pT
+          denom = histograms[hname + "_denom"]
+          numer = histograms[hname + "_numer"]
           denom.fill(abs(part.eta))
           if trigger:
             numer.fill(abs(part.eta))
 
       def fill_resolution():
-        trigger = any([select(trk) for trk in tracks])  # using scaled pT
-        if (part.bx == 0) and trigger:
-          trk = tracks[0]
-          trk.invpt = np.true_divide(trk.q, trk.xml_pt)  # using unscaled pT
-          histograms[hname1].fill(part.invpt, trk.invpt)
-          histograms[hname2].fill(abs(part.invpt), (abs(1.0/trk.invpt) - abs(1.0/part.invpt))/abs(1.0/part.invpt))
+        if (part.bx == 0):
+          trigger = any([select_track(trk) for trk in tracks])  # using scaled pT
+          if trigger:
+            trk = tracks[0]
+            trk.invpt = np.true_divide(trk.q, trk.xml_pt)  # using unscaled pT
+            histograms[hname1].fill(part.invpt, trk.invpt)
+            histograms[hname2].fill(abs(part.invpt), (abs(1.0/trk.invpt) - abs(1.0/part.invpt))/abs(1.0/part.invpt))
 
       for l in (0, 10, 15, 20, 30, 40, 50):
-        select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l))
         tracks = evt.tracks
+        select_part = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
+        select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l))
         #
         hname = "emtf_eff_vs_genpt_l1pt%i" % (l)
         fill_efficiency_pt()
@@ -1748,8 +1797,13 @@ class EffieAnalysis(object):
           hname2 = "emtf_l1ptres_vs_genpt"
           fill_resolution()
 
-        select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.pt > float(l))
         tracks = emtf2026_tracks
+        if omtf_input:
+          select_part = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0)
+          select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and (trk.pt > float(l))
+        else:
+          select_part = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
+          select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.pt > float(l))
         #
         hname = "emtf2026_eff_vs_genpt_l1pt%i" % (l)
         fill_efficiency_pt()
@@ -1770,7 +1824,7 @@ class EffieAnalysis(object):
     unload_tree()
 
     # __________________________________________________________________________
-    # Plot histograms
+    # Save histograms
     outfile = 'histos_tbc.root'
     if use_condor:
       outfile = 'histos_tbc_%i.root' % jobid
@@ -1781,6 +1835,8 @@ class EffieAnalysis(object):
         for l in (0, 10, 15, 20, 30, 40, 50):
           for k in ("denom", "numer"):
             hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
+            hnames.append(hname)
+            hname = "%s_eff_vs_genphi_l1pt%i_%s" % (m,l,k)
             hnames.append(hname)
             hname = "%s_eff_vs_geneta_l1pt%i_%s" % (m,l,k)
             hnames.append(hname)
@@ -1908,8 +1964,8 @@ if use_condor:
 
 # Analysis mode (pick one)
 #analysis = 'dummy'
-analysis = 'roads'
-#analysis = 'rates'
+#analysis = 'roads'
+analysis = 'rates'
 #analysis = 'effie'
 #analysis = 'mixing'
 #analysis = 'images'
