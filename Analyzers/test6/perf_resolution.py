@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
-hname2023_f = lambda hname: "emtf2023_" + hname[5:]
+hname2026_f = lambda hname: "emtf2026_" + hname[5:]
 
 donotdelete = []
 
+infile = "histos_tbc_add.24.root"
+#infile = "histos_tbc_omtf_add.24.root"
 
 
 # ______________________________________________________________________________
@@ -21,9 +23,6 @@ if __name__ == '__main__':
   #gStyle.SetTitleOffset(0.9, "Y")
   #gStyle.SetTitleOffset(1.2, "Y")
   gROOT.ForceStyle()
-
-  infile = "histos_tbc_add.20.root"
-  tfile = TFile.Open(infile)
 
   tline = TLine()
   tline.SetLineColor(920+2)  # kGray+2
@@ -50,22 +49,25 @@ if __name__ == '__main__':
     tlatexCMS2.DrawLatex(0.252, 0.965, 'Phase-2 Simulation')
     tlatexCMS3.DrawLatex(0.885, 0.965, '<PU>=0')
 
+  # Open file
+  tfile = TFile.Open(infile)
+
 
   # ____________________________________________________________________________
   # emtf_l1pt_vs_genpt
   hname = "emtf_l1pt_vs_genpt"
   h2a = tfile.Get(hname)
   h2a.Draw("COLZ")
-  #draw_cms_lumi()
-  #gPad.Print("figures_winter/" + hname + ".png")
-  #gPad.Print("figures_winter/" + hname + ".pdf")
+  draw_cms_lumi()
+  gPad.Print("figures_perf/" + hname + ".png")
+  gPad.Print("figures_perf/" + hname + ".pdf")
 
-  hname = hname2023_f(hname)
+  hname = hname2026_f(hname)
   h2b = tfile.Get(hname)
   h2b.Draw("COLZ")
-  #draw_cms_lumi()
-  #gPad.Print("figures_winter/" + hname + ".png")
-  #gPad.Print("figures_winter/" + hname + ".pdf")
+  draw_cms_lumi()
+  gPad.Print("figures_perf/" + hname + ".png")
+  gPad.Print("figures_perf/" + hname + ".pdf")
 
   donotdelete.append([h2a, h2b])
 
@@ -107,8 +109,8 @@ if __name__ == '__main__':
     h.Draw("COLZ")
     gPad.SetLogx(0)
     #draw_cms_lumi()
-    #gPad.Print("figures_winter/" + hname + ".png")
-    #gPad.Print("figures_winter/" + hname + ".pdf")
+    #gPad.Print("figures_perf/" + hname + ".png")
+    #gPad.Print("figures_perf/" + hname + ".pdf")
     #
     frame.Reset()
     frame.SetBins(50, 0, 50)
@@ -123,8 +125,8 @@ if __name__ == '__main__':
     gr1_aspt.Draw("p")
     gPad.SetLogx()
     draw_cms_lumi()
-    gPad.Print("figures_winter/" + hname + "_bias.png")
-    gPad.Print("figures_winter/" + hname + "_bias.pdf")
+    gPad.Print("figures_perf/" + hname + "_bias" + ".png")
+    gPad.Print("figures_perf/" + hname + "_bias" + ".pdf")
     #
     frame.GetXaxis().SetTitle("gen p_{T} [GeV]")
     frame.GetYaxis().SetTitle("#Delta(p_{T})/p_{T} resolution")
@@ -138,8 +140,8 @@ if __name__ == '__main__':
     #gr2_aspt.Fit("pol1", "", "", 10, 40)
     gPad.SetLogx()
     draw_cms_lumi()
-    gPad.Print("figures_winter/" + hname + "_res.png")
-    gPad.Print("figures_winter/" + hname + "_res.pdf")
+    gPad.Print("figures_perf/" + hname + "_res" + ".png")
+    gPad.Print("figures_perf/" + hname + "_res" + ".pdf")
     #
     h.cache = [frame, gr1, gr2, gr1_aspt, gr2_aspt]
 
@@ -148,10 +150,9 @@ if __name__ == '__main__':
   col = 632  # kRed
   doit()
 
-  hname = hname2023_f(hname)
+  hname = hname2026_f(hname)
   h = tfile.Get(hname)
   col = 600  # kBlue
   doit()
 
   donotdelete.append([h2a, h2b])
-

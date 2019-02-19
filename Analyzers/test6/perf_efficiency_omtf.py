@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
-hname2023_f = lambda hname: "emtf2023_" + hname[5:]
+hname2026_f = lambda hname: "emtf2026_" + hname[5:]
 
 donotdelete = []
 
+#infile = "histos_tbc_add.24.root"
+infile = "histos_tbc_omtf_add.24.root"
 
 
 # ______________________________________________________________________________
@@ -15,14 +17,11 @@ if __name__ == '__main__':
   gROOT.LoadMacro("tdrstyle.C")
   gROOT.ProcessLine("setTDRStyle();")
   #gROOT.SetBatch(True)
-  gStyle.SetMarkerStyle(1)
-  gStyle.SetEndErrorSize(0)
   gStyle.SetPadGridX(True)
   gStyle.SetPadGridY(True)
+  gStyle.SetMarkerStyle(1)
+  gStyle.SetEndErrorSize(0)
   gROOT.ForceStyle()
-
-  infile = "histos_tbc_add.20.root"
-  tfile = TFile.Open(infile)
 
   tline = TLine()
   tline.SetLineColor(920+2)  # kGray+2
@@ -49,14 +48,68 @@ if __name__ == '__main__':
     tlatexCMS2.DrawLatex(0.252, 0.965, 'Phase-2 Simulation')
     tlatexCMS3.DrawLatex(0.885, 0.965, '<PU>=0')
 
+  # Open file
+  tfile = TFile.Open(infile)
+
 
   # ____________________________________________________________________________
   # emtf_eff_vs_genpt_l1pt20
   hname = "emtf_eff_vs_genpt_l1pt20"
   h1a_denom = tfile.Get(hname + "_denom")
   h1a_numer = tfile.Get(hname + "_numer")
-  h1b_denom = tfile.Get(hname2023_f(hname) + "_denom")
-  h1b_numer = tfile.Get(hname2023_f(hname) + "_numer")
+  h1b_denom = tfile.Get(hname2026_f(hname) + "_denom")
+  h1b_numer = tfile.Get(hname2026_f(hname) + "_numer")
+
+  print h1a_denom.GetEntries(), h1a_numer.GetEntries()
+  print h1b_denom.GetEntries(), h1b_denom.GetEntries()
+
+  h1a_eff = TEfficiency(h1a_numer, h1a_denom)
+  h1a_eff.SetStatisticOption(0)  # kFCP
+  h1a_eff.SetConfidenceLevel(0.682689492137)  # one sigma
+  h1a_eff.SetMarkerColor(632)  # kRed
+  h1a_eff.SetLineColor(632)  # kRed
+  h1a_eff.SetLineWidth(2)
+
+  h1b_eff = TEfficiency(h1b_numer, h1b_denom)
+  h1b_eff.SetStatisticOption(0)  # kFCP
+  h1b_eff.SetConfidenceLevel(0.682689492137)  # one sigma
+  h1b_eff.SetMarkerColor(600)  # kBlue
+  h1b_eff.SetLineColor(600)  # kBlue
+  h1b_eff.SetLineWidth(2)
+
+  gr = h1a_eff.CreateGraph()
+  gr.Draw("ap")
+  frame = gr.GetHistogram()
+  frame = frame.Clone(hname + "_frame")
+  frame.GetYaxis().SetTitle("#varepsilon")
+  frame.SetMinimum(0.0)
+  frame.SetMaximum(1.2)
+  frame.SetStats(0)
+  frame.Draw()
+  xmin, xmax = frame.GetXaxis().GetXmin(), frame.GetXaxis().GetXmax()
+  tline.DrawLine(xmin, 1.0, xmax, 1.0)
+  #h1a_eff.Draw("same")
+  h1b_eff.Draw("same")
+
+  draw_cms_lumi()
+  gPad.Print("figures_perf/" + hname + "_omtf" +".png")
+  gPad.Print("figures_perf/" + hname + "_omtf" +".pdf")
+  donotdelete.append([frame, h1a_eff, h1b_eff])
+
+  if False:
+    outfile = TFile.Open("figures_perf/" + hname + ".root", "RECREATE")
+    for obj in [frame, h1a_eff, h1b_eff]:
+      obj.Write()
+    outfile.Close()
+
+
+  # ____________________________________________________________________________
+  # emtf_eff_vs_genphi_l1pt20
+  hname = "emtf_eff_vs_genphi_l1pt20"
+  h1a_denom = tfile.Get(hname + "_denom")
+  h1a_numer = tfile.Get(hname + "_numer")
+  h1b_denom = tfile.Get(hname2026_f(hname) + "_denom")
+  h1b_numer = tfile.Get(hname2026_f(hname) + "_numer")
 
   print h1a_denom.GetEntries(), h1a_numer.GetEntries()
   print h1b_denom.GetEntries(), h1b_denom.GetEntries()
@@ -90,15 +143,9 @@ if __name__ == '__main__':
   h1b_eff.Draw("same")
 
   draw_cms_lumi()
-  gPad.Print("figures_winter/" + hname + ".png")
-  gPad.Print("figures_winter/" + hname + ".pdf")
+  gPad.Print("figures_perf/" + hname + "_omtf" + ".png")
+  gPad.Print("figures_perf/" + hname + "_omtf" +".pdf")
   donotdelete.append([frame, h1a_eff, h1b_eff])
-
-  if False:
-    outfile = TFile.Open("figures_winter/" + hname + ".root", "RECREATE")
-    for obj in [frame, h1a_eff, h1b_eff]:
-      obj.Write()
-    outfile.Close()
 
 
   # ____________________________________________________________________________
@@ -106,8 +153,8 @@ if __name__ == '__main__':
   hname = "emtf_eff_vs_geneta_l1pt20"
   h1a_denom = tfile.Get(hname + "_denom")
   h1a_numer = tfile.Get(hname + "_numer")
-  h1b_denom = tfile.Get(hname2023_f(hname) + "_denom")
-  h1b_numer = tfile.Get(hname2023_f(hname) + "_numer")
+  h1b_denom = tfile.Get(hname2026_f(hname) + "_denom")
+  h1b_numer = tfile.Get(hname2026_f(hname) + "_numer")
 
   print h1a_denom.GetEntries(), h1a_numer.GetEntries()
   print h1b_denom.GetEntries(), h1b_denom.GetEntries()
@@ -135,14 +182,15 @@ if __name__ == '__main__':
   frame.SetMaximum(1.2)
   frame.SetStats(0)
   frame.Draw()
+  frame.GetXaxis().SetRangeUser(0.75, 2.55)
   xmin, xmax = frame.GetXaxis().GetXmin(), frame.GetXaxis().GetXmax()
   tline.DrawLine(xmin, 1.0, xmax, 1.0)
   h1a_eff.Draw("same")
   h1b_eff.Draw("same")
 
   draw_cms_lumi()
-  gPad.Print("figures_winter/" + hname + ".png")
-  gPad.Print("figures_winter/" + hname + ".pdf")
+  gPad.Print("figures_perf/" + hname + "_omtf" +".png")
+  gPad.Print("figures_perf/" + hname + "_omtf" +".pdf")
   donotdelete.append([frame, h1a_eff, h1b_eff])
 
 
@@ -151,8 +199,8 @@ if __name__ == '__main__':
   hname = "emtf_eff_vs_geneta_genpt30_l1pt20"
   h1a_denom = tfile.Get(hname + "_denom")
   h1a_numer = tfile.Get(hname + "_numer")
-  h1b_denom = tfile.Get(hname2023_f(hname) + "_denom")
-  h1b_numer = tfile.Get(hname2023_f(hname) + "_numer")
+  h1b_denom = tfile.Get(hname2026_f(hname) + "_denom")
+  h1b_numer = tfile.Get(hname2026_f(hname) + "_numer")
 
   print h1a_denom.GetEntries(), h1a_numer.GetEntries()
   print h1b_denom.GetEntries(), h1b_denom.GetEntries()
@@ -185,10 +233,10 @@ if __name__ == '__main__':
   h1a_eff.Draw("same")
   h1b_eff.Draw("same")
 
-  #draw_cms_lumi()
-  #gPad.Print("figures_winter/" + hname + ".png")
-  #gPad.Print("figures_winter/" + hname + ".pdf")
-  #donotdelete.append([frame, h1a_eff, h1b_eff])
+  draw_cms_lumi()
+  gPad.Print("figures_perf/" + hname + "_omtf" +".png")
+  gPad.Print("figures_perf/" + hname + "_omtf" +".pdf")
+  donotdelete.append([frame, h1a_eff, h1b_eff])
 
 
   # ____________________________________________________________________________
@@ -227,19 +275,19 @@ if __name__ == '__main__':
     else:
       eff.Draw("same")
     if l == 50:
-      #draw_cms_lumi()
-      #gPad.Print("figures_winter/" + (hname % (99)) + ".png")
-      #gPad.Print("figures_winter/" + (hname % (99)) + ".pdf")
+      draw_cms_lumi()
+      gPad.Print("figures_perf/" + (hname % (99)) + "_omtf" + ".png")
+      gPad.Print("figures_perf/" + (hname % (99)) + "_omtf" + ".pdf")
       pass
 
     i += 1
 
 
   # ____________________________________________________________________________
-  # emtf2023_eff_vs_genpt_l1pt99
+  # emtf2026_eff_vs_genpt_l1pt99
   palette = ("#333333", "#377eb8", "#e41a1c", "#984ea3", "#ff7f00", "#4daf4a")
   palette = map(lambda x: TColor.GetColor(x), palette)
-  hname = "emtf2023_eff_vs_genpt_l1pt%i"
+  hname = "emtf2026_eff_vs_genpt_l1pt%i"
 
   i = 0
   effs = []
@@ -272,9 +320,9 @@ if __name__ == '__main__':
       #if l == 20: eff.CreateGraph().Print("all")
       eff.Draw("same")
     if l == 50:
-      #draw_cms_lumi()
-      #gPad.Print("figures_winter/" + (hname % (99)) + ".png")
-      #gPad.Print("figures_winter/" + (hname % (99)) + ".pdf")
+      draw_cms_lumi()
+      gPad.Print("figures_perf/" + (hname % (99)) + "_omtf" + ".png")
+      gPad.Print("figures_perf/" + (hname % (99)) + "_omtf" + ".pdf")
       pass
 
     i += 1

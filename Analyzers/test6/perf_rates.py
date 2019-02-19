@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 
-from math import sqrt
-
-hname2023_f = lambda hname: "highest_emtf2023_" + hname[13:]
+hname2026_f = lambda hname: "highest_emtf2026_" + hname[13:]
 
 donotdelete = []
 
+infile = "histos_tbb_add.24.root"
+
 # Functions
+from math import sqrt
+
 def make_ptcut(h):
   use_overflow = True
   binsum = 0
@@ -38,18 +40,11 @@ if __name__ == '__main__':
   gROOT.LoadMacro("tdrstyle.C")
   gROOT.ProcessLine("setTDRStyle();")
   #gROOT.SetBatch(True)
-  gStyle.SetMarkerStyle(1)
-  gStyle.SetEndErrorSize(0)
   gStyle.SetPadGridX(True)
   gStyle.SetPadGridY(True)
+  gStyle.SetMarkerStyle(1)
+  gStyle.SetEndErrorSize(0)
   gROOT.ForceStyle()
-
-  infile = "histos_tbb_add.20.root"
-  tfile = TFile.Open(infile)
-
-  h_nevents = tfile.Get("nevents")
-  assert h_nevents != None, "Cannot get nevents"
-  nevents = h_nevents.GetBinContent(2)
 
   tline = TLine()
   tline.SetLineColor(920+2)  # kGray+2
@@ -71,15 +66,22 @@ if __name__ == '__main__':
   tlatexCMS3.SetTextSize(0.60*0.05)
   tlatexCMS3.SetTextAlign(11)
 
+  tfile = TFile.Open(infile)
+  h_nevents = tfile.Get("nevents")
+  assert h_nevents != None, "Cannot get nevents"
+  nevents = h_nevents.GetBinContent(2)
+
 
   # ____________________________________________________________________________
   # highest_emtf_absEtaMin0_absEtaMax2.5_qmin12_pt
 
   hname_pairs = [
-    ("highest_emtf_absEtaMin1.24_absEtaMax2.4_qmin12_pt", "emtf2023_rate_reduction"),
-    ("highest_emtf_absEtaMin1.24_absEtaMax1.65_qmin12_pt", "emtf2023_rate_reduction_1"),
-    ("highest_emtf_absEtaMin1.65_absEtaMax2.15_qmin12_pt", "emtf2023_rate_reduction_2"),
-    ("highest_emtf_absEtaMin2.15_absEtaMax2.4_qmin12_pt", "emtf2023_rate_reduction_3"),
+    ("highest_emtf_absEtaMin1.24_absEtaMax2.4_qmin12_pt", "emtf2026_rate_reduction"),
+    ("highest_emtf_absEtaMin1.24_absEtaMax1.65_qmin12_pt", "emtf2026_rate_reduction_1"),
+    ("highest_emtf_absEtaMin1.65_absEtaMax2.15_qmin12_pt", "emtf2026_rate_reduction_2"),
+    ("highest_emtf_absEtaMin2.15_absEtaMax2.4_qmin12_pt", "emtf2026_rate_reduction_3"),
+    ("highest_emtf_absEtaMin0.8_absEtaMax2.4_qmin12_pt", "emtf2026_rate_reduction_4"),
+    ("highest_emtf_absEtaMin0.8_absEtaMax1.24_qmin12_pt", "emtf2026_rate_reduction_5"),
   ]
 
   for hname, imgname in hname_pairs:
@@ -102,7 +104,7 @@ if __name__ == '__main__':
     denom.SetMaximum(1.2e4)
     denom.SetMinimum(1e-1)
 
-    h = tfile.Get(hname2023_f(hname))
+    h = tfile.Get(hname2026_f(hname))
     h = h.Clone(h.GetName() + "_clone")
     h.Sumw2()
     x3 = h.Integral()
@@ -160,25 +162,40 @@ if __name__ == '__main__':
 
     cc1_1.cd()
     denom.SetStats(0)
-    denom.Draw(draw_err_option)
-    numer.Draw(draw_err_option + " same")
-
-    denom_no_fill = denom.Clone("denom_no_fill")
-    denom_no_fill.SetFillStyle(0)
-    denom_no_fill.Draw(draw_option + " same")
-    numer_no_fill = numer.Clone("numer_no_fill")
-    numer_no_fill.SetFillStyle(0)
-    numer_no_fill.Draw(draw_option + " same")
+    if imgname != "emtf2026_rate_reduction_5":
+      denom.Draw(draw_err_option)
+      numer.Draw(draw_err_option + " same")
+      denom_no_fill = denom.Clone("denom_no_fill")
+      denom_no_fill.SetFillStyle(0)
+      denom_no_fill.Draw(draw_option + " same")
+      numer_no_fill = numer.Clone("numer_no_fill")
+      numer_no_fill.SetFillStyle(0)
+      numer_no_fill.Draw(draw_option + " same")
+    else:
+      numer.Draw(draw_err_option)
+      numer_no_fill = numer.Clone("numer_no_fill")
+      numer_no_fill.SetFillStyle(0)
+      numer_no_fill.Draw(draw_option + " same")
 
     cc1_2.cd()
-    ratio.SetStats(0)
-    ratio.Draw(draw_err_option)
+    if imgname != "emtf2026_rate_reduction_5":
+      ratio.SetStats(0)
+      ratio.Draw(draw_err_option)
+      ratio_no_fill = ratio.Clone("ratio_no_fill")
+      ratio_no_fill.SetFillStyle(0)
+      ratio_no_fill.Draw(draw_option + " same")
+    else:
+      for b in xrange(0, ratio.GetNbinsX()+2):
+        ratio.SetBinContent(b, 1)
+        ratio.SetBinError(b, 1e-6)
+      ratio.SetStats(0)
+      ratio.Draw(draw_err_option)
+      ratio_no_fill = ratio.Clone("ratio_no_fill")
+      ratio_no_fill.SetFillStyle(0)
+      ratio_no_fill.Draw(draw_option + " same")
+
     xmin, xmax = ratio.GetXaxis().GetXmin(), ratio.GetXaxis().GetXmax()
     tline.DrawLine(xmin, 1.0, xmax, 1.0)
-
-    ratio_no_fill = ratio.Clone("ratio_no_fill")
-    ratio_no_fill.SetFillStyle(0)
-    ratio_no_fill.Draw(draw_option + " same")
 
     def draw_cms_lumi_1():
       tlatexCMS1.SetTextSize(0.75*0.05*1.1)
@@ -192,73 +209,12 @@ if __name__ == '__main__':
     draw_cms_lumi_1()
 
     cc1.cd()
-    gPad.Print("figures_winter/" + imgname + ".png")
-    gPad.Print("figures_winter/" + imgname + ".pdf")
+    gPad.Print("figures_perf/" + imgname + ".png")
+    gPad.Print("figures_perf/" + imgname + ".pdf")
 
     if False:
-      if imgname == "emtf2023_rate_reduction":
-        outfile = TFile.Open("figures_winter/" + imgname + ".root", "RECREATE")
+      if imgname == "emtf2026_rate_reduction":
+        outfile = TFile.Open("figures_perf/" + imgname + ".root", "RECREATE")
         for obj in [denom, numer, ratio, cc1]:
           obj.Write()
         outfile.Close()
-
-  # ____________________________________________________________________________
-  # PU dependence
-
-  if True:
-    gr_denom = TGraph(3)
-    gr_denom.SetPoint(0, 0, 0)
-    gr_denom.SetPoint(1, 140, 25.9214)
-    gr_denom.SetPoint(2, 200, 44.4840)
-
-    gr_denom_lin = TGraph(3)
-    gr_denom_lin.SetPoint(0, 0, 0)
-    gr_denom_lin.SetPoint(1, 140, 25.9214)
-    gr_denom_lin.SetPoint(2, 300, 25.9214*300/140)
-
-    gr_numer = TGraph(3)
-    gr_numer.SetPoint(0, 0, 0)
-    gr_numer.SetPoint(1, 140, 8.37764)
-    gr_numer.SetPoint(2, 200, 10.9988)
-
-    gr_numer_lin = TGraph(3)
-    gr_numer_lin.SetPoint(0, 0, 0)
-    gr_numer_lin.SetPoint(1, 140, 8.37764)
-    gr_numer_lin.SetPoint(2, 300, 8.37764*300/140)
-
-    gr_denom.SetMarkerStyle(20)
-    gr_denom.SetMarkerSize(1.4)
-    gr_denom.SetMarkerColor(632)  # kRed
-    gr_numer.SetMarkerStyle(20)
-    gr_numer.SetMarkerSize(1.4)
-    gr_numer.SetMarkerColor(600)  # kBlue
-
-    gr_denom_lin.SetLineStyle(2)
-    gr_denom_lin.SetLineWidth(2)
-    gr_denom_lin.SetLineColor(632)  # kRed
-    gr_numer_lin.SetLineStyle(2)
-    gr_numer_lin.SetLineWidth(2)
-    gr_numer_lin.SetLineColor(600)  # kBlue
-
-    frame = TH1F("frame", "; PU; Trigger rate [kHz]", 100, 0, 300)
-    frame.SetMinimum(0)
-    frame.SetMaximum(50)
-    frame.Draw()
-
-    gr_denom.Draw("P")
-    gr_numer.Draw("P")
-    gr_denom_lin.Draw("C")
-    gr_numer_lin.Draw("C")
-
-    def draw_cms_lumi_1():
-      tlatexCMS1.SetTextSize(0.75*0.05)
-      tlatexCMS2.SetTextSize(0.60*0.05)
-      tlatexCMS3.SetTextSize(0.60*0.05)
-      tlatexCMS1.DrawLatex(0.164, 0.965, 'CMS')
-      tlatexCMS2.DrawLatex(0.252, 0.965, 'Phase-2 Simulation')
-      tlatexCMS3.DrawLatex(0.765, 0.965, '<PU>=140 & 200')
-
-    draw_cms_lumi_1()
-    imgname = "emtf2023_rate_pu_dependence"
-    gPad.Print("figures_winter/" + imgname + ".png")
-    gPad.Print("figures_winter/" + imgname + ".pdf")
