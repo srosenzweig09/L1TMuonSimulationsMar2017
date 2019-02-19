@@ -1162,21 +1162,21 @@ class TrackProducer(object):
     self.s_max = 60.
     self.s_nbins = 120
     self.s_step = (self.s_max - self.s_min)/self.s_nbins
-    self.s_lut =[ 1.8005,  1.5194,  1.5708,  1.8247,  2.1989,  2.6489,  3.1625,  3.7251,
-                  4.3240,  4.9595,  5.6337,  6.3424,  7.0590,  7.7485,  8.4050,  9.0398,
-                  9.6598, 10.2800, 10.9236, 11.6060, 12.3216, 13.0521, 13.7887, 14.5427,
-                 15.2964, 16.0232, 16.7303, 17.4535, 18.2066, 19.0044, 19.8400, 20.6934,
-                 21.5215, 22.3143, 23.1066, 23.8221, 24.4586, 25.1335, 25.9083, 26.7333,
-                 27.5310, 28.2623, 28.9778, 29.7226, 30.5507, 31.4670, 32.4541, 33.5263,
-                 34.5659, 35.5155, 36.4457, 37.4019, 38.3762, 39.3604, 40.3595, 41.3763,
-                 42.3333, 43.2434, 44.2686, 45.5962, 47.0878, 48.3783, 49.4891, 50.5445,
-                 51.4431, 52.2846, 53.1180, 53.9492, 54.7793, 55.6090, 56.4384, 57.2676,
-                 58.0967, 58.9257, 59.7547, 60.5836, 61.4125, 62.2413, 63.0702, 63.8990,
-                 64.7278, 65.5566, 66.3854, 67.2142, 68.0430, 68.8718, 69.7006, 70.5293,
-                 71.3581, 72.1869, 73.0157, 73.8444, 74.6732, 75.5020, 76.3307, 77.1595,
-                 77.9882, 78.8170, 79.6458, 80.4745, 81.3033, 82.1321, 82.9608, 83.7896,
-                 84.6183, 85.4471, 86.2759, 87.1046, 87.9334, 88.7621, 89.5909, 90.4197,
-                 91.2484, 92.0772, 92.9059, 93.7347, 94.5635, 95.3922, 96.2210, 97.0497]
+    self.s_lut =[ 1.8103,  1.5499,  1.5994,  1.8430,  2.2030,  2.6341,  3.1130,  3.6314,
+                  4.1913,  4.7920,  5.4080,  6.0314,  6.6592,  7.2948,  7.9427,  8.6010,
+                  9.2604,  9.9203, 10.5863, 11.2478, 11.9017, 12.5720, 13.2714, 13.9870,
+                 14.7056, 15.4150, 16.1127, 16.8182, 17.5527, 18.3129, 19.0717, 19.8404,
+                 20.6285, 21.4527, 22.2358, 22.9200, 23.5376, 24.1071, 24.6601, 25.2473,
+                 25.8888, 26.5613, 27.2474, 27.9908, 28.8538, 29.8815, 31.0003, 31.9688,
+                 32.8233, 33.5948, 34.3189, 35.0252, 35.6697, 36.2580, 36.8490, 37.5502,
+                 38.3722, 39.3099, 40.3040, 41.2324, 42.1571, 43.1702, 44.2244, 45.2144,
+                 46.1481, 47.1148, 48.2273, 49.3547, 50.4047, 51.3084, 52.1028, 52.8775,
+                 53.6479, 54.4168, 55.1850, 55.9528, 56.7204, 57.4879, 58.2552, 59.0225,
+                 59.7898, 60.5570, 61.3242, 62.0914, 62.8585, 63.6257, 64.3928, 65.1600,
+                 65.9271, 66.6942, 67.4613, 68.2284, 68.9955, 69.7626, 70.5297, 71.2968,
+                 72.0639, 72.8310, 73.5981, 74.3652, 75.1323, 75.8994, 76.6665, 77.4336,
+                 78.2006, 78.9677, 79.7348, 80.5019, 81.2690, 82.0361, 82.8032, 83.5703,
+                 84.3374, 85.1044, 85.8715, 86.6386, 87.4057, 88.1728, 88.9399, 89.7070]
     #self.s_lut = np.linspace(self.s_min, self.s_max, num=self.s_nbins+1)[:-1]
     self.s_step = np.asarray(self.s_step)
     self.s_lut = np.asarray(self.s_lut)
@@ -1220,9 +1220,9 @@ class TrackProducer(object):
 
     if mode_ok:
       if np.abs(1.0/y_meas) > self.discr_pt_cut_high:  # >14 GeV
-        trigger = (y_discr > 0.7556) # 97.0% coverage
+        trigger = (y_discr > 0.7133) # 97.5% coverage
       elif np.abs(1.0/y_meas) > self.discr_pt_cut:  # 8-14 GeV
-        trigger = (y_discr > 0.3333) # 97.0% coverage
+        trigger = (y_discr > 0.2882) # 97.5% coverage
       else:
         #trigger = (y_discr >= 0.)  # True
         trigger = (y_discr >= 0.) and strg_ok
@@ -1636,7 +1636,6 @@ class RatesAnalysis(object):
             h.fill(h.GetBinCenter(b))
 
       tracks = evt.tracks
-      #
       select = lambda trk: trk and (0.8 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
       hname = "highest_emtf_absEtaMin0.8_absEtaMax2.4_qmin12_pt"
       fill_highest_pt()
@@ -1661,23 +1660,22 @@ class RatesAnalysis(object):
         fill_eta()
 
       tracks = emtf2026_tracks
-      #
-      select = lambda trk: trk and (0.8 <= abs(trk.eta) <= 2.4)
+      select = lambda trk: trk and (0.8 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5,6)
       hname = "highest_emtf2026_absEtaMin0.8_absEtaMax2.4_qmin12_pt"
       fill_highest_pt()
-      select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4)
+      select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5)
       hname = "highest_emtf2026_absEtaMin1.24_absEtaMax2.4_qmin12_pt"
       fill_highest_pt()
-      select = lambda trk: trk and (0.8 <= abs(trk.eta) < 1.24)
+      select = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and trk.zone in (6,)
       hname = "highest_emtf2026_absEtaMin0.8_absEtaMax1.24_qmin12_pt"
       fill_highest_pt()
-      select = lambda trk: trk and (1.24 <= abs(trk.eta) < 1.65)
+      select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 1.65) and trk.zone in (0,1,2,3,4,5)
       hname = "highest_emtf2026_absEtaMin1.24_absEtaMax1.65_qmin12_pt"
       fill_highest_pt()
-      select = lambda trk: trk and (1.65 <= abs(trk.eta) < 2.15)
+      select = lambda trk: trk and (1.65 <= abs(trk.eta) <= 2.15) and trk.zone in (0,1,2,3,4,5)
       hname = "highest_emtf2026_absEtaMin1.65_absEtaMax2.15_qmin12_pt"
       fill_highest_pt()
-      select = lambda trk: trk and (2.15 <= abs(trk.eta) <= 2.4)
+      select = lambda trk: trk and (2.15 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5)
       hname = "highest_emtf2026_absEtaMin2.15_absEtaMax2.4_qmin12_pt"
       fill_highest_pt()
       for l in xrange(14,22+1):
@@ -1859,12 +1857,12 @@ class EffieAnalysis(object):
         tracks = emtf2026_tracks
         if omtf_input:
           select_part = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0)
-          #select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and (trk.pt > float(l))
-          select_track = lambda trk: trk and (0.75 <= abs(trk.eta) <= 1.4) and (trk.pt > float(l))
+          #select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and trk.zone in (6,) and (trk.pt > float(l))
+          select_track = lambda trk: trk and (0.75 <= abs(trk.eta) <= 1.4) and trk.zone in (6,) and (trk.pt > float(l))
         else:
           select_part = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
-          #select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.pt > float(l))
-          select_track = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.4) and (trk.pt > float(l))
+          #select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5) and (trk.pt > float(l))
+          select_track = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5) and (trk.pt > float(l))
         #
         hname = "emtf2026_eff_vs_genpt_l1pt%i" % (l)
         fill_efficiency_pt()
