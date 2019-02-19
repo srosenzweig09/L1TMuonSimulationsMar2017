@@ -2,7 +2,7 @@ import numpy as np
 
 nlayers = 16  # 5 (CSC) + 4 (RPC) + 3 (GEM) + 4 (DT)
 
-nvariables = 39  # 20 (CSC) + 8 (RPC) + 4 (GEM) + 4 (ME0) + 3 (pattern)
+nvariables = 36  # 20 (CSC) + 8 (RPC) + 4 (GEM) + 4 (ME0)
 
 nvariables_input = (nlayers * (10+1)) + 3
 
@@ -144,8 +144,7 @@ class Encoder(object):
     return x
 
   def get_x(self, drop_columns_of_zeroes=True, drop_columns_emtf=True, drop_columns_omtf=False):
-    x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend, self.x_qual, self.x_time,
-                       self.x_straightness, self.x_zone, self.x_theta_median))
+    x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend, self.x_qual, self.x_time))
     # Drop input nodes
     if drop_columns_of_zeroes:
       drop_phi    = [nlayers*0 + x for x in xrange(0,0)]   # keep everyone
@@ -184,6 +183,9 @@ class Encoder(object):
       for i in drop_phi + drop_theta + drop_bend + drop_qual + drop_time:
         x_dropit[i] = True
       x_new = x_new[:, ~x_dropit]
+      #
+      x_rsvd = np.zeros((x_new.shape[0],6), dtype=np.float32)
+      x_new = np.hstack((x_new, x_rsvd))
     return x_new
 
   def get_x_mask(self):
