@@ -19,8 +19,7 @@ process.load('Configuration.Geometry.GeometryExtended2023D17Reco_cff')
 process.load('Configuration.Geometry.GeometryExtended2023D17_cff')
 process.load('Configuration.StandardSequences.MagneticField_cff')
 process.load('Configuration.StandardSequences.Generator_cff')
-#process.load('IOMC.EventVertexGenerators.VtxSmearedHLLHC14TeV_cfi')
-process.load('IOMC.EventVertexGenerators.VtxSmearedFlat_cfi')
+process.load('IOMC.EventVertexGenerators.VtxSmearedHLLHC14TeV_cfi')
 process.load('GeneratorInterface.Core.genFilterSummary_cff')
 process.load('Configuration.StandardSequences.SimIdeal_cff')
 process.load('Configuration.StandardSequences.Digi_cff')
@@ -93,10 +92,15 @@ process.generator = cms.EDProducer("FlatRandomPtGunProducer2",
 # VtxSmeared
 # X, Y, Z in cm. Note that Z and T will be correlated. Set MinT = (MinZ - MaxZ)/2, MaxT = (MaxZ - MinZ)/2
 # in [ns] units (recall c_light = 29.9792458 cm/ns).
-process.VtxSmeared.MaxX = cms.double(300)            # was 0.0015
-process.VtxSmeared.MaxY = cms.double(300)            # was 0.0015
-process.VtxSmeared.MaxZ = cms.double(600)            # was 5.3
-process.VtxSmeared.MaxT = cms.double(600/29.9792458) # was 0.176789
+from IOMC.EventVertexGenerators.VtxSmearedParameters_cfi import FlatVtxSmearingParameters,VtxSmearedCommon
+process.VtxSmeared = cms.EDProducer("FlatEvtVtxGenerator2",
+    FlatVtxSmearingParameters,
+    VtxSmearedCommon
+)
+process.VtxSmeared.MaxX = cms.double(120)            # was 0.0015
+process.VtxSmeared.MaxY = cms.double(120)            # was 0.0015
+process.VtxSmeared.MaxZ = cms.double(100)            # was 5.3
+process.VtxSmeared.MaxT = cms.double(100/29.9792458) # was 0.176789
 process.VtxSmeared.MinX = cms.double(-1*process.VtxSmeared.MaxX.value())
 process.VtxSmeared.MinY = cms.double(-1*process.VtxSmeared.MaxY.value())
 process.VtxSmeared.MinZ = cms.double(-1*process.VtxSmeared.MaxZ.value())
@@ -161,11 +165,15 @@ process = customiseEarlyDelete(process)
 
 
 # ______________________________________________________________________________
-# Modify CSC Trigger Primitives
-if True:
-    process.simCscTriggerPrimitiveDigis.commonParam.runME11ILT = False
-    process.simCscTriggerPrimitiveDigis.commonParam.runME21ILT = False
-    process.simCscTriggerPrimitiveDigis.commonParam.runME3141ILT = False
+# Check LCT BX shift
+import os
+if 'CMSSW_VERSION' not in os.environ:
+    raise RunTimeError('Could not determine CMSSW version.')
+cmssw_version = os.environ['CMSSW_VERSION']
+cmssw_version = cmssw_version[6:].split('_')[:3]
+cmssw_version = tuple(int(x) for x in cmssw_version)
+if cmssw_version < (10, 2, 0):
+    process.simEmtfDigis.CSCInputBXShift = cms.int32(-6)
 
 # ______________________________________________________________________________
 # Modify EMTF
@@ -176,6 +184,7 @@ if True:
 # ______________________________________________________________________________
 # Modify paths and schedule definitions
 print("[INFO] Using GlobalTag: %s" % process.GlobalTag.globaltag.value())
+print("[INFO] Using random number seed: %d" % process.RandomNumberGeneratorService.generator.initialSeed.value())
 if True:
     # Ntuplize
     process.load('L1TMuonSimulations.Analyzers.rpcintegration_cfi')
@@ -184,7 +193,7 @@ if True:
     process.TFileService = cms.Service('TFileService', fileName = cms.string(process.ntupler.outFileName.value()))
     # Modify sequences without any consequences
     process.doAllDigi = cms.Sequence(process.generatorSmeared+process.muonDigi)
-    process.SimL1TMuon = cms.Sequence(process.SimL1TMuonCommon+process.me0TriggerPseudoDigiSequence+process.simEmtfDigis)
+    process.SimL1TMuon = cms.Sequence(process.SimL1TMuonCommon+process.rpcRecHits+process.simTwinMuxDigis+process.me0TriggerPseudoDigiSequence+process.simEmtfDigis)
     process.SimL1EmulatorCore = cms.Sequence(process.SimL1TMuon)
     process.SimL1Emulator = cms.Sequence(process.SimL1EmulatorCore)
     process.ntuple_step = cms.Path(process.ntupler)
