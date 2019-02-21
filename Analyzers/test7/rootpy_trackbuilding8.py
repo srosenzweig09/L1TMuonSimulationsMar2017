@@ -299,7 +299,7 @@ class EMTFBend(object):
     elif hit.type == kGEM:
       emtf_bend *= hit.endcap
     elif hit.type == kME0:
-      pass  # currently in 1/2-strip unit
+      emtf_bend = np.clip(emtf_bend, -64, 63)  # currently in 1/2-strip unit
     elif hit.type == kDT:
       if hit.quality >= 4:
         emtf_bend = np.clip(emtf_bend, -512, 511)
@@ -321,24 +321,15 @@ class EMTFOldBend(object):
       bend = self.lut[clct]
       bend *= hit.endcap
     elif hit.type == kGEM:
-      bend = hit.bend
+      bend = np.int32(hit.bend)
       bend *= hit.endcap
     elif hit.type == kME0:
-      bend = hit.bend
+      bend = np.int32(hit.bend)
     elif hit.type == kDT:
-      bend = hit.bend
+      bend = np.int32(hit.bend)
     else:  # kRPC
-      bend = 0
+      bend = np.int32(0)
     return bend
-
-# Decide EMTF hit z-position
-class EMTFZee(object):
-  def __init__(self):
-    self.lut = np.array([599.0, 696.8, 827.1, 937.5, 1027, 708.7, 790.9, 968.8, 1060, 566.4, 794.8, 539.3, 0, 0, 0, 0], dtype=np.float32)
-    assert(self.lut.shape[0] == nlayers)
-
-  def __call__(self, hit):
-    return self.lut[hit.emtf_layer]
 
 # Decide EMTF hit phi (integer unit)
 class EMTFPhi(object):
@@ -364,6 +355,58 @@ class EMTFPhi(object):
       pass
     return emtf_phi
 
+# Decide EMTF hit phi (integer unit) (old version)
+class EMTFOldPhi(object):
+  def __init__(self):
+    self.ph_pattern_corr_lut = np.array([0, 0, 5, 5, 5, 5, 2, 2, 2, 2, 0], dtype=np.int32)
+    self.ph_pattern_corr_sign_lut = np.array([0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], dtype=np.int32)
+
+  def __call__(self, hit):
+    emtf_phi = np.int32(hit.emtf_phi)
+    clct_pattern = np.int32(hit.pattern)
+    if hit.type == kCSC:
+      # Is this chamber mounted in reverse direction?
+      # (i.e., phi vs. strip number is reversed)
+      ph_reverse = (hit.endcap == 1 and hit.station >= 3) or (hit.endcap == -1 and hit.station < 3)
+
+      # Is this 10-deg or 20-deg chamber?
+      is_10degree = (hit.station == 1) or (hit.station >= 2 and hit.ring == 2)  # ME1 and ME2,3,4/2
+
+      # Undo CLCT comp digi fit phi correction
+      # (not totally correct!)
+      if is_10degree:
+        emtf_phi >>= 2
+        emtf_phi <<= 2
+      else:
+        emtf_phi >>= 3
+        emtf_phi <<= 3
+
+      # Re-apply CLCT pattern phi correction
+      # (not totally correct!)
+      clct_patt_corr = self.ph_pattern_corr_lut[clct_pattern]
+      clct_patt_corr_sign_ = self.ph_pattern_corr_sign_lut[clct_pattern]
+      clct_patt_corr_sign = 1 if clct_patt_corr_sign_ == 0 else -1
+      if is_10degree:
+        eighth_strip = clct_patt_corr_sign * (clct_patt_corr >> 1)
+      else:
+        eighth_strip = clct_patt_corr_sign * (clct_patt_corr >> 0)
+
+      # Multiplicative factor for eighth_strip
+      mult_factor = 1024
+      if hit.station == 1 and hit.ring == 4:
+        mult_factor = 1707
+      elif hit.station == 1 and hit.ring == 1:
+        mult_factor = 1301
+      elif hit.station == 1 and hit.ring == 3:
+        mult_factor = 947
+
+      ph_tmp = (eighth_strip * mult_factor) >> 10
+      ph_tmp_sign = 1 if ph_reverse == 0 else -1
+      emtf_phi += ph_tmp_sign * ph_tmp
+    else:
+      pass
+    return emtf_phi
+
 # Decide EMTF hit theta (integer unit)
 class EMTFTheta(object):
   def __call__(self, hit):
@@ -381,6 +424,15 @@ class EMTFTheta(object):
     else:
       pass
     return emtf_theta
+
+# Decide EMTF hit z-position
+class EMTFZee(object):
+  def __init__(self):
+    self.lut = np.array([599.0, 696.8, 827.1, 937.5, 1027, 708.7, 790.9, 968.8, 1060, 566.4, 794.8, 539.3, 0, 0, 0, 0], dtype=np.float32)
+    assert(self.lut.shape[0] == nlayers)
+
+  def __call__(self, hit):
+    return self.lut[hit.emtf_layer]
 
 # Decide EMTF hit quality
 class EMTFQuality(object):
@@ -447,9 +499,10 @@ find_emtf_layer = EMTFLayer()
 find_emtf_zones = EMTFZone()
 find_emtf_bend = EMTFBend()
 find_emtf_old_bend = EMTFOldBend()
-find_emtf_zee = EMTFZee()
 find_emtf_phi = EMTFPhi()
+find_emtf_old_phi = EMTFOldPhi()
 find_emtf_theta = EMTFTheta()
+find_emtf_zee = EMTFZee()
 find_emtf_quality = EMTFQuality()
 find_emtf_time = EMTFTime()
 find_emtf_layer_partner = EMTFLayerPartner()
@@ -661,11 +714,10 @@ class PatternRecognition(object):
     emtf_bend = find_emtf_bend(hit)
     emtf_quality = find_emtf_quality(hit)
     emtf_time = find_emtf_time(hit)
-    old_emtf_bend = find_emtf_old_bend(hit)
     extra_emtf_theta = 0  #FIXME
     sim_tp = (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)
     myhit = Hit(hit_id, hit.lay, hit.emtf_phi, hit.emtf_theta, emtf_bend,
-                emtf_quality, emtf_time, hit.old_emtf_phi, old_emtf_bend,
+                emtf_quality, emtf_time, hit.old_emtf_phi, hit.old_emtf_bend,
                 extra_emtf_theta, sim_tp)
     return myhit
 
@@ -793,7 +845,7 @@ class PatternRecognition(object):
       # + (zones 0,1) any road with ME0 and ME1
       # + (zone 6) any road with MB1+MB2, MB1+MB3, MB1+ME1/3, MB1+ME2/2, MB2+MB3, MB2+ME1/3, MB2+ME2/2, ME1/3+ME2/2
       if ((is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
-          (ieta in (0,1) and road_mode_me0 == 3) or
+          (ieta in (0,1) and road_mode_me0 == 3) or \
           (ieta in (6,) and road_mode_omtf == 3)):
         road_quality = find_emtf_road_quality(ipt)
         road_sort_code = find_emtf_road_sort_code(road_mode, road_quality, tmp_road_hits)
@@ -819,6 +871,10 @@ class PatternRecognition(object):
       hit.endsec = find_endsec(hit.endcap, hit.sector)
       hit.lay = find_emtf_layer(hit)
       assert(hit.lay != -99)
+
+      # Save the old phi & bend values
+      hit.old_emtf_phi = find_emtf_old_phi(hit)
+      hit.old_emtf_bend = find_emtf_old_bend(hit)
 
       if hit.type == kCSC:
         sector_mode_array[hit.endsec] |= (1 << (4 - hit.station))
@@ -850,7 +906,6 @@ class PatternRecognition(object):
 
         # Loop over sector hits
         for ihit, hit in enumerate(sector_hits):
-          hit.old_emtf_phi = hit.emtf_phi
           hit.emtf_phi = find_emtf_phi(hit)
           hit.emtf_theta = find_emtf_theta(hit)
           hit.zones = find_emtf_zones(hit)
@@ -1428,13 +1483,16 @@ class RoadsAnalysis(object):
       if n != -1 and ievt == n:
         break
 
+      if len(evt.particles) == 0:
+        continue
+
+      part = evt.particles[0]  # particle gun
+      part.invpt = np.true_divide(part.q, part.pt)
+
       roads = recog.run(evt.hits)
       clean_roads = clean.run(roads)
       slim_roads = slim.run(clean_roads)
       assert(len(clean_roads) == len(slim_roads))
-
-      part = evt.particles[0]  # particle gun
-      part.invpt = np.true_divide(part.q, part.pt)
 
       if len(slim_roads) > 0:
         mypart = Particle(part.pt, part.eta, part.phi, part.q, part.vx, part.vy, part.vz)
@@ -1739,9 +1797,9 @@ class EffieAnalysis(object):
           histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 30 GeV}", type='F')
 
       hname = "%s_l1pt_vs_genpt" % m
-      histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -0.5, 0.5, name=hname, title="; gen 1/p_{T} [1/GeV]; 1/p_{T} [1/GeV]", type='F')
+      histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -0.5, 0.5, name=hname, title="; gen q/p_{T} [1/GeV]; q/p_{T} [1/GeV]", type='F')
       hname = "%s_l1ptres_vs_genpt" % m
-      histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -1, 2, name=hname, title="; gen 1/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
+      histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -1, 2, name=hname, title="; gen q/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
 
     # Load tree
     if omtf_input:
@@ -1767,6 +1825,12 @@ class EffieAnalysis(object):
       if n != -1 and ievt == n:
         break
 
+      if len(evt.particles) == 0:
+        continue
+
+      part = evt.particles[0]  # particle gun
+      part.invpt = np.true_divide(part.q, part.pt)
+
       # EMTF mode
       roads = recog1.run(evt.hits)
       clean_roads = clean.run(roads)
@@ -1785,9 +1849,6 @@ class EffieAnalysis(object):
 
       # Ghost busting
       emtf2026_tracks = ghost.run(tracks + tracks2)
-
-      part = evt.particles[0]  # particle gun
-      part.invpt = np.true_divide(part.q, part.pt)
 
       if ievt < 20 and False:
         print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2026_tracks)))
