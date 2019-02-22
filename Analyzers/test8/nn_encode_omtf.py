@@ -6,14 +6,15 @@ nvariables = 36  # 12 (CSC) + 6 (RPC) + 12 (DT) + 6 (rsvd)
 
 nvariables_input = (nlayers * (10+1)) + 3
 
-nparameters_input = 5
+nparameters_input = 6
 
 
 # ______________________________________________________________________________
 class Encoder(object):
 
-  def __init__(self, x, y, reg_pt_scale=1.0, drop_ge11=False, drop_ge21=False,
-               drop_me0=False, drop_irpc=False, drop_dt=False):
+  def __init__(self, x, y, reg_pt_scale=1.0, reg_dxy_scale=1.0,
+               drop_ge11=False, drop_ge21=False, drop_me0=False,
+               drop_irpc=False, drop_dt=False):
 
     if x is None or y is None:
       raise Exception('Invalid input x or y')
@@ -55,14 +56,17 @@ class Encoder(object):
     self.y_pt        = self.y_copy[:, 0]  # q/pT
     self.y_phi       = self.y_copy[:, 1]
     self.y_eta       = self.y_copy[:, 2]
-    self.y_dxy       = self.y_copy[:, 3]
-    self.y_dz        = self.y_copy[:, 4]
+    self.y_vx        = self.y_copy[:, 3]
+    self.y_vy        = self.y_copy[:, 4]
+    self.y_vz        = self.y_copy[:, 5]
 
     # Scale q/pT for training
-    self.y_pt *= reg_pt_scale
+    self.y_pt  *= reg_pt_scale
 
-    # Make event weight
-    self.w = np.ones_like(self.y_pt)
+    # Scale dxy for training
+    self.y_dxy  = np.sqrt(self.y_vx*self.y_vx + self.y_vy*self.y_vy)
+    self.y_dxy *= np.sign(np.cos(np.arctan2(self.y_vy, self.y_vx) - self.y_phi))
+    self.y_dxy *= reg_dxy_scale
 
     # ________________________________________________________________________
     # Drop detectors
@@ -104,6 +108,9 @@ class Encoder(object):
     self.x_phi          -= self.x_phi_median
     self.x_phi          /= 32
 
+    self.x_old_phi      -= self.x_phi_median
+    self.x_old_phi      /= 32
+
     # Subtract median theta from hit thetas
     self.x_theta_median  = np.nanmedian(self.x_theta, axis=1)
     self.x_theta_median  = self.x_theta_median[:, np.newaxis]
@@ -114,11 +121,20 @@ class Encoder(object):
     self.x_bend[:, 11:12] /= 4
     self.x_bend[:, 12:16] /= 32
 
+    # Modify ring and F/R definitions
+    x_ring_tmp = self.x_ring.astype(np.int32)
+    self.x_ring[(x_ring_tmp == 2) | (x_ring_tmp == 3)] = +1 # ring 2,3 -> +1
+    self.x_ring[(x_ring_tmp == 1) | (x_ring_tmp == 4)] = -1 # ring 1,4 -> -1
+    x_fr_tmp = self.x_fr.astype(np.int32)
+    self.x_fr[(x_fr_tmp == 1)] = +1  # front chamber -> +1
+    self.x_fr[(x_fr_tmp == 0)] = -1  # rear chamber  -> -1
+
     # ________________________________________________________________________
     # Zero out certain variables
-    self.x_bend[:, 5:11]  = 0 # no bend for RPC, GEM
-    self.x_qual[:, 5:11]  = 0 # no qual for RPC, GEM
-    self.x_time[:, 0:16]  = 0 # no time for everyone
+    self.x_bend    [:, 5:11] = 0 # no bend for RPC, GEM
+    self.x_old_bend[:, 5:11] = 0 # ^
+    self.x_qual    [:, 5:11] = 0 # no qual for RPC, GEM
+    self.x_time    [:, 0:16] = 0 # no time for everyone
 
     # Add dedicated GEM-CSC bend
     # Need to account for ME1/1 f or r
@@ -145,6 +161,7 @@ class Encoder(object):
 
   def get_x(self, drop_columns_of_zeroes=True, drop_columns_emtf=False, drop_columns_omtf=True):
     x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend, self.x_qual, self.x_time))
+
     # Drop input nodes
     if drop_columns_of_zeroes:
       drop_phi    = [nlayers*0 + x for x in xrange(0,0)]   # keep everyone
@@ -204,6 +221,14 @@ class Encoder(object):
     y_new = self.y_pt * (np.sinh(1.8587) / np.sinh(np.abs(self.y_eta)))
     return y_new
 
+  def get_dxy(self):
+    dxy_new = self.y_dxy.copy()
+    return dxy_new
+
+  def get_dz(self):
+    dz_new = self.y_vz.copy()
+    return dz_new
+
   def get_w(self):
-    w_new = self.w.copy()
+    w_new = np.ones_like(self.y_pt)
     return w_new

@@ -13,8 +13,8 @@ nparameters_input = 6
 class Encoder(object):
 
   def __init__(self, x, y, reg_pt_scale=1.0, reg_dxy_scale=1.0,
-               drop_ge11=False, drop_ge21=False, drop_me0=False,
-               drop_irpc=False, drop_dt=False):
+               drop_ge11=True, drop_ge21=True, drop_me0=True,
+               drop_irpc=True, drop_dt=True):
 
     if x is None or y is None:
       raise Exception('Invalid input x or y')
@@ -160,7 +160,8 @@ class Encoder(object):
     return x
 
   def get_x(self, drop_columns_of_zeroes=True, drop_columns_emtf=True, drop_columns_omtf=False):
-    x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend, self.x_qual, self.x_time))
+    #x_new = np.hstack((self.x_phi, self.x_theta, self.x_bend, self.x_qual, self.x_time))
+    x_new = np.hstack((self.x_old_phi, self.x_theta, self.x_old_bend, self.x_fr, self.x_time))
 
     # Drop input nodes
     if drop_columns_of_zeroes:

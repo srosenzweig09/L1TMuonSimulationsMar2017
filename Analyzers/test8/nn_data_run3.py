@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 from nn_logging import getLogger
 logger = getLogger()
 
-from nn_encode_omtf import Encoder
+from nn_encode_run3 import Encoder
 
 
 # ______________________________________________________________________________
