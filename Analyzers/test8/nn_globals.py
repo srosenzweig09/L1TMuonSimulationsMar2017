@@ -19,7 +19,7 @@ discr_pt_cut_high = 14.
 
 reg_pt_scale = 100.
 
-reg_dxy_scale = 0.2
+reg_dxy_scale = 0.4
 
 discr_loss_weight = 20.
 

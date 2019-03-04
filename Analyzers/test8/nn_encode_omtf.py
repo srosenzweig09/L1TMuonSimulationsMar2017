@@ -64,8 +64,9 @@ class Encoder(object):
     self.y_pt  *= reg_pt_scale
 
     # Scale dxy for training
-    self.y_dxy  = np.sqrt(self.y_vx*self.y_vx + self.y_vy*self.y_vy)
-    self.y_dxy *= np.sign(np.cos(np.arctan2(self.y_vy, self.y_vx) - self.y_phi))
+    #self.y_dxy  = np.sqrt(self.y_vx*self.y_vx + self.y_vy*self.y_vy)
+    #self.y_dxy *= np.sign(np.cos(np.arctan2(self.y_vy, self.y_vx) - self.y_phi))
+    self.y_dxy  = self.y_vy * np.cos(self.y_phi) - self.y_vx * np.sin(self.y_phi)
     self.y_dxy *= reg_dxy_scale
 
     # ________________________________________________________________________
