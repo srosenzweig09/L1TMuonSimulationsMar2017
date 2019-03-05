@@ -1,0 +1,4 @@
+# Reference: https://cms-pdmv.cern.ch/mcm/public/restapi/requests/get_setup/TSG-PhaseIIFall17D-00023
+#            https://cms-pdmv.cern.ch/mcm/public/restapi/requests/get_setup/TSG-PhaseIIFall17D-00044
+
+cmsDriver.py L1TMuonSimulations/Configuration/python/SingleMuonFlatOneOverPt2To7000_PositiveEndCap_cfi.py --fileout file:SingleMuon_Endcap.root --mc --eventcontent FEVTDEBUGHLT --customise SimGeneral/MixingModule/customiseStoredTPConfig.higherPtTP,SLHCUpgradeSimulations/Configuration/aging.customise_aging_1000 --datatier GEN-SIM-DIGI-RAW --conditions 93X_upgrade2023_realistic_v5 --beamspot HLLHC14TeV --step GEN,SIM,DIGI:pdigi_valid,L1,L1TrackTrigger,DIGI2RAW --nThreads 4 --geometry Extended2023D17 --era Phase2_timing --python_filename step1_SingleMuon_Endcap_2GeV.py --no_exec -n 100
