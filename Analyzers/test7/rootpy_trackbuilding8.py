@@ -521,6 +521,8 @@ class EMTFQuality(object):
         emtf_quality = emtf_quality * +1
       else:
         emtf_quality = emtf_quality * -1
+    elif hit.type == kRPC or hit.type == kGEM:
+      emtf_quality = np.int32(0)
     return emtf_quality
 
 # Decide EMTF hit time (integer unit)
@@ -1180,19 +1182,21 @@ class RoadSlimming(object):
           for hit1 in hits_array[hit_lay]:
             if hits_array[hit_lay_p]:
               for hit2 in hits_array[hit_lay_p]:
-                dphi = abs((hit1.emtf_phi - hit2.emtf_phi) - mean_dphi)
-                dtheta = abs(hit1.emtf_theta - tmp_theta)
-                pairs.append((hit1, hit2, dphi, dtheta))
+                dphi = np.abs((hit1.emtf_phi - hit2.emtf_phi) - mean_dphi)
+                dtheta = np.abs(hit1.emtf_theta - tmp_theta)
+                neg_qual = -np.abs(hit1.emtf_quality)
+                pairs.append((hit1, hit2, dphi, dtheta, neg_qual))
                 #print hit1.emtf_phi, hit2.emtf_phi, abs((hit1.emtf_phi - hit2.emtf_phi)), dphi
                 continue  # end loop over hit2
             else:
-              dphi = abs((hit1.emtf_phi - best_phi_array[hit_lay_p]) - mean_dphi)
-              dtheta = abs(hit1.emtf_theta - tmp_theta)
-              pairs.append((hit1, hit1, dphi, dtheta))
+              dphi = np.abs((hit1.emtf_phi - best_phi_array[hit_lay_p]) - mean_dphi)
+              dtheta = np.abs(hit1.emtf_theta - tmp_theta)
+              neg_qual = -np.abs(hit1.emtf_quality)
+              pairs.append((hit1, hit1, dphi, dtheta, neg_qual))
             continue  # end loop over hit1
 
-          # Find best pair, which is min (dtheta, dphi)
-          best_pair = min(pairs, key=lambda x: (x[3], x[2]))
+          # Find best pair, which is min (neg_qual, dtheta, dphi)
+          best_pair = min(pairs, key=lambda x: (x[4], x[3], x[2]))
           best_hit = best_pair[0]
           hits_array[hit_lay] = [best_hit]
           best_phi_array[hit_lay] = best_hit.emtf_phi
@@ -1865,12 +1869,18 @@ class EffieAnalysis(object):
         for k in ("denom", "numer"):
           hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
+          hname = "%s_eff_vs_genpt_allzones_l1pt%i_%s" % (m,l,k)
+          histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
           hname = "%s_eff_vs_genphi_l1pt%i_%s" % (m,l,k)
+          histograms[hname] = Hist(76, -190, 190, name=hname, title="; gen #phi {gen p_{T} > 20 GeV}", type='F')
+          hname = "%s_eff_vs_genphi_allzones_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(76, -190, 190, name=hname, title="; gen #phi {gen p_{T} > 20 GeV}", type='F')
           hname = "%s_eff_vs_geneta_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
-          hname = "%s_eff_vs_geneta_genpt30_l1pt%i_%s" % (m,l,k)
-          histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 30 GeV}", type='F')
+          hname = "%s_eff_vs_geneta_allzones_l1pt%i_%s" % (m,l,k)
+          histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
+          #hname = "%s_eff_vs_geneta_genpt30_l1pt%i_%s" % (m,l,k)
+          #histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 30 GeV}", type='F')
 
       hname = "%s_l1pt_vs_genpt" % m
       histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -0.5, 0.5, name=hname, title="; gen q/p_{T} [1/GeV]; q/p_{T} [1/GeV]", type='F')
@@ -1943,6 +1953,14 @@ class EffieAnalysis(object):
           denom.fill(part.pt)
           if trigger:
             numer.fill(part.pt)
+          #
+          trigger_allzones = any([select_track_allzones(trk) for trk in tracks])  # using scaled pT
+          denom = histograms[hname_allzones + "_denom"]
+          numer = histograms[hname_allzones + "_numer"]
+          denom.fill(part.pt)
+          if trigger_allzones:
+            numer.fill(part.pt)
+
 
       def fill_efficiency_phi():
         if select_part(part):
@@ -1952,6 +1970,13 @@ class EffieAnalysis(object):
           denom.fill(np.rad2deg(part.phi))
           if trigger:
             numer.fill(np.rad2deg(part.phi))
+          #
+          trigger_allzones = any([select_track_allzones(trk) for trk in tracks])  # using scaled pT
+          denom = histograms[hname_allzones + "_denom"]
+          numer = histograms[hname_allzones + "_numer"]
+          denom.fill(np.rad2deg(part.phi))
+          if trigger_allzones:
+            numer.fill(np.rad2deg(part.phi))
 
       def fill_efficiency_eta():
         if (part.bx == 0):
@@ -1960,6 +1985,13 @@ class EffieAnalysis(object):
           numer = histograms[hname + "_numer"]
           denom.fill(abs(part.eta))
           if trigger:
+            numer.fill(abs(part.eta))
+          #
+          trigger_allzones = any([select_track_allzones(trk) for trk in tracks])  # using scaled pT
+          denom = histograms[hname_allzones + "_denom"]
+          numer = histograms[hname_allzones + "_numer"]
+          denom.fill(abs(part.eta))
+          if trigger_allzones:
             numer.fill(abs(part.eta))
 
       def fill_resolution():
@@ -1975,16 +2007,17 @@ class EffieAnalysis(object):
         tracks = evt.tracks
         select_part = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
         select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l))
+        select_track_allzones = select_track
         #
         hname = "emtf_eff_vs_genpt_l1pt%i" % (l)
+        hname_allzones = "emtf_eff_vs_genpt_allzones_l1pt%i" % (l)
         fill_efficiency_pt()
         if part.pt > 20.:
           hname = "emtf_eff_vs_genphi_l1pt%i" % (l)
+          hname_allzones = "emtf_eff_vs_genphi_allzones_l1pt%i" % (l)
           fill_efficiency_phi()
           hname = "emtf_eff_vs_geneta_l1pt%i" % (l)
-          fill_efficiency_eta()
-        if part.pt > 30.:
-          hname = "emtf_eff_vs_geneta_genpt30_l1pt%i" % (l)
+          hname_allzones = "emtf_eff_vs_geneta_allzones_l1pt%i" % (l)
           fill_efficiency_eta()
         if l == 0:
           hname1 = "emtf_l1pt_vs_genpt"
@@ -1996,20 +2029,22 @@ class EffieAnalysis(object):
           select_part = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0)
           #select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and trk.zone in (6,) and (trk.pt > float(l))
           select_track = lambda trk: trk and (0.75 <= abs(trk.eta) <= 1.4) and trk.zone in (6,) and (trk.pt > float(l))
+          select_track_allzones = lambda trk: trk and (0.75 <= abs(trk.eta) <= 1.4) and (trk.pt > float(l))
         else:
           select_part = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
           #select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5) and (trk.pt > float(l))
           select_track = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5) and (trk.pt > float(l))
+          select_track_allzones = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.4) and (trk.pt > float(l))
         #
         hname = "emtf2026_eff_vs_genpt_l1pt%i" % (l)
+        hname_allzones = "emtf_eff_vs_genpt_allzones_l1pt%i" % (l)
         fill_efficiency_pt()
         if part.pt > 20.:
           hname = "emtf2026_eff_vs_genphi_l1pt%i" % (l)
+          hname_allzones = "emtf_eff_vs_genphi_allzones_l1pt%i" % (l)
           fill_efficiency_phi()
           hname = "emtf2026_eff_vs_geneta_l1pt%i" % (l)
-          fill_efficiency_eta()
-        if part.pt > 30.:
-          hname = "emtf2026_eff_vs_geneta_genpt30_l1pt%i" % (l)
+          hname_allzones = "emtf_eff_vs_geneta_allzones_l1pt%i" % (l)
           fill_efficiency_eta()
         if l == 0:
           hname1 = "emtf2026_l1pt_vs_genpt"
@@ -2032,11 +2067,15 @@ class EffieAnalysis(object):
           for k in ("denom", "numer"):
             hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
             hnames.append(hname)
+            hname = "%s_eff_vs_genpt_allzones_l1pt%i_%s" % (m,l,k)
+            hnames.append(hname)
             hname = "%s_eff_vs_genphi_l1pt%i_%s" % (m,l,k)
+            hnames.append(hname)
+            hname = "%s_eff_vs_genphi_allzones_l1pt%i_%s" % (m,l,k)
             hnames.append(hname)
             hname = "%s_eff_vs_geneta_l1pt%i_%s" % (m,l,k)
             hnames.append(hname)
-            hname = "%s_eff_vs_geneta_genpt30_l1pt%i_%s" % (m,l,k)
+            hname = "%s_eff_vs_geneta_allzones_l1pt%i_%s" % (m,l,k)
             hnames.append(hname)
         hname = "%s_l1pt_vs_genpt" % m
         hnames.append(hname)
@@ -2174,9 +2213,9 @@ if use_condor:
 
 
 # Input files
-bankfile = 'pattern_bank_omtf.24.npz'
+bankfile = 'pattern_bank_omtf.25.npz'
 
-kerasfile = ['model.24.json', 'model_weights.24.h5', 'model_omtf.24.json', 'model_omtf_weights.24.h5']
+kerasfile = ['model.25.json', 'model_weights.25.h5', 'model_omtf.25.json', 'model_omtf_weights.25.h5']
 
 infile_r = None  # input file handle
 
@@ -2192,7 +2231,7 @@ def purge_bad_files(infiles):
 
 def load_pgun():
   global infile_r
-  infile = 'ntuple_SingleMuon_Endcap_2GeV_add.4.root'
+  infile = 'ntuple_SingleMuon_Endcap_2GeV_add.5.root'
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
   print('[INFO] Opening file: %s' % infile)
@@ -2208,11 +2247,11 @@ def load_pgun_batch(j):
   #global infile_r
   #infile_r = root_open('pippo.root', 'w')
 
-  jj = np.split(np.arange(2000), 200)[j]
+  jj = np.split(np.arange(20), 20)[j]
   infiles = []
   for j in jj:
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Endcap_2GeV/ParticleGuns/CRAB3/190207_042919/%04i/ntuple_SingleMuon_Endcap_%i.root' % ((j+1)/1000, (j+1)))
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Endcap2_2GeV/ParticleGuns/CRAB3/190207_043023/%04i/ntuple_SingleMuon_Endcap2_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Endcap_2GeV/ParticleGuns/CRAB3/190305_172340/%04i/ntuple_SingleMuon_Endcap_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Endcap2_2GeV/ParticleGuns/CRAB3/190305_172506/%04i/ntuple_SingleMuon_Endcap2_%i.root' % ((j+1)/1000, (j+1)))
 
   tree = TreeChain('ntupler/tree', infiles)
   print('[INFO] Opening file: %s' % ' '.join(infiles))
@@ -2226,7 +2265,7 @@ def load_pgun_batch(j):
 
 def load_pgun_omtf():
   global infile_r
-  infile = 'ntuple_SingleMuon_Overlap_3GeV_add.4.root'
+  infile = 'ntuple_SingleMuon_Overlap_3GeV_add.5.root'
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
   print('[INFO] Opening file: %s' % infile)
@@ -2245,8 +2284,8 @@ def load_pgun_batch_omtf(j):
   jj = np.split(np.arange(1000), 100)[j]
   infiles = []
   for j in jj:
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Overlap_3GeV/ParticleGuns/CRAB3/190206_065727/%04i/ntuple_SingleMuon_Overlap_%i.root' % ((j+1)/1000, (j+1)))
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Overlap2_3GeV/ParticleGuns/CRAB3/190206_065829/%04i/ntuple_SingleMuon_Overlap2_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Overlap_3GeV/ParticleGuns/CRAB3/190302_193756/%04i/ntuple_SingleMuon_Overlap_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Overlap2_3GeV/ParticleGuns/CRAB3/190302_194007/%04i/ntuple_SingleMuon_Overlap2_%i.root' % ((j+1)/1000, (j+1)))
 
   #infiles = purge_bad_files(infiles)
   tree = TreeChain('ntupler/tree', infiles)
@@ -2262,13 +2301,13 @@ def load_pgun_batch_omtf(j):
 def load_minbias_batch(j, pileup=200):
   global infile_r
   if pileup == 140:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU140/SingleNeutrino/CRAB3/190209_121318/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(56)]
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU140/SingleNeutrino/CRAB3/190305_000701/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(56)]
   elif pileup == 200:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190209_121428/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190305_000834/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
   elif pileup == 250:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU250/SingleNeutrino/CRAB3/190209_121524/0000/ntuple_SingleNeutrino_PU250_%i.root' % (i+1) for i in xrange(50)]
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU250/SingleNeutrino/CRAB3/190305_000938/0000/ntuple_SingleNeutrino_PU250_%i.root' % (i+1) for i in xrange(50)]
   elif pileup == 300:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU300/SingleNeutrino/CRAB3/190209_121619/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(53)]
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU300/SingleNeutrino/CRAB3/190305_025227/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(53)]
   else:
     raise RunTimeError('Cannot recognize pileup: {0}'.format(pileup))
 
@@ -2288,19 +2327,19 @@ def load_minbias_batch_for_mixing(j):
   global infile_r
   pufiles = []
   # For training purposes
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU140/SingleNeutrino/CRAB3/190209_121318/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(20)]  # up to 20/56
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190209_121428/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30)]  # up to 30/63
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU250/SingleNeutrino/CRAB3/190209_121524/0000/ntuple_SingleNeutrino_PU250_%i.root' % (i+1) for i in xrange(20)]  # up to 20/50
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU300/SingleNeutrino/CRAB3/190209_121619/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(20)]  # up to 20/53
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleElectron_PU140/SingleE_FlatPt-2to100/CRAB3/190211_021652/0000/ntuple_SingleElectron_PU140_%i.root' % (i+1) for i in xrange(28)]
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleElectron_PU200/SingleE_FlatPt-2to100/CRAB3/190211_182015/0000/ntuple_SingleElectron_PU200_%i.root' % (i+1) for i in xrange(27)]
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU140/SingleMu_FlatPt-2to100/CRAB3/190211_182130/0000/ntuple_SingleMuon_PU140_%i.root' % (i+1) for i in xrange(25)]
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU200/SingleMu_FlatPt-2to100/CRAB3/190211_182229/0000/ntuple_SingleMuon_PU200_%i.root' % (i+1) for i in xrange(26)]
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU140/SinglePhoton_FlatPt-8to150/CRAB3/190211_182324/0000/ntuple_SinglePhoton_PU140_%i.root' % (i+1) for i in xrange(27)]
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU200/SinglePhoton_FlatPt-8to150/CRAB3/190211_182443/0000/ntuple_SinglePhoton_PU200_%i.root' % (i+1) for i in xrange(27)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU140/SingleNeutrino/CRAB3/190305_000701/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(20)]  # up to 20/56
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190305_000834/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30)]  # up to 30/63
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU250/SingleNeutrino/CRAB3/190305_000938/0000/ntuple_SingleNeutrino_PU250_%i.root' % (i+1) for i in xrange(20)]  # up to 20/50
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU300/SingleNeutrino/CRAB3/190305_025227/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(20)]  # up to 20/53
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleElectron_PU140/SingleE_FlatPt-2to100/CRAB3/190305_012940/0000/ntuple_SingleElectron_PU140_%i.root' % (i+1) for i in xrange(28)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleElectron_PU200/SingleE_FlatPt-2to100/CRAB3/190305_013039/0000/ntuple_SingleElectron_PU200_%i.root' % (i+1) for i in xrange(27)]
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU140/SingleMu_FlatPt-2to100/CRAB3/190305_013144/0000/ntuple_SingleMuon_PU140_%i.root' % (i+1) for i in xrange(25)]
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU200/SingleMu_FlatPt-2to100/CRAB3/190305_013246/0000/ntuple_SingleMuon_PU200_%i.root' % (i+1) for i in xrange(26)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU140/SinglePhoton_FlatPt-8to150/CRAB3/190305_013349/0000/ntuple_SinglePhoton_PU140_%i.root' % (i+1) for i in xrange(27)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU200/SinglePhoton_FlatPt-8to150/CRAB3/190305_013450/0000/ntuple_SinglePhoton_PU200_%i.root' % (i+1) for i in xrange(27)]
 
   # For testing purposes (SingleNeutrino, PU200)
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190209_121428/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30,63)]  # from 30/63
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190305_000834/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30,63)]  # from 30/63
 
   infile = pufiles[j]
   infile_r = root_open(infile)
