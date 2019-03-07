@@ -1292,21 +1292,21 @@ class TrackProducer(object):
     self.s_max = 60.
     self.s_nbins = 120
     self.s_step = (self.s_max - self.s_min)/self.s_nbins
-    self.s_lut =[ 1.8117,  1.5459,  1.5950,  1.8402,  2.2030,  2.6381,  3.1232,  3.6518,
-                  4.2296,  4.8608,  5.5156,  6.1841,  6.8641,  7.5456,  8.2256,  8.8992,
-                  9.5510, 10.1803, 10.8062, 11.4385, 12.0905, 12.7651, 13.4559, 14.1654,
-                 14.8802, 15.6057, 16.3493, 17.1033, 17.8604, 18.6140, 19.3572, 20.0806,
-                 20.7999, 21.5515, 22.3629, 23.1690, 23.8621, 24.4932, 25.1597, 25.8896,
-                 26.6617, 27.4547, 28.2172, 28.9402, 29.6450, 30.3504, 31.0774, 31.8438,
-                 32.6296, 33.4444, 34.3235, 35.2550, 36.1904, 37.1498, 38.1237, 39.0754,
-                 39.9981, 40.8433, 41.6487, 42.4566, 43.3854, 44.4498, 45.6840, 46.8737,
-                 47.8861, 48.8104, 49.7933, 50.7312, 51.5319, 52.3184, 53.1023, 53.8850,
-                 54.6672, 55.4490, 56.2307, 57.0122, 57.7937, 58.5751, 59.3564, 60.1378,
-                 60.9191, 61.7004, 62.4817, 63.2630, 64.0442, 64.8255, 65.6067, 66.3880,
-                 67.1692, 67.9505, 68.7317, 69.5129, 70.2942, 71.0754, 71.8566, 72.6379,
-                 73.4191, 74.2003, 74.9816, 75.7628, 76.5440, 77.3252, 78.1065, 78.8877,
-                 79.6689, 80.4501, 81.2314, 82.0126, 82.7938, 83.5750, 84.3563, 85.1375,
-                 85.9187, 86.6999, 87.4812, 88.2624, 89.0436, 89.8248, 90.6061, 91.3873]
+    self.s_lut =[ 1.8195,  1.5651,  1.6147,  1.8573,  2.2176,  2.6521,  3.1392,  3.6731,
+                  4.2603,  4.9059,  5.5810,  6.2768,  6.9787,  7.6670,  8.3289,  8.9703,
+                  9.6027, 10.2288, 10.8525, 11.4874, 12.1370, 12.8016, 13.4806, 14.1740,
+                 14.8822, 15.5927, 16.3161, 17.0803, 17.8854, 18.6790, 19.4369, 20.1713,
+                 20.9279, 21.6733, 22.3966, 23.0878, 23.7421, 24.3612, 24.9927, 25.6638,
+                 26.4131, 27.2467, 28.1087, 28.9682, 29.8129, 30.6270, 31.4258, 32.2671,
+                 33.1881, 34.2942, 35.4266, 36.4711, 37.5020, 38.4437, 39.2068, 39.8264,
+                 40.3814, 40.9442, 41.5449, 42.1736, 42.7892, 43.4046, 44.0388, 44.7361,
+                 45.5805, 46.6375, 47.7231, 48.6278, 49.3952, 50.1290, 50.8860, 51.6510,
+                 52.4043, 53.1551, 53.9053, 54.6554, 55.4054, 56.1554, 56.9053, 57.6552,
+                 58.4051, 59.1550, 59.9048, 60.6547, 61.4045, 62.1544, 62.9042, 63.6540,
+                 64.4039, 65.1537, 65.9036, 66.6534, 67.4032, 68.1531, 68.9029, 69.6527,
+                 70.4026, 71.1524, 71.9022, 72.6521, 73.4019, 74.1517, 74.9016, 75.6514,
+                 76.4012, 77.1511, 77.9009, 78.6507, 79.4006, 80.1504, 80.9002, 81.6501,
+                 82.3999, 83.1497, 83.8996, 84.6494, 85.3992, 86.1491, 86.8989, 87.6488]
     #self.s_lut = np.linspace(self.s_min, self.s_max, num=self.s_nbins+1)[:-1]
     self.s_step = np.asarray(self.s_step)
     self.s_lut = np.asarray(self.s_lut)
@@ -1353,16 +1353,16 @@ class TrackProducer(object):
     if mode_ok:
       if self.omtf_input:
         if np.abs(1.0/y_meas) > self.discr_pt_cut_high:  # >14 GeV
-          trigger = (y_discr > 0.6063) # 98.0% coverage
+          trigger = (y_discr > 0.6043) # 98.0% coverage
         elif np.abs(1.0/y_meas) > self.discr_pt_cut:  # 8-14 GeV
-          trigger = (y_discr > 0.2867) # 98.0% coverage
+          trigger = (y_discr > 0.2905) # 98.0% coverage
         else:
           trigger = (y_discr >= 0.) and strg_ok
       else:
         if np.abs(1.0/y_meas) > self.discr_pt_cut_high:  # >14 GeV
-          trigger = (y_discr > 0.9281) # 98.0% coverage
+          trigger = (y_discr > 0.9304) # 98.0% coverage
         elif np.abs(1.0/y_meas) > self.discr_pt_cut:  # 8-14 GeV
-          trigger = (y_discr > 0.7628) # 98.0% coverage
+          trigger = (y_discr > 0.7720) # 98.0% coverage
         else:
           trigger = (y_discr >= 0.) and strg_ok
     return trigger
@@ -2249,11 +2249,11 @@ def load_pgun_batch(j):
   #global infile_r
   #infile_r = root_open('pippo.root', 'w')
 
-  jj = np.split(np.arange(40), 40)[j]
+  jj = np.split(np.arange(100), 100)[j]
   infiles = []
   for j in jj:
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Endcap_2GeV/ParticleGuns/CRAB3/190306_233001/%04i/ntuple_SingleMuon_Endcap_%i.root' % ((j+1)/1000, (j+1)))
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Endcap2_2GeV/ParticleGuns/CRAB3/190306_233114/%04i/ntuple_SingleMuon_Endcap2_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Endcap_2GeV/ParticleGuns/CRAB3/190308_002145/%04i/ntuple_SingleMuon_Endcap_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Endcap2_2GeV/ParticleGuns/CRAB3/190308_002301/%04i/ntuple_SingleMuon_Endcap2_%i.root' % ((j+1)/1000, (j+1)))
 
   tree = TreeChain('ntupler/tree', infiles)
   print('[INFO] Opening file: %s' % ' '.join(infiles))
@@ -2283,11 +2283,11 @@ def load_pgun_batch_omtf(j):
   #global infile_r
   #infile_r = root_open('pippo.root', 'w')
 
-  jj = np.split(np.arange(20), 20)[j]
+  jj = np.split(np.arange(50), 50)[j]
   infiles = []
   for j in jj:
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Overlap_3GeV/ParticleGuns/CRAB3/190306_233228/%04i/ntuple_SingleMuon_Overlap_%i.root' % ((j+1)/1000, (j+1)))
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Overlap2_3GeV/ParticleGuns/CRAB3/190306_233342/%04i/ntuple_SingleMuon_Overlap2_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Overlap_3GeV/ParticleGuns/CRAB3/190308_002423/%04i/ntuple_SingleMuon_Overlap_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Overlap2_3GeV/ParticleGuns/CRAB3/190308_002536/%04i/ntuple_SingleMuon_Overlap2_%i.root' % ((j+1)/1000, (j+1)))
 
   #infiles = purge_bad_files(infiles)
   tree = TreeChain('ntupler/tree', infiles)
@@ -2303,13 +2303,13 @@ def load_pgun_batch_omtf(j):
 def load_minbias_batch(j, pileup=200):
   global infile_r
   if pileup == 140:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU140/SingleNeutrino/CRAB3/190306_150115/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(56)]
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU140/SingleNeutrino/CRAB3/190308_003739/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(56)]
   elif pileup == 200:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190306_073006/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190308_003853/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
   elif pileup == 250:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU250/SingleNeutrino/CRAB3/190306_073119/0000/ntuple_SingleNeutrino_PU250_%i.root' % (i+1) for i in xrange(50)]
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU250/SingleNeutrino/CRAB3/190308_004008/0000/ntuple_SingleNeutrino_PU250_%i.root' % (i+1) for i in xrange(50)]
   elif pileup == 300:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU300/SingleNeutrino/CRAB3/190306_073233/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(53)]
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU300/SingleNeutrino/CRAB3/190308_004123/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(53)]
   else:
     raise RunTimeError('Cannot recognize pileup: {0}'.format(pileup))
 
@@ -2329,19 +2329,19 @@ def load_minbias_batch_for_mixing(j):
   global infile_r
   pufiles = []
   # For training purposes
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU140/SingleNeutrino/CRAB3/190306_150115/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(20)]  # up to 20/56
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190306_073006/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30)]  # up to 30/63
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU250/SingleNeutrino/CRAB3/190306_073119/0000/ntuple_SingleNeutrino_PU250_%i.root' % (i+1) for i in xrange(20)]  # up to 20/50
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU300/SingleNeutrino/CRAB3/190306_073233/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(20)]  # up to 20/53
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleElectron_PU140/SingleE_FlatPt-2to100/CRAB3/190306_073810/0000/ntuple_SingleElectron_PU140_%i.root' % (i+1) for i in xrange(28)]
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleElectron_PU200/SingleE_FlatPt-2to100/CRAB3/190306_073924/0000/ntuple_SingleElectron_PU200_%i.root' % (i+1) for i in xrange(27)]
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU140/SingleMu_FlatPt-2to100/CRAB3/190306_074040/0000/ntuple_SingleMuon_PU140_%i.root' % (i+1) for i in xrange(25)]
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU200/SingleMu_FlatPt-2to100/CRAB3/190306_074155/0000/ntuple_SingleMuon_PU200_%i.root' % (i+1) for i in xrange(26)]
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU140/SinglePhoton_FlatPt-8to150/CRAB3/190306_074311/0000/ntuple_SinglePhoton_PU140_%i.root' % (i+1) for i in xrange(27)]
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU200/SinglePhoton_FlatPt-8to150/CRAB3/190306_074425/0000/ntuple_SinglePhoton_PU200_%i.root' % (i+1) for i in xrange(27)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU140/SingleNeutrino/CRAB3/190308_003739/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(20)]  # up to 20/56
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190308_003853/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30)]  # up to 30/63
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU250/SingleNeutrino/CRAB3/190308_004008/0000/ntuple_SingleNeutrino_PU250_%i.root' % (i+1) for i in xrange(20)]  # up to 20/50
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU300/SingleNeutrino/CRAB3/190308_004123/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(20)]  # up to 20/53
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleElectron_PU140/SingleE_FlatPt-2to100/CRAB3/190308_003005/0000/ntuple_SingleElectron_PU140_%i.root' % (i+1) for i in xrange(28)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleElectron_PU200/SingleE_FlatPt-2to100/CRAB3/190308_003119/0000/ntuple_SingleElectron_PU200_%i.root' % (i+1) for i in xrange(27)]
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU140/SingleMu_FlatPt-2to100/CRAB3/190308_003235/0000/ntuple_SingleMuon_PU140_%i.root' % (i+1) for i in xrange(25)]
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU200/SingleMu_FlatPt-2to100/CRAB3/190308_003350/0000/ntuple_SingleMuon_PU200_%i.root' % (i+1) for i in xrange(26)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU140/SinglePhoton_FlatPt-8to150/CRAB3/190308_003508/0000/ntuple_SinglePhoton_PU140_%i.root' % (i+1) for i in xrange(27)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU200/SinglePhoton_FlatPt-8to150/CRAB3/190308_003624/0000/ntuple_SinglePhoton_PU200_%i.root' % (i+1) for i in xrange(27)]
 
   # For testing purposes (SingleNeutrino, PU200)
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190306_073006/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30,63)]  # from 30/63
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190308_003853/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30,63)]  # from 30/63
 
   infile = pufiles[j]
   infile_r = root_open(infile)
