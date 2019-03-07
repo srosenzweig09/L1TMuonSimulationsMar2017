@@ -4,8 +4,7 @@ hname2026_f = lambda hname: "emtf2026_" + hname[5:]
 
 donotdelete = []
 
-infile = "histos_tbc_add.24.root"
-#infile = "histos_tbc_omtf_add.24.root"
+infile = "histos_tbc_add.25.root"
 
 
 # ______________________________________________________________________________
@@ -195,8 +194,8 @@ if __name__ == '__main__':
 
 
   # ____________________________________________________________________________
-  # emtf_eff_vs_geneta_genpt30_l1pt20
-  hname = "emtf_eff_vs_geneta_genpt30_l1pt20"
+  # emtf_eff_vs_geneta_allzones_l1pt20
+  hname = "emtf_eff_vs_geneta_allzones_l1pt20"
   h1a_denom = tfile.Get(hname + "_denom")
   h1a_numer = tfile.Get(hname + "_numer")
   h1b_denom = tfile.Get(hname2026_f(hname) + "_denom")
@@ -228,14 +227,15 @@ if __name__ == '__main__':
   frame.SetMaximum(1.2)
   frame.SetStats(0)
   frame.Draw()
+  frame.GetXaxis().SetRangeUser(0.75, 2.55)
   xmin, xmax = frame.GetXaxis().GetXmin(), frame.GetXaxis().GetXmax()
   tline.DrawLine(xmin, 1.0, xmax, 1.0)
   h1a_eff.Draw("same")
   h1b_eff.Draw("same")
 
   draw_cms_lumi()
-  gPad.Print("figures_perf/" + hname + ".png")
-  gPad.Print("figures_perf/" + hname + ".pdf")
+  gPad.Print("figures_perf/" + hname +".png")
+  gPad.Print("figures_perf/" + hname +".pdf")
   donotdelete.append([frame, h1a_eff, h1b_eff])
 
 

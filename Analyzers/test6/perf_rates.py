@@ -4,7 +4,7 @@ hname2026_f = lambda hname: "highest_emtf2026_" + hname[13:]
 
 donotdelete = []
 
-infile = "histos_tbb_add.24.root"
+infile = "histos_tbb_add.25.root"
 
 # Functions
 from math import sqrt
@@ -101,8 +101,8 @@ if __name__ == '__main__':
     h.GetYaxis().SetTitle("Trigger rate [kHz]")
     h.GetYaxis().SetTitleOffset(1.3)
     denom = h.Clone("denom")
-    denom.SetMaximum(1.2e4)
-    denom.SetMinimum(1e-1)
+    denom.SetMaximum(2e4)
+    denom.SetMinimum(0.2)
 
     h = tfile.Get(hname2026_f(hname))
     h = h.Clone(h.GetName() + "_clone")

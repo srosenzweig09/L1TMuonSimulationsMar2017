@@ -75,8 +75,8 @@ if __name__ == '__main__':
   # ____________________________________________________________________________
   # emtf_ptmin20_qmin12_pu
 
-  hname = "highest_emtf_absEtaMin1.24_absEtaMax2.4_qmin12_pt"
-  #hname = "highest_emtf_absEtaMin0.8_absEtaMax1.24_qmin12_pt"
+  #hname = "highest_emtf_absEtaMin1.24_absEtaMax2.4_qmin12_pt"
+  hname = "highest_emtf_absEtaMin0.8_absEtaMax1.24_qmin12_pt"
 
   #pileup_list = [140, 200, 250, 300]
   #tfile_list = [tfile140, tfile200, tfile250, tfile300]
@@ -117,21 +117,6 @@ if __name__ == '__main__':
     gr_numer.SetPoint(i, pu, emtf2026_rate)
     gr_numer.SetPointError(i, 0, 0, emtf2026_rate_err, emtf2026_rate_err)
 
-  gr_extrapol = TGraphAsymmErrors(350)
-  for i in xrange(1,350):
-    # From Osvaldo's trigger xsec study
-    #p0 = -0.004091 +- 0.001251
-    #p1 = 0.02187 +- 6.462e-5
-    #p2 = 9.102e-5 +- 5.429e-7
-    p0, p0_err = -0.004091, 0.001251
-    p1, p1_err = 0.02187, 6.462e-5
-    p2, p2_err = 9.102e-5, 5.429e-7
-    pu = float(i)
-    extrapol_rate = p0 + p1 * pu + p2 * pu * pu
-    extrapol_rate *= 2808
-    extrapol_rate /= 1000
-    gr_extrapol.SetPoint(i, pu, extrapol_rate)
-
   gr_denom.SetMarkerStyle(20)
   gr_denom.SetMarkerSize(1.4)
   gr_denom.SetMarkerColor(632)  # kRed
@@ -144,23 +129,18 @@ if __name__ == '__main__':
   gr_numer.SetLineWidth(2)
   gr_numer.SetLineColor(600)  # kBlue
 
-  gr_extrapol.SetLineStyle(7)
-  gr_extrapol.SetLineWidth(1)
-  gr_extrapol.SetLineColor(920)  # kGray
-
   frame = TH1F("frame", "; PU; Trigger rate [kHz]", 100, 0, 350)
   frame.SetMinimum(0)
-  frame.SetMaximum(100)
+  frame.SetMaximum(25)
   frame.Draw()
 
-  gr_denom.Draw("P")
+  #gr_denom.Draw("P")
   gr_numer.Draw("P")
-  gr_extrapol.Draw("C")
 
   for i, x in enumerate(rates):
     pu, emtf_rate, emtf_rate_err, emtf2026_rate, emtf2026_rate_err = x
-    tlatex.DrawLatex(pu - 3, emtf_rate + 4, "%.1f" % emtf_rate)
-    tlatex.DrawLatex(pu - 3, emtf2026_rate + 4, "%.1f" % emtf2026_rate)
+    #tlatex.DrawLatex(pu - 3, emtf_rate + 4, "%.1f" % emtf_rate)
+    tlatex.DrawLatex(pu - 3, emtf2026_rate + 2, "%.1f" % emtf2026_rate)
 
   def draw_cms_lumi_1():
     tlatexCMS1.SetTextSize(0.75*0.05)
@@ -172,6 +152,6 @@ if __name__ == '__main__':
 
   draw_cms_lumi_1()
   imgname = "emtf_ptmin20_qmin12_pu"
-  gPad.Print("figures_perf/" + imgname + ".png")
-  gPad.Print("figures_perf/" + imgname + ".pdf")
+  gPad.Print("figures_perf/" + imgname + "_omtf" + ".png")
+  gPad.Print("figures_perf/" + imgname + "_omtf" + ".pdf")
   donotdelete.append([frame, gr_denom, gr_numer])

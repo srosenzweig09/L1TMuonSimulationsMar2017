@@ -4,8 +4,7 @@ hname2026_f = lambda hname: "emtf2026_" + hname[5:]
 
 donotdelete = []
 
-#infile = "histos_tbc_add.24.root"
-infile = "histos_tbc_omtf_add.24.root"
+infile = "histos_tbc_omtf_add.25.root"
 
 
 # ______________________________________________________________________________
@@ -85,12 +84,11 @@ if __name__ == '__main__':
 
       if 50 <= i <= 60:  # high pT, not enough entries (300 bins -> 150)
         h_py.Rebin(2)
-      elif i >= 86:      # low pT, resolution affected by finite bin width
+      elif i >= 78:      # low pT, resolution affected by finite bin width
         h_py = h.ProjectionY("_py", i+1, i+2)  # merge i & (i+1) entries
-      elif i >= 96:      # even lower pT, resolution affected by finite bin width
-        if i == 96:
+        if i == 82:      # even lower pT, resolution affected by finite bin width
           h_py = h.ProjectionY("_py", i+1, i+4)  # merge i & (i+4) entries
-        else:
+        elif i >= 82:
           continue
 
       if h_py.Integral() < 20:  continue
