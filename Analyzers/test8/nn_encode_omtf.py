@@ -60,13 +60,19 @@ class Encoder(object):
     self.y_vy        = self.y_copy[:, 4]
     self.y_vz        = self.y_copy[:, 5]
 
+    # Find d0 (dxy is a misnomer)
+    #self.y_dxy  = self.y_vx * np.sin(self.y_phi) - self.y_vy * np.cos(self.y_phi)  # valid for a straight track
+    _invPt = self.y_pt.astype(np.float64, copy=True)  # needs double precision
+    _R = -1.0 / (0.003 * 3.811 * _invPt)           # R = -pT/(0.003 q B)  [cm]
+    _xc = self.y_vx - (_R * np.sin(self.y_phi))    # xc = xv - R sin(phi)
+    _yc = self.y_vy + (_R * np.cos(self.y_phi))    # yc = yv + R cos(phi)
+    _d0 = _R - (np.sign(_R) * np.hypot(_xc, _yc))  # d0 = R - sqrt(xc^2 + yc^2) * sign(R)
+    self.y_dxy = _d0.astype(np.float32, casting='same_kind')
+
     # Scale q/pT for training
     self.y_pt  *= reg_pt_scale
 
     # Scale dxy for training
-    #self.y_dxy  = np.sqrt(self.y_vx*self.y_vx + self.y_vy*self.y_vy)
-    #self.y_dxy *= np.sign(np.cos(np.arctan2(self.y_vy, self.y_vx) - self.y_phi))
-    self.y_dxy  = self.y_vy * np.cos(self.y_phi) - self.y_vx * np.sin(self.y_phi)
     self.y_dxy *= reg_dxy_scale
 
     # ________________________________________________________________________
