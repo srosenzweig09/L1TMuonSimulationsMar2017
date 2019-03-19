@@ -138,10 +138,35 @@ def unmasked_huber_loss(y_true, y_pred, delta=1.345, mask_value=100.):
   xx = tf.where(x < delta, squared_loss, absolute_loss)  # needed for tensorflow
 
   mask = K.not_equal(y_true, mask_value)
-  x_pu = (K.abs(y_pred)-100./10.)
-  log_loss = K.log(1+K.exp(-x_pu))
-  log_loss *= 20.
-  xx = tf.where(mask, xx, log_loss)
+  mask = K.cast(mask, K.floatx())
+  xx *= mask
+  xx /= (K.mean(mask) + K.epsilon())
+
+  discr_pt_cut = 14.
+  reg_pt_scale = 100.
+  log_loss_weight = 1
+
+  # Use y = 1
+  # Sigmoid: 1/(1+e^(-x))
+  # Negative log of sigmoid: log(1+e^(-x))
+  #x_pu = K.abs(y_pred) - reg_pt_scale/discr_pt_cut
+  #log_loss = K.log(1+K.exp(-x_pu))
+
+  # Use y = 0
+  # Sigmoid: 1/(1+e^(-x))
+  # 1-sigmoid: 1/(1+e^x)
+  # Negative log of 1-sigmoid: log(1+e^(x)) = x + log(1+e^(-x))
+  #x_pu = K.abs(reg_pt_scale/y_pred) - discr_pt_cut
+  #x_pu = K.clip(x_pu, 0, 1000)
+  #log_loss = x_pu + K.log(1+K.exp(-x_pu))
+  #log_loss_weight = 0.01
+
+  # Simple counting
+  log_loss = K.greater(K.abs(reg_pt_scale/y_pred), discr_pt_cut)
+  log_loss = K.cast(log_loss, K.floatx())
+
+  log_loss *= (1 - mask)
+  xx += log_loss_weight * log_loss
   return K.mean(xx, axis=-1)
 
 # ______________________________________________________________________________
@@ -203,6 +228,7 @@ modelbestcheck_weights = ModelCheckpoint(filepath='model_bchk_weights.h5', monit
 def update_keras_custom_objects():
   custom_objects = {
     'masked_huber_loss': masked_huber_loss,
+    'unmasked_huber_loss': unmasked_huber_loss,
     'masked_binary_crossentropy': masked_binary_crossentropy,
     'NewLeakyReLU': NewLeakyReLU,
     'NewTanh': NewTanh,
@@ -314,6 +340,7 @@ def create_model_bn2(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, n
   adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
   model.compile(optimizer=adam,
     loss={'regr': masked_huber_loss, 'discr': masked_binary_crossentropy},
+    #loss={'regr': unmasked_huber_loss, 'discr': masked_binary_crossentropy},
     loss_weights={'regr': 1.0, 'discr': discr_loss_weight},
     #metrics={'regr': ['acc', 'mse', 'mae'], 'discr': ['acc',]}
     )
@@ -473,7 +500,6 @@ def create_model_sequential_bn(nvariables, lr=0.001, clipnorm=10., nodes1=64, no
   # Set loss and optimizers
   adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
   model.compile(optimizer=adam, loss=huber_loss, metrics=['acc'])
-  #model.compile(optimizer=adam, loss=unmasked_huber_loss, metrics=['acc'])
   model.summary()
   return model
 
@@ -504,7 +530,6 @@ def create_model_sequential_bn2(nvariables, lr=0.001, clipnorm=10., nodes1=64, n
   # Set loss and optimizers
   adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
   model.compile(optimizer=adam, loss=huber_loss, metrics=['acc'])
-  #model.compile(optimizer=adam, loss=unmasked_huber_loss, metrics=['acc'])
   model.summary()
   return model
 

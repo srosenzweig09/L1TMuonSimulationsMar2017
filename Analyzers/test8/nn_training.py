@@ -15,7 +15,10 @@ class TrainingLog(object):
     import os
     import sys
     import tempfile
-    fd, name = tempfile.mkstemp(suffix='.txt', prefix='keras_output_', dir='.', text=True)
+    keras_logs = 'keras_logs'
+    if not os.path.exists(keras_logs):
+      os.makedirs(keras_logs)
+    fd, name = tempfile.mkstemp(suffix='.txt', prefix='keras_output_', dir=keras_logs, text=True)
     self.file = os.fdopen(fd, 'w')
     self.name = name
     self.stdout = sys.stdout
