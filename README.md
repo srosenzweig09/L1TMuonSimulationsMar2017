@@ -25,6 +25,8 @@ scram b -j 10
 
 ## Version
 
+- v1.4.0 (2019-03-20): Add feasiblity study with displaced muons.
+
 - v1.3.0 (2019-03-12): Results using CMSSW_10_4_0 including overlap region.
 
 - v1.2.0 (2019-02-19): Move to CMSSW_10_4_0. Extend to overlap region.
