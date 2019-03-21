@@ -61,10 +61,10 @@ if __name__ == '__main__':
   assert h_nevents != None, "Cannot get nevents"
   nevents140 = h_nevents.GetBinContent(2)
 
-  #tfile250 = TFile.Open(infile250)
-  #h_nevents = tfile250.Get("nevents")
-  #assert h_nevents != None, "Cannot get nevents"
-  #nevents250 = h_nevents.GetBinContent(2)
+  tfile250 = TFile.Open(infile250)
+  h_nevents = tfile250.Get("nevents")
+  assert h_nevents != None, "Cannot get nevents"
+  nevents250 = h_nevents.GetBinContent(2)
 
   tfile300 = TFile.Open(infile300)
   h_nevents = tfile300.Get("nevents")
@@ -78,13 +78,9 @@ if __name__ == '__main__':
   hname = "highest_emtf_absEtaMin1.24_absEtaMax2.4_qmin12_pt"
   #hname = "highest_emtf_absEtaMin0.8_absEtaMax1.24_qmin12_pt"
 
-  #pileup_list = [140, 200, 250, 300]
-  #tfile_list = [tfile140, tfile200, tfile250, tfile300]
-  #nevents_list = [nevents140, nevents200, nevents250, nevents300]
-
-  pileup_list = [140, 200, 300]
-  tfile_list = [tfile140, tfile200, tfile300]
-  nevents_list = [nevents140, nevents200, nevents300]
+  pileup_list = [140, 200, 250, 300]
+  tfile_list = [tfile140, tfile200, tfile250, tfile300]
+  nevents_list = [nevents140, nevents200, nevents250, nevents300]
 
   rates = []
 
