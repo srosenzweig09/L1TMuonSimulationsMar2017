@@ -35,6 +35,10 @@ infile_muon = '../test7/histos_tba.25.npz'
 
 infile_pileup = '../test7/histos_tbd.25.npz'
 
+infile_muon_run3 = '../test7/histos_tba_run3.25.npz'
+
+infile_pileup_run3 = '../test7/histos_tbd_run3.25.npz'
+
 infile_muon_omtf = '../test7/histos_tba_omtf.25.npz'
 
 infile_pileup_omtf = '../test7/histos_tbd_omtf.25.npz'

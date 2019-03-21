@@ -49,6 +49,21 @@ def find_efficiency_errors(total_array, passed_array, level=0.682689492137):
     upper_array[i] = u - eff
   return np.vstack((lower_array, upper_array))
 
+def separation_score(S, B, labels=(0,1)):
+  # From https://github.com/root-project/root/blob/master/tmva/tmva/src/Tools.cxx
+  # compute "separation" defined as
+  # <s2> = \frac{1}{2} \int_{-\infty}^{+\infty} \frac{(S(x) - B(x))^2}{(S(x) + B(x))} dx
+  # 0: no separtion, 1: perfect separation
+  xmin, xmax = labels
+  nstep = 100
+  intBin = (xmax - xmin)/float(nstep)
+  s, _ = np.histogram(np.clip(S, xmin, xmax), bins=nstep, range=(xmin,xmax), density=True)
+  b, _ = np.histogram(np.clip(B, xmin, xmax), bins=nstep, range=(xmin,xmax), density=True)
+
+  separation = (np.square(s - b)/(s + b)).sum()
+  separation *= (0.5*intBin)
+  return separation
+
 
 # Answer from https://stackoverflow.com/a/2891805
 @contextlib.contextmanager

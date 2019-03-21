@@ -63,6 +63,7 @@ class Encoder(object):
     # Find d0 (dxy is a misnomer)
     #self.y_dxy  = self.y_vx * np.sin(self.y_phi) - self.y_vy * np.cos(self.y_phi)  # valid for a straight track
     _invPt = self.y_pt.astype(np.float64, copy=True)  # needs double precision
+    _invPt = np.where(np.abs(_invPt) < 1./10000, np.sign(_invPt) * 1./10000, _invPt)
     _R = -1.0 / (0.003 * 3.811 * _invPt)           # R = -pT/(0.003 q B)  [cm]
     _xc = self.y_vx - (_R * np.sin(self.y_phi))    # xc = xv - R sin(phi)
     _yc = self.y_vy + (_R * np.cos(self.y_phi))    # yc = yv + R cos(phi)
