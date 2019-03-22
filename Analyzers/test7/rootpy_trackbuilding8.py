@@ -1211,7 +1211,7 @@ class RoadSlimming(object):
 # pT assignment module
 class PtAssignment(object):
   def __init__(self, kerasfile, omtf_input=False, run2_input=False):
-    (model_file, model_weights_file, model_omtf_file, model_omtf_weights_file) = kerasfile
+    (model_file, model_weights_file, model_run3_file, model_run3_weights_file, model_omtf_file, model_omtf_weights_file) = kerasfile
     self.omtf_input = omtf_input
     self.run2_input = run2_input
 
@@ -1219,6 +1219,7 @@ class PtAssignment(object):
 
     # Get encoders
     from nn_encode import Encoder
+    from nn_encode_run3 import Encoder as EncoderRun3
     from nn_encode_omtf import Encoder as EncoderOmtf
 
     # Load Keras models
@@ -1237,7 +1238,19 @@ class PtAssignment(object):
       return encoder
     self.create_encoder = create_encoder
 
-    # Second model (OMTF mode)
+    # Second model (Run3 mode)
+    self.loaded_model_run3 = load_my_model(name=model_run3_file, weights_name=model_run3_weights_file)
+    self.loaded_model_run3.trainable = False
+    assert not self.loaded_model_run3.updates
+
+    def create_encoder_run3(x):
+      nentries = x.shape[0]
+      y = np.zeros((nentries, 1), dtype=np.float32)  # dummy
+      encoder = EncoderRun3(x, y, reg_pt_scale=self.reg_pt_scale)
+      return encoder
+    self.create_encoder_run3 = create_encoder_run3
+
+    # Third model (OMTF mode)
     self.loaded_model_omtf = load_my_model(name=model_omtf_file, weights_name=model_omtf_weights_file)
     self.loaded_model_omtf.trainable = False
     assert not self.loaded_model_omtf.updates
@@ -1253,6 +1266,9 @@ class PtAssignment(object):
     if self.omtf_input:
       encoder = self.create_encoder_omtf(x)
       loaded_model = self.loaded_model_omtf
+    elif self.run2_input:
+      encoder = self.create_encoder_run3(x)
+      loaded_model = self.loaded_model_run3
     else:
       encoder = self.create_encoder(x)
       loaded_model = self.loaded_model
@@ -1356,6 +1372,13 @@ class TrackProducer(object):
           trigger = (y_discr > 0.6043) # 98.0% coverage
         elif np.abs(1.0/y_meas) > self.discr_pt_cut:  # 8-14 GeV
           trigger = (y_discr > 0.2905) # 98.0% coverage
+        else:
+          trigger = (y_discr >= 0.) and strg_ok
+      elif self.run2_input:
+        if np.abs(1.0/y_meas) > self.discr_pt_cut_high:  # >14 GeV
+          trigger = (y_discr > 0.8557) # 97.0% coverage
+        elif np.abs(1.0/y_meas) > self.discr_pt_cut:  # 8-14 GeV
+          trigger = (y_discr > 0.6640) # 97.0% coverage
         else:
           trigger = (y_discr >= 0.) and strg_ok
       else:
@@ -2217,7 +2240,9 @@ if use_condor:
 # Input files
 bankfile = 'pattern_bank_omtf.25.npz'
 
-kerasfile = ['model.25.json', 'model_weights.25.h5', 'model_omtf.25.json', 'model_omtf_weights.25.h5']
+kerasfile = ['model.25.json', 'model_weights.25.h5',
+             'model_run3.25.json', 'model_run3_weights.25.h5',
+             'model_omtf.25.json', 'model_omtf_weights.25.h5',]
 
 infile_r = None  # input file handle
 
