@@ -117,7 +117,7 @@ def huber_loss(y_true, y_pred, delta=1.345):
   xx = tf.where(x < delta, squared_loss, absolute_loss)  # needed for tensorflow
   return K.mean(xx, axis=-1)
 
-def masked_huber_loss(y_true, y_pred, delta=1.345, mask_value=100.):
+def masked_huber_loss(y_true, y_pred, delta=1.345*1.5, mask_value=100.):
   x = K.abs(y_true - y_pred)
   squared_loss = 0.5*K.square(x)
   absolute_loss = delta * (x - 0.5*delta)
@@ -130,7 +130,7 @@ def masked_huber_loss(y_true, y_pred, delta=1.345, mask_value=100.):
   xx /= (K.mean(mask) + K.epsilon())
   return K.mean(xx, axis=-1)
 
-def unmasked_huber_loss(y_true, y_pred, delta=1.345, mask_value=100., reg_pt_scale = 100.):
+def unmasked_huber_loss(y_true, y_pred, delta=1.345*1.5, mask_value=100., reg_pt_scale = 100.):
   x = K.abs(y_true - y_pred)
   squared_loss = 0.5*K.square(x)
   absolute_loss = delta * (x - 0.5*delta)
@@ -144,14 +144,19 @@ def unmasked_huber_loss(y_true, y_pred, delta=1.345, mask_value=100., reg_pt_sca
 
   # Log loss (label y = 1)
   # loss = -log(p(x))
-  # calculate p(x) from minbias pT spectrum
+  # Using p(x) from minbias pT spectrum
+  # p(x) = exp(lambda(x)) = exp(a0 + a1*x + a2*np.log(x)), with x=pT
+  #                       = exp(a0 + a1/x - a2*np.log(x)), with x=1/pT
+  # loss = -log(p(x)) = -lambda(x)
+  x_pu_min, x_pu_max = 0.005, 0.5
   x_pu = K.abs(y_pred)/reg_pt_scale
-  a0, a1, a2 = (2.03833032291, -0.0755384132573, -3.93981776465)
-  px_pu = K.exp(a0 + a1/x_pu - a2*K.log(x_pu))
-  px_pu = K.clip(px_pu, K.epsilon(), 1 - K.epsilon())
-  log_loss = -K.log(px_pu)
+  x_pu = K.clip(x_pu, x_pu_min, x_pu_max)
+  #a0, a1, a2 = (2.03833032291, -0.0755384132573, -3.93981776465)
+  a0, a1, a2 = (1.70495544676, -0.132816725366, -3.52571882025)
+  log_loss = -(a0 + a1/x_pu - a2*K.log(x_pu))
+  log_loss += (a0 + a1/x_pu_max - a2*K.log(x_pu_max))
   log_loss *= (1-mask)
-  log_loss_weight = 2.
+  log_loss_weight = 1
 
   #return K.mean(xx, axis=-1)
   return K.mean(xx, axis=-1) + log_loss_weight*K.sum(log_loss, axis=-1)
@@ -206,8 +211,8 @@ lr_decay = LearningRateScheduler(lr_schedule, verbose=0)
 
 terminate_on_nan = TerminateOnNaN()
 
-modelbestcheck = ModelCheckpoint(filepath='model_bchk.h5', monitor='val_loss', verbose=1, save_best_only=True)
-modelbestcheck_weights = ModelCheckpoint(filepath='model_bchk_weights.h5', monitor='val_loss', verbose=1, save_best_only=True, save_weights_only=True)
+modelbestcheck = ModelCheckpoint(filepath='keras_logs/model_bchk.h5', monitor='val_loss', verbose=1, save_best_only=True)
+modelbestcheck_weights = ModelCheckpoint(filepath='keras_logs/model_bchk_weights.h5', monitor='val_loss', verbose=1, save_best_only=True, save_weights_only=True)
 
 # ______________________________________________________________________________
 # Custom objects

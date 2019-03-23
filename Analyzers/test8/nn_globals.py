@@ -21,7 +21,7 @@ reg_pt_scale = 100.
 
 reg_dxy_scale = 0.4
 
-discr_loss_weight = 20.
+discr_loss_weight = 30.
 
 add_noise = True
 
@@ -32,16 +32,16 @@ l1_reg = 0.0
 l2_reg = 0.0
 
 infile_muon = '../test7/histos_tba.25.npz'
-
 infile_pileup = '../test7/histos_tbd.25.npz'
+infile_highpt = '../test7/histos_tbe.25.npz'
 
 infile_muon_run3 = '../test7/histos_tba_run3.25.npz'
-
 infile_pileup_run3 = '../test7/histos_tbd_run3.25.npz'
+infile_highpt_run3 = '../test7/histos_tbe_run3.25.npz'
 
 infile_muon_omtf = '../test7/histos_tba_omtf.25.npz'
-
 infile_pileup_omtf = '../test7/histos_tbd_omtf.25.npz'
+infile_highpt_omtf = '../test7/histos_tbe_omtf.25.npz'
 
 
 # ______________________________________________________________________________
