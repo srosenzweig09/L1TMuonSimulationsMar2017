@@ -2115,7 +2115,7 @@ class EffieAnalysis(object):
 # Analysis: mixing
 
 class MixingAnalysis(object):
-  def run(self, omtf_input=False, run2_input=False):
+  def run(self, omtf_input=False, run2_input=False, test_job=159):
     tree = load_minbias_batch_for_mixing(jobid)
 
     # Workers
@@ -2127,6 +2127,18 @@ class MixingAnalysis(object):
     out_roads = []
     npassed, ntotal = 0, 0
 
+    training_phase = (jobid < test_job)
+    if training_phase:
+      bx_shifts = [-3, -2, -1, 0, +1, +2, +3]
+    else:
+      bx_shifts = [0]
+
+    def manipulate_bx(bx_shift, hits):
+      for hit in hits:
+        if not hasattr(hit, 'old_bx'):
+          hit.old_bx = hit.bx
+        hit.bx = hit.old_bx + bx_shift
+
     # Event range
     n = -1
 
@@ -2136,56 +2148,62 @@ class MixingAnalysis(object):
       if n != -1 and ievt == n:
         break
 
-      roads = recog.run(evt.hits)
-      clean_roads = clean.run(roads)
-      slim_roads = slim.run(clean_roads)
-      assert(len(clean_roads) == len(slim_roads))
+      # Manipulate hit BX multiple times
+      for bx_shift in bx_shifts:
 
-      def find_highest_part_pt():
-        highest_pt = -999999.
-        for ipart, part in enumerate(evt.particles):
-          if select_part(part):
-            if highest_pt < part.pt:
-              highest_pt = part.pt
-        if highest_pt > 0.:
-          highest_pt = min(100.-1e-3, highest_pt)
-          return highest_pt
+        # Manipulate hit BX
+        manipulate_bx(bx_shift, evt.hits)
 
-      def find_highest_track_pt():
-        highest_pt = -999999.
-        for itrk, trk in enumerate(evt.tracks):
-          if select_track(trk):
-            if highest_pt < trk.pt:  # using scaled pT
-              highest_pt = trk.pt
-        if highest_pt > 0.:
-          highest_pt = min(100.-1e-3, highest_pt)
-          return highest_pt
+        roads = recog.run(evt.hits)
+        clean_roads = clean.run(roads)
+        slim_roads = slim.run(clean_roads)
+        assert(len(clean_roads) == len(slim_roads))
 
-      if omtf_input:
-        select_part = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0)
-        select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and (trk.bx == 0) and (trk.mode > 0)
-      else:
-        select_part = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
-        select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
+        def find_highest_part_pt():
+          highest_pt = -999999.
+          for ipart, part in enumerate(evt.particles):
+            if select_part(part):
+              if highest_pt < part.pt:
+                highest_pt = part.pt
+          if highest_pt > 0.:
+            highest_pt = min(100.-1e-3, highest_pt)
+            return highest_pt
 
-      highest_part_pt = find_highest_part_pt()
-      highest_track_pt = find_highest_track_pt()
+        def find_highest_track_pt():
+          highest_pt = -999999.
+          for itrk, trk in enumerate(evt.tracks):
+            if select_track(trk):
+              if highest_pt < trk.pt:  # using scaled pT
+                highest_pt = trk.pt
+          if highest_pt > 0.:
+            highest_pt = min(100.-1e-3, highest_pt)
+            return highest_pt
 
-      if len(slim_roads) > 0:
-        part = (jobid, ievt, highest_part_pt, highest_track_pt)
-        out_particles += [part for _ in xrange(len(slim_roads))]
-        out_roads += slim_roads
+        if omtf_input:
+          select_part = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0)
+          select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and (trk.bx == 0) and (trk.mode > 0)
+        else:
+          select_part = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
+          select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
 
-      debug_event_list = set([2826, 2937, 3675, 4581, 4838, 5379, 7640])
+        highest_part_pt = find_highest_part_pt()
+        highest_track_pt = find_highest_track_pt()
 
-      if ievt < 20 or ievt in debug_event_list:
-        print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), '?'))
-        #for iroad, myroad in enumerate(sorted(roads, key=lambda x: x.id)):
-        #  print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
-        for iroad, myroad in enumerate(clean_roads):
-          print(".. croad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
-          for ihit, myhit in enumerate(myroad.hits):
-            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
+        if len(slim_roads) > 0:
+          part = (jobid, ievt, highest_part_pt, highest_track_pt)
+          out_particles += [part for _ in xrange(len(slim_roads))]
+          out_roads += slim_roads
+
+        debug_event_list = set([2826, 2937, 3675, 4581, 4838, 5379, 7640])
+
+        if ievt < 20 or ((ievt in debug_event_list) and not training_phase):
+          print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), '?'))
+          #for iroad, myroad in enumerate(sorted(roads, key=lambda x: x.id)):
+          #  print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
+          for iroad, myroad in enumerate(clean_roads):
+            print(".. croad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
+            for ihit, myhit in enumerate(myroad.hits):
+              print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
 
     # End loop over events
     unload_tree()
