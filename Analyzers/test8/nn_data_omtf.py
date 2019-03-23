@@ -90,12 +90,12 @@ def pileup_data_split(filename, reg_pt_scale=1.0, reg_dxy_scale=1.0, test_job=50
 
 
 # ______________________________________________________________________________
-def mix_training_inputs(x_train, y_train, pu_x_train, pu_y_train, pu_aux_train, discr_pt_cut=14., tile=15):
+def mix_training_inputs(x_train, y_train, pu_x_train, pu_y_train, pu_aux_train, discr_pt_cut=14., tile=10):
 
   # Apply veto on PU events with a muon with pT > 14 GeV
-  pu_x_train_tmp = ~(pu_aux_train[:,2] > discr_pt_cut)
-  pu_x_train = pu_x_train[pu_x_train_tmp]
-  pu_y_train = [pu_y_train[0][pu_x_train_tmp], pu_y_train[1][pu_x_train_tmp]]
+  #pu_x_train_tmp = ~(pu_aux_train[:,2] > discr_pt_cut)
+  #pu_x_train = pu_x_train[pu_x_train_tmp]
+  #pu_y_train = [pu_y_train[0][pu_x_train_tmp], pu_y_train[1][pu_x_train_tmp]]
 
   # Put together x_train & pu_x_train, y_train & pu_y_train
   assert(len(pu_y_train) == 2)

@@ -130,7 +130,7 @@ def masked_huber_loss(y_true, y_pred, delta=1.345, mask_value=100.):
   xx /= (K.mean(mask) + K.epsilon())
   return K.mean(xx, axis=-1)
 
-def unmasked_huber_loss(y_true, y_pred, delta=1.345, mask_value=100.):
+def unmasked_huber_loss(y_true, y_pred, delta=1.345, mask_value=100., reg_pt_scale = 100.):
   x = K.abs(y_true - y_pred)
   squared_loss = 0.5*K.square(x)
   absolute_loss = delta * (x - 0.5*delta)
@@ -142,32 +142,19 @@ def unmasked_huber_loss(y_true, y_pred, delta=1.345, mask_value=100.):
   xx *= mask
   xx /= (K.mean(mask) + K.epsilon())
 
-  discr_pt_cut = 14.
-  reg_pt_scale = 100.
-  log_loss_weight = 1
+  # Log loss (label y = 1)
+  # loss = -log(p(x))
+  # calculate p(x) from minbias pT spectrum
+  x_pu = K.abs(y_pred)/reg_pt_scale
+  a0, a1, a2 = (2.03833032291, -0.0755384132573, -3.93981776465)
+  px_pu = K.exp(a0 + a1/x_pu - a2*K.log(x_pu))
+  px_pu = K.clip(px_pu, K.epsilon(), 1 - K.epsilon())
+  log_loss = -K.log(px_pu)
+  log_loss *= (1-mask)
+  log_loss_weight = 2.
 
-  # Use y = 1
-  # Sigmoid: 1/(1+e^(-x))
-  # Negative log of sigmoid: log(1+e^(-x))
-  #x_pu = K.abs(y_pred) - reg_pt_scale/discr_pt_cut
-  #log_loss = K.log(1+K.exp(-x_pu))
-
-  # Use y = 0
-  # Sigmoid: 1/(1+e^(-x))
-  # 1-sigmoid: 1/(1+e^x)
-  # Negative log of 1-sigmoid: log(1+e^(x)) = x + log(1+e^(-x))
-  #x_pu = K.abs(reg_pt_scale/y_pred) - discr_pt_cut
-  #x_pu = K.clip(x_pu, 0, 1000)
-  #log_loss = x_pu + K.log(1+K.exp(-x_pu))
-  #log_loss_weight = 0.01
-
-  # Simple counting
-  log_loss = K.greater(K.abs(reg_pt_scale/y_pred), discr_pt_cut)
-  log_loss = K.cast(log_loss, K.floatx())
-
-  log_loss *= (1 - mask)
-  xx += log_loss_weight * log_loss
-  return K.mean(xx, axis=-1)
+  #return K.mean(xx, axis=-1)
+  return K.mean(xx, axis=-1) + log_loss_weight*K.sum(log_loss, axis=-1)
 
 # ______________________________________________________________________________
 # Binary crossentropy
@@ -339,8 +326,8 @@ def create_model_bn2(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, n
   # Set loss and optimizers
   adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
   model.compile(optimizer=adam,
-    loss={'regr': masked_huber_loss, 'discr': masked_binary_crossentropy},
-    #loss={'regr': unmasked_huber_loss, 'discr': masked_binary_crossentropy},
+    #loss={'regr': masked_huber_loss, 'discr': masked_binary_crossentropy},
+    loss={'regr': unmasked_huber_loss, 'discr': masked_binary_crossentropy},
     loss_weights={'regr': 1.0, 'discr': discr_loss_weight},
     #metrics={'regr': ['acc', 'mse', 'mae'], 'discr': ['acc',]}
     )
