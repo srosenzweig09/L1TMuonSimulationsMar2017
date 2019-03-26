@@ -382,11 +382,11 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
       // In time + out of time bunch-crossing (-2 <= BX <= +2)
       bool outoftime = (-2 <= part.eventId().bunchCrossing() && part.eventId().bunchCrossing() <= +2);
 
-      // Primary+charged: pT > 0.2 GeV, |eta| < 2.5, |rho0| < 0.5 cm, |z0| < 30 cm
-      //bool primary = (part.charge() != 0 && part.pt() > 0.2 && std::abs(part.eta()) < 2.5 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 0.5 && std::abs(part.vz()) < 30.0);
+      // Primary+charged: pT > 0.2 GeV, |eta| < 3.0, |rho0| < 0.5 cm, |z0| < 30 cm
+      //bool primary = (part.charge() != 0 && part.pt() > 0.2 && std::abs(part.eta()) < 3.0 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 0.5 && std::abs(part.vz()) < 30.0);
 
-      // Primary+secondary pT > 0.5 GeV, |eta| < 2.5, |rho0| < 120 cm, |z0| < 300 cm (tracker volume)
-      bool secondary = (part.charge() != 0 && part.pt() > 0.5 && std::abs(part.eta()) < 2.5 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 120.0 && std::abs(part.vz()) < 300.0);
+      // Primary+secondary pT > 0.5 GeV, |eta| < 3.0, |rho0| < 120 cm, |z0| < 100 cm
+      bool secondary = (part.charge() != 0 && part.pt() > 0.5 && std::abs(part.eta()) < 3.0 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 120.0 && std::abs(part.vz()) < 100.0);
 
       // Do not decay
       //bool nodecay = (part.decayVertices().empty());
