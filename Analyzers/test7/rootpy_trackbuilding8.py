@@ -690,6 +690,10 @@ class Hit(object):
     self.extra_emtf_theta = extra_emtf_theta
     self.sim_tp = sim_tp
 
+  def get_type(self):
+    return self.id[0]
+  def get_station(self):
+    return self.id[1]
   def get_ring(self):
     return self.id[2]
   def get_sector(self):
@@ -788,7 +792,7 @@ class PatternRecognition(object):
     emtf_quality = find_emtf_quality(hit)
     emtf_time = find_emtf_time(hit)
     extra_emtf_theta = 0  #FIXME
-    sim_tp = (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)
+    sim_tp = hit.sim_tp1
     myhit = Hit(hit_id, hit.lay, hit.emtf_phi, hit.emtf_theta, emtf_bend,
                 emtf_quality, emtf_time, hit.old_emtf_phi, hit.old_emtf_bend,
                 extra_emtf_theta, sim_tp)
@@ -1629,7 +1633,7 @@ class RoadsAnalysis(object):
         #print(".. part road id: {0} nhits: {1} exphi: {2} emtf_phi: {3}".format(part_road_id, part_nhits, part.exphi, part.emtf_phi))
         for ihit, hit in enumerate(evt.hits):
           hit_id = (hit.type, hit.station, hit.ring, find_endsec(hit.endcap, hit.sector), hit.fr, hit.bx)
-          hit_sim_tp = (hit.sim_tp1 == 0 and hit.sim_tp2 == 0)
+          hit_sim_tp = hit.sim_tp1
           print(".. .. hit {0} id: {1} lay: {2} ph: {3} ({4}) th: {5} bd: {6} qual: {7} tp: {8}".format(ihit, hit_id, find_emtf_layer(hit), hit.emtf_phi, find_pattern_x(hit.emtf_phi), hit.emtf_theta, find_emtf_bend(hit), find_emtf_quality(hit), hit_sim_tp))
         for iroad, myroad in enumerate(sorted(roads, key=lambda x: x.id)):
           print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
@@ -2125,18 +2129,19 @@ class MixingAnalysis(object):
     slim = RoadSlimming(bank)
     out_particles = []
     out_roads = []
-    npassed, ntotal = 0, 0
 
     training_phase = (jobid < test_job)
     if training_phase:
-      bx_shifts = [-3, -2, -1, 0, +1, +2, +3]
+      bx_shifts = [-2, -1, 0, +1, +2]
     else:
       bx_shifts = [0]
 
-    def manipulate_bx(bx_shift, hits):
+    def keep_old_bx(hits):
       for hit in hits:
-        if not hasattr(hit, 'old_bx'):
-          hit.old_bx = hit.bx
+        hit.old_bx = hit.bx
+
+    def manipulate_bx(hits, bx_shift):
+      for hit in hits:
         hit.bx = hit.old_bx + bx_shift
 
     # Event range
@@ -2148,11 +2153,14 @@ class MixingAnalysis(object):
       if n != -1 and ievt == n:
         break
 
+      # Remember the BX
+      keep_old_bx(evt.hits)
+
       # Manipulate hit BX multiple times
       for bx_shift in bx_shifts:
 
         # Manipulate hit BX
-        manipulate_bx(bx_shift, evt.hits)
+        manipulate_bx(evt.hits, bx_shift=bx_shift)
 
         roads = recog.run(evt.hits)
         clean_roads = clean.run(roads)
@@ -2215,10 +2223,122 @@ class MixingAnalysis(object):
       outfile = 'histos_tbd_%i.npz' % jobid
     print('[INFO] Creating file: %s' % outfile)
     if True:
-      assert(len(out_roads) == len(out_particles))
+      assert(len(out_particles) == len(out_roads))
       variables = roads_to_variables(out_roads)
       aux = np.array(out_particles, dtype=np.float32)
       np.savez_compressed(outfile, variables=variables, aux=aux)
+
+
+# ______________________________________________________________________________
+# Analysis: collusion
+
+class CollusionAnalysis(object):
+  def run(self, omtf_input=False, run2_input=False):
+    tree = load_minbias_batch_for_collusion(jobid)
+
+    # Workers
+    bank = PatternBank(bankfile)
+    recog = PatternRecognition(bank, omtf_input=omtf_input, run2_input=run2_input)
+    clean = RoadCleaning()
+    slim = RoadSlimming(bank)
+    out_particles = []
+    out_roads = []
+
+    # Event range
+    n = -1
+
+    # __________________________________________________________________________
+    # Loop over events
+    for ievt, evt in enumerate(tree):
+      if n != -1 and ievt == n:
+        break
+
+      if len(evt.particles) == 0:
+        continue
+
+      myparticles = []
+      myparticles_sim_tp = []
+
+      # Select genParticles
+      select_part = lambda part: (part.status == 1)
+
+      for ipart, part in enumerate(evt.particles):
+        if select_part(part):
+          mypart = Particle(part.pt, part.eta, part.phi, part.q, part.vx, part.vy, part.vz)
+          myparticles.append(mypart)
+          myparticles_sim_tp.append(ipart)
+
+      if len(myparticles) == 0:
+        continue
+
+      # Sanity check
+      assert(len(myparticles) == 2)
+
+      roads = recog.run(evt.hits)
+      clean_roads = clean.run(roads)
+      slim_roads = slim.run(clean_roads)
+      assert(len(clean_roads) == len(slim_roads))
+
+      myroad_0 = None
+      myroad_1 = None
+
+      # Match to genParticles
+      for iroad, myroad in enumerate(slim_roads):
+        for ihit, myhit in enumerate(myroad.hits):
+          if (myhit.get_bx() == 0) and (myhit.get_station() == 1):
+            if (not myroad_0) and (myhit.sim_tp == myparticles_sim_tp[0]):
+              myroad_0 = myroad
+            elif (not myroad_1) and (myhit.sim_tp == myparticles_sim_tp[1]):
+              myroad_1 = myroad
+
+      if (myroad_0 is None) or (myroad_1 is None):
+        for iroad, myroad in enumerate(slim_roads):
+          myroad_sim_tp_set = set()
+          for ihit, myhit in enumerate(myroad.hits):
+            if (myhit.get_bx() == 0):
+              if (myhit.sim_tp != -1):
+                myroad_sim_tp_set.add(myhit.sim_tp)
+          if len(myroad_sim_tp_set) == 1:
+            myroad_sim_tp = myroad_sim_tp_set.pop()
+            if (not myroad_0) and (myroad_sim_tp == myparticles_sim_tp[0]):
+              myroad_0 = myroad
+            elif (not myroad_1) and (myroad_sim_tp == myparticles_sim_tp[1]):
+              myroad_1 = myroad
+
+      if not((myroad_0 is None) or (myroad_1 is None)):
+        out_particles.append(myparticles[0])
+        out_particles.append(myparticles[1])
+        out_roads.append(myroad_0)
+        out_roads.append(myroad_1)
+
+      if ievt < 20:
+        print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
+        for ipart, part in enumerate(evt.particles):
+          if select_part(part):
+            part.invpt = np.true_divide(part.q, part.pt)
+            print(".. part invpt: {0} pt: {1} eta: {2} phi: {3}".format(part.invpt, part.pt, part.eta, part.phi))
+        for iroad, myroad in enumerate(slim_roads):
+          print(".. sroad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
+          for ihit, myhit in enumerate(myroad.hits):
+            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
+        if myroad_0 is not None and myroad_1 is not None:
+          for iroad, myroad in enumerate([myroad_0, myroad_1]):
+            print(".. sroad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
+
+    # End loop over events
+    unload_tree()
+
+    # __________________________________________________________________________
+    # Save objects
+    outfile = 'histos_tbe.npz'
+    if use_condor:
+      outfile = 'histos_tbe_%i.npz' % jobid
+    print('[INFO] Creating file: %s' % outfile)
+    if True:
+      assert(len(out_particles) == len(out_roads))
+      parameters = particles_to_parameters(out_particles)
+      variables = roads_to_variables(out_roads)
+      np.savez_compressed(outfile, parameters=parameters, variables=variables)
 
 
 # ______________________________________________________________________________
@@ -2233,19 +2353,19 @@ maxEvents = 1000
 use_condor = ('CONDOR_EXEC' in os.environ)
 
 # Algorithm (pick one)
-#algo = 'default'  # phase 2
+algo = 'default'  # phase 2
 #algo = 'run3'
-algo = 'omtf'
+#algo = 'omtf'
 if use_condor:
   algo = sys.argv[1]
 
 # Analysis mode (pick one)
 #analysis = 'dummy'
 #analysis = 'roads'
-analysis = 'rates'
+#analysis = 'rates'
 #analysis = 'effie'
 #analysis = 'mixing'
-#analysis = 'images'
+analysis = 'collusion'
 if use_condor:
   analysis = sys.argv[2]
 
@@ -2398,6 +2518,24 @@ def load_minbias_batch_for_mixing(j):
   tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
   return tree
 
+def load_minbias_batch_for_collusion(j):
+  global infile_r
+  pufiles = []
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU140/SingleMu_FlatPt-2to100/CRAB3/190308_003235/0000/ntuple_SingleMuon_PU140_%i.root' % (i+1) for i in xrange(25)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU200/SingleMu_FlatPt-2to100/CRAB3/190308_003350/0000/ntuple_SingleMuon_PU200_%i.root' % (i+1) for i in xrange(26)]
+
+  infile = pufiles[j]
+  infile_r = root_open(infile)
+  tree = infile_r.ntupler.tree
+  print('[INFO] Opening file: %s' % infile)
+
+  # Define collection
+  tree.define_collection(name='hits', prefix='vh_', size='vh_size')
+  tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
+  tree.define_collection(name='particles', prefix='vp_', size='vp_size')
+  tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
+  return tree
+
 def unload_tree():
   global infile_r
   try:
@@ -2454,6 +2592,10 @@ if __name__ == "__main__":
 
   elif analysis == 'mixing':
     analysis = MixingAnalysis()
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input)
+
+  elif analysis == 'collusion':
+    analysis = CollusionAnalysis()
     analysis.run(omtf_input=omtf_input, run2_input=run2_input)
 
   else:
