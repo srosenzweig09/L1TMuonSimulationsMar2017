@@ -229,8 +229,10 @@ class EMTFZone(object):
     lut[1,4,2][5] = 52,90   # ME4/2
     #
     lut[2,1,2][5] = 52,84   # RE1/2
+    lut[2,1,2][6] = 80,120  # RE1/2
     lut[2,1,3][6] = 80,120  # RE1/3
     lut[2,2,2][5] = 56,88   # RE2/2
+    lut[2,2,2][6] = 76,112  # RE2/2
     lut[2,2,3][6] = 76,112  # RE2/3
     lut[2,3,1][0] = 4,17    # RE3/1
     lut[2,3,1][1] = 16,25   # RE3/1
@@ -776,7 +778,8 @@ def roads_to_variables(roads):
 
 PATTERN_X_CENTRAL = 23  # pattern bin number 23 is the central
 PATTERN_X_SEARCH_MIN = 33
-PATTERN_X_SEARCH_MAX = 154-10
+#PATTERN_X_SEARCH_MAX = 154-10
+PATTERN_X_SEARCH_MAX = 154-10+12  # account for DT
 
 # Pattern recognition module
 class PatternRecognition(object):
@@ -2132,7 +2135,8 @@ class MixingAnalysis(object):
 
     training_phase = (jobid < test_job)
     if training_phase:
-      bx_shifts = [-2, -1, 0, +1, +2]
+      #bx_shifts = [-2, -1, 0, +1, +2]  # makes the training worse. not sure why.
+      bx_shifts = [0]
     else:
       bx_shifts = [0]
 
@@ -2342,12 +2346,165 @@ class CollusionAnalysis(object):
 
 
 # ______________________________________________________________________________
+# Analysis: images
+
+class ImagesAnalysis(object):
+  def run(self, omtf_input=False, run2_input=False):
+    tree = load_pgun()
+
+    out_part = []
+    out_hits = []
+
+    # __________________________________________________________________________
+    # Loop over events
+    for ievt, evt in enumerate(tree):
+      if maxEvents != -1 and ievt == maxEvents:
+        break
+
+      # Skip events with very few hits
+      if not len(evt.hits) >= 3:
+        continue
+
+      # Skip events without ME1 hits
+      has_ME1 = False
+      for ihit, hit in enumerate(evt.hits):
+        if hit.type == kCSC and hit.station == 1:
+          has_ME1 = True
+          break
+        elif hit.type == kME0 and hit.station == 1:
+          has_ME1 = True
+          break
+        elif hit.type == kDT and (hit.station == 1 or hit.station == 2):
+          has_ME1 = True
+          break
+      if not has_ME1:
+        continue
+
+      part = evt.particles[0]  # particle gun
+      part.invpt = np.true_divide(part.q, part.pt)
+
+      # Find the best sector (using csc-only 'mode')
+      sector_mode_array = np.zeros((12,), dtype=np.int32)
+      sector_hits_array = np.empty((12,), dtype=np.object)
+      for ind in np.ndindex(sector_hits_array.shape):
+        sector_hits_array[ind] = []
+
+      legit_hits = filter(is_emtf_legit_hit, evt.hits)
+
+      # Loop over hits
+      for ihit, hit in enumerate(legit_hits):
+        if hit.type == kDT:  # ignore for now
+          continue
+
+        #assert(hit.emtf_phi < 5040)  # 84*60
+        assert(hit.emtf_phi < 5400)  # 90*60
+
+        if hit.sim_tp1 == 0 and hit.sim_tp2 == 0:
+          endsec = find_endsec(hit.endcap, hit.sector)
+          if hit.type == kCSC:
+            sector_mode_array[endsec] |= (1 << (4 - hit.station))
+          elif hit.type == kME0:
+            sector_mode_array[endsec] |= (1 << (4 - 1))
+          elif hit.type == kDT:
+            sector_mode_array[endsec] |= (1 << (4 - 1))
+          sector_hits_array[endsec].append(hit)
+
+      # Get the best sector
+      #best_sector = np.argmax(sector_mode_array)
+      best_sector = np.argmax(sector_mode_array * 100 + [len(x) for x in sector_hits_array])
+      mode = sector_mode_array[best_sector]
+
+      # Skip events without station 1
+      if not is_emtf_singlehit(mode):
+        continue
+
+      # Get the hits
+      sector_hits = sector_hits_array[best_sector]
+
+      amap = {}  # zone -> hits
+
+      # Loop over sector hits
+      for ihit, hit in enumerate(sector_hits):
+        hit.emtf_layer = find_emtf_layer(hit)
+        assert(hit.emtf_layer != -99)
+
+        zones = find_emtf_zones(hit)
+        for z in zones:
+          amap.setdefault(np.asscalar(z), []).append(hit)
+        continue  # end loop over sector_hits
+
+      # Loop over map of zone -> hits
+      ievt_part = []
+      ievt_hits = []
+
+      for k, v in amap.iteritems():
+        zone = k
+        hits = v
+
+        # Skip zones with very few hits
+        if not ((zone in (0,1,2,3,4) and len(hits) >= 3) or (zone in (5,6) and len(hits) >= 2)):
+          continue
+
+        zone_mode = 0
+        for ihit, hit in enumerate(hits):
+          if hit.sim_tp1 == 0 and hit.sim_tp2 == 0:
+            if hit.type == kCSC:
+              zone_mode |= (1 << (4 - hit.station))
+            elif hit.type == kME0:
+              zone_mode |= (1 << (4 - 1))
+            elif hit.type == kDT:
+              zone_mode |= (1 << (4 - 1))
+
+        # Skip zones without station 1
+        if not is_emtf_singlehit(zone_mode):
+          continue
+
+        # Output
+        hits_array = np.full((50,2), -99, dtype=np.int32)  # output up to 50 hits
+        for ihit, hit in enumerate(hits):
+          if ihit == 50:
+            break
+          #hits_array[ihit] = (hit.emtf_layer, hit.emtf_phi)
+          hits_array[ihit] = (hit.emtf_layer, find_emtf_phi(hit))
+
+        ievt_part.append((part.invpt, part.eta, part.phi, zone, best_sector, zone_mode))
+        ievt_hits.append(hits_array)
+        continue  # end loop over map of zone -> hits
+
+      if ievt < 20:
+        ievt_nhits = [(x[:,0] != -99).sum() for x in ievt_hits]
+        print ievt, part.pt, ievt_part, ievt_nhits
+
+      # Output
+      out_part += ievt_part
+      out_hits += ievt_hits
+      continue  # end loop over events
+
+    # End loop over events
+    unload_tree()
+
+    # __________________________________________________________________________
+    # Save objects
+    outfile = 'histos_tbf.npz'
+    if use_condor:
+      outfile = 'histos_tbf_%i.npz' % jobid
+    print('[INFO] Creating file: %s' % outfile)
+    if True:
+      assert(len(out_part) == len(out_hits))
+      out_part = np.asarray(out_part, dtype=np.float32)
+      out_hits = np.asarray(out_hits, dtype=np.int32)
+      print out_part.shape, out_hits.shape
+      np.savez_compressed(outfile, out_part=out_part, out_hits=out_hits)
+
+
+# ______________________________________________________________________________
 # Settings
 
 # Get number of events
 #maxEvents = -1
 #maxEvents = 4000000
-maxEvents = 1000
+maxEvents = 2000000
+#maxEvents = 1000
 
 # Condor or not
 use_condor = ('CONDOR_EXEC' in os.environ)
@@ -2365,7 +2522,8 @@ if use_condor:
 #analysis = 'rates'
 #analysis = 'effie'
 #analysis = 'mixing'
-analysis = 'collusion'
+#analysis = 'collusion'
+analysis = 'images'
 if use_condor:
   analysis = sys.argv[2]
 
@@ -2521,7 +2679,7 @@ def load_minbias_batch_for_mixing(j):
 def load_minbias_batch_for_collusion(j):
   global infile_r
   pufiles = []
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU140/SingleMu_FlatPt-2to100/CRAB3/190308_003235/0000/ntuple_SingleMuon_PU140_%i.root' % (i+1) for i in xrange(25)]
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU140/SingleMu_FlatPt-2to100/CRAB3/190308_003235/0000/ntuple_SingleMuon_PU140_%i.root' % (i+1) for i in xrange(25)]
   pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU200/SingleMu_FlatPt-2to100/CRAB3/190308_003350/0000/ntuple_SingleMuon_PU200_%i.root' % (i+1) for i in xrange(26)]
 
   infile = pufiles[j]
@@ -2596,6 +2754,10 @@ if __name__ == "__main__":
 
   elif analysis == 'collusion':
     analysis = CollusionAnalysis()
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input)
+
+  elif analysis == 'images':
+    analysis = ImagesAnalysis()
     analysis.run(omtf_input=omtf_input, run2_input=run2_input)
 
   else:
