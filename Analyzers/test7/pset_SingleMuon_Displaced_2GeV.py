@@ -31,7 +31,7 @@ process.load('Configuration.StandardSequences.EndOfProcess_cff')
 process.load('Configuration.StandardSequences.FrontierConditions_GlobalTag_cff')
 
 process.maxEvents = cms.untracked.PSet(
-    input = cms.untracked.int32(100)
+    input = cms.untracked.int32(1000)
 )
 
 # Input source
@@ -74,7 +74,7 @@ process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic', '')
 process.generator = cms.EDProducer("FlatRandomPtGunProducer2",
     AddAntiParticle = cms.bool(False),
     PGunParameters = cms.PSet(
-        MaxEta = cms.double(3.0),
+        MaxEta = cms.double(2.8),
         MaxPhi = cms.double(3.14159265359),
         MaxPt = cms.double(7000.0),
         MinEta = cms.double(1.2),
@@ -99,12 +99,13 @@ process.VtxSmeared = cms.EDProducer("FlatEvtVtxGenerator2",
 )
 process.VtxSmeared.MaxX = cms.double(120)            # was 0.0015
 process.VtxSmeared.MaxY = cms.double(120)            # was 0.0015
-process.VtxSmeared.MaxZ = cms.double(20)             # was 5.3
-process.VtxSmeared.MaxT = cms.double(20/29.9792458)  # was 0.176789
+process.VtxSmeared.MaxZ = cms.double(30)             # was 5.3
+process.VtxSmeared.MaxT = cms.double(30/29.9792458)  # was 0.176789
 process.VtxSmeared.MinX = cms.double(-1*process.VtxSmeared.MaxX.value())
 process.VtxSmeared.MinY = cms.double(-1*process.VtxSmeared.MaxY.value())
 process.VtxSmeared.MinZ = cms.double(-1*process.VtxSmeared.MaxZ.value())
 process.VtxSmeared.MinT = cms.double(-1*process.VtxSmeared.MaxT.value())
+process.VtxSmeared.VtxSpectrum = cms.string('flatD0')
 
 
 # Path and EndPath definitions
@@ -133,9 +134,9 @@ process.FEVTDEBUGHLToutput_step = cms.EndPath(process.FEVTDEBUGHLToutput)
 #from PhysicsTools.PatAlgos.tools.helpers import associatePatAlgosToolsTask
 #associatePatAlgosToolsTask(process)
 
-##Setup FWK for multithreaded
-#process.options.numberOfThreads=cms.untracked.uint32(4)
-#process.options.numberOfStreams=cms.untracked.uint32(0)
+#Setup FWK for multithreaded
+process.options.numberOfThreads=cms.untracked.uint32(4)
+process.options.numberOfStreams=cms.untracked.uint32(0)
 # filter all path with the production filter sequence
 for path in process.paths:
     getattr(process,path)._seq = process.generator * getattr(process,path)._seq
