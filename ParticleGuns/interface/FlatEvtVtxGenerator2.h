@@ -25,9 +25,13 @@ public:
   FlatEvtVtxGenerator2(const edm::ParameterSet & p);
   ~FlatEvtVtxGenerator2() override;
 
+  void produce( edm::Event&, const edm::EventSetup&) override;
+
   /// return a new event vertex
   //virtual CLHEP::Hep3Vector* newVertex();
   HepMC::FourVector newVertex(CLHEP::HepRandomEngine*) const override ;
+
+  HepMC::FourVector newVertexFlatD0(CLHEP::HepRandomEngine* engine, double phi) const;
 
   const TMatrixD* GetInvLorentzBoost() const override {
     return nullptr;
@@ -39,8 +43,10 @@ private:
   /** Copy assignment operator */
   FlatEvtVtxGenerator2&  operator = (const FlatEvtVtxGenerator2 & rhs ) = delete;
 private:
+  edm::EDGetTokenT<edm::HepMCProduct> sourceToken;
   double fMinX, fMinY, fMinZ, fMinT;
   double fMaxX, fMaxY, fMaxZ, fMaxT;
+  std::string fVtxSpectrum;
 };
 
 #endif
