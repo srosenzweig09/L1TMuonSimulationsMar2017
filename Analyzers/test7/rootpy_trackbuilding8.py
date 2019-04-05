@@ -144,6 +144,15 @@ def find_eta_bin(eta):
 def find_pattern_x(emtf_phi):
   return (emtf_phi+16)//32  # divide by 'quadstrip' unit (4 * 8)
 
+def calculate_d0(invPt, phi, xv, yv, B=3.811):
+  _invPt = np.asarray(invPt, dtype=np.float64)   # needs double precision
+  _invPt = np.where(np.abs(_invPt) < 1./10000, np.sign(_invPt+1e-15) * 1./10000, _invPt)
+  _R = -1.0 / (0.003 * 3.811 * _invPt)           # R = -pT/(0.003 q B)  [cm]
+  _xc = xv - (_R * np.sin(phi))                  # xc = xv - R sin(phi)
+  _yc = yv + (_R * np.cos(phi))                  # yc = yv + R cos(phi)
+  _d0 = _R - (np.sign(_R) * np.hypot(_xc, _yc))  # d0 = R - sign(R) * sqrt(xc^2 + yc^2)
+  return _d0.astype(np.float32, casting='same_kind')
+
 
 # ______________________________________________________________________________
 # Long functions
@@ -193,12 +202,12 @@ class EMTFZone(object):
     lut[1,1,4][0] = 4,17    # ME1/1a
     lut[1,1,4][1] = 16,25   # ME1/1a
     lut[1,1,4][2] = 24,36   # ME1/1a
-    lut[1,1,4][3] = 34,43   # ME1/1a
+    lut[1,1,4][3] = 34,45   # ME1/1a
     lut[1,1,4][4] = 41,53   # ME1/1a
     lut[1,1,1][0] = 4,17    # ME1/1b
     lut[1,1,1][1] = 16,25   # ME1/1b
     lut[1,1,1][2] = 24,36   # ME1/1b
-    lut[1,1,1][3] = 34,43   # ME1/1b
+    lut[1,1,1][3] = 34,45   # ME1/1b
     lut[1,1,1][4] = 41,53   # ME1/1b
     lut[1,1,2][4] = 46,54   # ME1/2
     lut[1,1,2][5] = 52,88   # ME1/2
@@ -208,7 +217,7 @@ class EMTFZone(object):
     lut[1,2,1][0] = 4,17    # ME2/1
     lut[1,2,1][1] = 16,25   # ME2/1
     lut[1,2,1][2] = 24,36   # ME2/1
-    lut[1,2,1][3] = 34,43   # ME2/1
+    lut[1,2,1][3] = 34,44   # ME2/1
     lut[1,2,1][4] = 41,49   # ME2/1
     lut[1,2,2][5] = 53,90   # ME2/2
     lut[1,2,2][6] = 77,111  # ME2/2
@@ -224,10 +233,11 @@ class EMTFZone(object):
     lut[1,4,1][0] = 4,17    # ME4/1
     lut[1,4,1][1] = 16,25   # ME4/1
     lut[1,4,1][2] = 24,35   # ME4/1
-    lut[1,4,2][3] = 38,43   # ME4/2
+    lut[1,4,2][3] = 38,44   # ME4/2
     lut[1,4,2][4] = 41,54   # ME4/2
     lut[1,4,2][5] = 52,90   # ME4/2
     #
+    lut[2,1,2][4] = 52,56   # RE1/2
     lut[2,1,2][5] = 52,84   # RE1/2
     lut[2,1,2][6] = 80,120  # RE1/2
     lut[2,1,3][6] = 80,120  # RE1/3
@@ -261,8 +271,7 @@ class EMTFZone(object):
     lut[3,2,1][0] = 7,19    # GE2/1
     lut[3,2,1][1] = 18,24   # GE2/1
     lut[3,2,1][2] = 23,36   # GE2/1
-    lut[3,2,1][3] = 34,45   # GE2/1
-    lut[3,2,1][4] = 40,46   # GE2/1
+    lut[3,2,1][3] = 34,46   # GE2/1
     #
     lut[4,1,1][0] = 4,17    # ME0
     lut[4,1,1][1] = 16,23   # ME0
@@ -772,6 +781,74 @@ def roads_to_variables(roads):
     variables[i] = road.to_variables()
   return variables
 
+class RaggedTensorValue(object):
+  # Based on
+  #   https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/ragged/ragged_tensor_value.py
+  def __init__(self, values, row_splits):
+    if not (isinstance(row_splits, (np.ndarray, np.generic)) and
+            row_splits.dtype == np.int64 and row_splits.ndim == 1):
+      raise TypeError("row_splits must be a 1D int64 numpy array")
+    if not isinstance(values, (np.ndarray, np.generic, RaggedTensorValue)):
+      raise TypeError("values must be a numpy array or a RaggedTensorValue")
+    self._values = values
+    self._row_splits = row_splits
+
+  row_splits = property(
+      lambda self: self._row_splits,
+      doc="""The split indices for the ragged tensor value.""")
+  values = property(
+      lambda self: self._values,
+      doc="""The concatenated values for all rows in this tensor.""")
+  dtype = property(
+      lambda self: self._values.dtype,
+      doc="""The numpy dtype of values in this tensor.""")
+
+  @property
+  def shape(self):
+    """A tuple indicating the shape of this RaggedTensorValue."""
+    return (self._row_splits.shape[0] - 1,) + (None,) + self._values.shape[1:]
+
+  def to_list(self):
+    """Returns this ragged tensor value as a nested Python list."""
+    if isinstance(self._values, RaggedTensorValue):
+      values_as_list = self._values.to_list()
+    else:
+      values_as_list = self._values.tolist()
+    return [
+        values_as_list[self._row_splits[i]:self._row_splits[i + 1]]
+        for i in range(self._row_splits.shape[0] - 1)
+    ]
+
+  def to_array(self):
+    """Returns this ragged tensor value as a nested Numpy array."""
+    arr = np.empty((self._row_splits.shape[0] - 1,), dtype=np.object)
+    for i in range(self._row_splits.shape[0] - 1):
+      arr[i] = self._values[self._row_splits[i]:self._row_splits[i + 1]]
+    return arr
+
+def create_ragged_array(pylist):
+  # Based on
+  #   https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/ragged/ragged_factory_ops.py
+  ragged_rank = 1
+
+  # Build the splits for each ragged rank, and concatenate the inner values
+  # into a single list.
+  nested_splits = []
+  values = pylist
+  for dim in range(ragged_rank):
+    nested_splits.append([0])
+    concatenated_values = []
+    for row in values:
+      nested_splits[dim].append(nested_splits[dim][-1] + len(row))
+      concatenated_values.extend(row)
+    values = concatenated_values
+
+  values = np.asarray(values)
+  for row_splits in reversed(nested_splits):
+    row_splits = np.asarray(row_splits, dtype=np.int64)
+    values = RaggedTensorValue(values, row_splits)
+  return values
+
 
 # ______________________________________________________________________________
 # Modules
@@ -858,6 +935,7 @@ class PatternRecognition(object):
       road_mode = 0
       road_mode_csc = 0
       road_mode_me0 = 0
+      road_mode_me1 = 0
       road_mode_mb1 = 0
       road_mode_mb2 = 0
       road_mode_me13 = 0
@@ -877,6 +955,15 @@ class PatternRecognition(object):
           road_mode_me0 |= (1 << 1)
         elif _type == kCSC and station == 1 and (ring == 1 or ring == 4):
           road_mode_me0 |= (1 << 0)
+
+        if _type == kCSC and station == 1 and (ring == 1 or ring == 4):
+          road_mode_me1 |= (1 << (4 - 1))
+        elif _type == kCSC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
+          road_mode_me1 |= (1 << (4 - 2))
+        elif _type == kRPC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
+          road_mode_me1 |= (1 << (4 - 2))
+        else:
+          road_mode_me1 |= (1 << (4 - station))
 
         if _type == kDT and station == 1:
           road_mode_mb1 |= (1 << 1)
@@ -926,6 +1013,7 @@ class PatternRecognition(object):
       # + (zone 6) any road with MB1+MB2, MB1+MB3, MB1+ME1/3, MB1+ME2/2, MB2+MB3, MB2+ME1/3, MB2+ME2/2, ME1/3+ME2/2
       if ((is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
           (ieta in (0,1) and road_mode_me0 == 3) or \
+          (ieta in (4,) and road_mode_me1 in (11,13,14,15)) or \
           (ieta in (6,) and road_mode_omtf == 3)):
         road_quality = find_emtf_road_quality(ipt)
         road_sort_code = find_emtf_road_sort_code(road_mode, road_quality, tmp_road_hits)
@@ -2350,7 +2438,11 @@ class CollusionAnalysis(object):
 
 class ImagesAnalysis(object):
   def run(self, omtf_input=False, run2_input=False):
-    tree = load_pgun()
+    # Load tree
+    if omtf_input:
+      tree = load_pgun_omtf()
+    else:
+      tree = load_pgun()
 
     out_part = []
     out_hits = []
@@ -2362,26 +2454,32 @@ class ImagesAnalysis(object):
         break
 
       # Skip events with very few hits
-      if not len(evt.hits) >= 3:
-        continue
+      if omtf_input:
+        if not len(evt.hits) >= 2:
+          continue
+      else:
+        if not len(evt.hits) >= 3:
+          continue
 
       # Skip events without ME1 hits
       has_ME1 = False
       for ihit, hit in enumerate(evt.hits):
-        if hit.type == kCSC and hit.station == 1:
-          has_ME1 = True
-          break
-        elif hit.type == kME0 and hit.station == 1:
-          has_ME1 = True
-          break
-        elif hit.type == kDT and (hit.station == 1 or hit.station == 2):
-          has_ME1 = True
-          break
+        if hit.sim_tp1 == 0:
+          if hit.type == kCSC and hit.station == 1:
+            has_ME1 = True
+            break
+          elif hit.type == kME0 and hit.station == 1:
+            has_ME1 = True
+            break
+          elif hit.type == kDT and (hit.station == 1 or hit.station == 2):
+            has_ME1 = True
+            break
       if not has_ME1:
         continue
 
       part = evt.particles[0]  # particle gun
       part.invpt = np.true_divide(part.q, part.pt)
+      part.d0 = calculate_d0(part.invpt, part.phi, part.vx, part.vy)
 
       # Find the best sector (using csc-only 'mode')
       sector_mode_array = np.zeros((12,), dtype=np.int32)
@@ -2393,21 +2491,19 @@ class ImagesAnalysis(object):
 
       # Loop over hits
       for ihit, hit in enumerate(legit_hits):
-        if hit.type == kDT:  # ignore for now
-          continue
-
         #assert(hit.emtf_phi < 5040)  # 84*60
         assert(hit.emtf_phi < 5400)  # 90*60
 
-        if hit.sim_tp1 == 0 and hit.sim_tp2 == 0:
-          endsec = find_endsec(hit.endcap, hit.sector)
+        endsec = find_endsec(hit.endcap, hit.sector)
+        sector_hits_array[endsec].append(hit)
+
+        if hit.sim_tp1 == 0:
           if hit.type == kCSC:
             sector_mode_array[endsec] |= (1 << (4 - hit.station))
           elif hit.type == kME0:
             sector_mode_array[endsec] |= (1 << (4 - 1))
           elif hit.type == kDT:
             sector_mode_array[endsec] |= (1 << (4 - 1))
-          sector_hits_array[endsec].append(hit)
 
       # Get the best sector
       #best_sector = np.argmax(sector_mode_array)
@@ -2447,7 +2543,7 @@ class ImagesAnalysis(object):
 
         zone_mode = 0
         for ihit, hit in enumerate(hits):
-          if hit.sim_tp1 == 0 and hit.sim_tp2 == 0:
+          if hit.sim_tp1 == 0:
             if hit.type == kCSC:
               zone_mode |= (1 << (4 - hit.station))
             elif hit.type == kME0:
@@ -2459,20 +2555,28 @@ class ImagesAnalysis(object):
         if not is_emtf_singlehit(zone_mode):
           continue
 
-        # Output
-        hits_array = np.full((50,2), -99, dtype=np.int32)  # output up to 50 hits
+        zone_layers = np.zeros(16, dtype=np.bool)
         for ihit, hit in enumerate(hits):
-          if ihit == 50:
-            break
-          #hits_array[ihit] = (hit.emtf_layer, hit.emtf_phi)
-          hits_array[ihit] = (hit.emtf_layer, find_emtf_phi(hit))
+          zone_layers[hit.emtf_layer] = True
 
-        ievt_part.append((part.invpt, part.eta, part.phi, zone, best_sector, zone_mode))
-        ievt_hits.append(hits_array)
+        # Skip zones without at least 2 stations
+        if not (zone_layers.sum() >= 2):
+          continue
+
+        # Particle info
+        part_info = np.array([part.invpt, part.eta, part.phi, part.d0, zone, best_sector])
+
+        # Hits info
+        #get_hit_info = lambda hit: (hit.emtf_layer, hit.emtf_phi)
+        get_hit_info = lambda hit: (hit.emtf_layer, find_emtf_phi(hit))
+        hits_info = np.array([get_hit_info(hit) for hit in hits])
+
+        ievt_part.append(part_info)
+        ievt_hits.append(hits_info)
         continue  # end loop over map of zone -> hits
 
       if ievt < 20:
-        ievt_nhits = [(x[:,0] != -99).sum() for x in ievt_hits]
+        ievt_nhits = [len(x) for x in ievt_hits]
         print ievt, part.pt, ievt_part, ievt_nhits
 
       # Output
@@ -2492,9 +2596,9 @@ class ImagesAnalysis(object):
     if True:
       assert(len(out_part) == len(out_hits))
       out_part = np.asarray(out_part, dtype=np.float32)
-      out_hits = np.asarray(out_hits, dtype=np.int32)
+      out_hits = create_ragged_array(out_hits)
       print out_part.shape, out_hits.shape
-      np.savez_compressed(outfile, out_part=out_part, out_hits=out_hits)
+      np.savez_compressed(outfile, out_part=out_part, out_hits_values=out_hits.values, out_hits_row_splits=out_hits.row_splits)
 
 
 # ______________________________________________________________________________
