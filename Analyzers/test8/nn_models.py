@@ -8,11 +8,8 @@ import tensorflow as tf
 from keras import backend as K
 from keras.models import Sequential, Model, clone_model, load_model, model_from_json
 from keras.layers import Dense, Activation, Dropout, Input, Concatenate, Lambda, BatchNormalization
-from keras.layers.advanced_activations import LeakyReLU
 from keras.callbacks import LearningRateScheduler, TerminateOnNaN, ModelCheckpoint
-from keras.regularizers import Regularizer
-from keras.constraints import Constraint
-from keras import initializers, regularizers, optimizers, losses
+from keras import initializers, regularizers, constraints, optimizers, losses
 
 import h5py
 import json
@@ -20,21 +17,11 @@ import functools
 
 
 # ______________________________________________________________________________
-# New leaky relu
-def NewLeakyReLU(x, alpha=0., max_value=None):
-  return K.relu(x, alpha=alpha, max_value=max_value)
-
-# ______________________________________________________________________________
 # New tanh
 def NewTanh(x):
   return K.tanh(x)
   #return 1.7159 * K.tanh(x * 2./3.)
   #return K.clip(x, -1., 1.)
-
-# ______________________________________________________________________________
-# New elu
-def NewElu(x, alpha=1.0):
-  return K.elu(x, alpha) + alpha*1.0 + 1e-15
 
 # ______________________________________________________________________________
 def count_params(nvariables=80, nodes1=64, nodes2=32, nodes3=16, npredictions=1, use_bn=False):
@@ -59,7 +46,7 @@ def count_params(nvariables=80, nodes1=64, nodes2=32, nodes3=16, npredictions=1,
     n += (nodes3 * 1 + 1) * npredictions
   return n
 
-class LCountParams(Regularizer):
+class LCountParams(regularizers.Regularizer):
   """Regularizer that penalizes large number of parameters.
   Copied from class L1L2 from https://github.com/keras-team/keras/blob/master/keras/regularizers.py
 
@@ -85,7 +72,7 @@ class LCountParams(Regularizer):
             'l2': float(self.l2)}
 
 # ______________________________________________________________________________
-class ZeroSomeWeights(Constraint):
+class ZeroSomeWeights(constraints.Constraint):
   """ZeroSomeWeights weight constraint.
   Constrains certain weights incident to each hidden unit
   to be zero.
@@ -130,7 +117,7 @@ def masked_huber_loss(y_true, y_pred, delta=1.345*1.5, mask_value=100.):
   xx /= (K.mean(mask) + K.epsilon())
   return K.mean(xx, axis=-1)
 
-def unmasked_huber_loss(y_true, y_pred, delta=1.345*1.5, mask_value=100., reg_pt_scale = 100.):
+def unmasked_huber_loss(y_true, y_pred, delta=1.345*1.5, mask_value=100., reg_pt_scale=100.):
   x = K.abs(y_true - y_pred)
   squared_loss = 0.5*K.square(x)
   absolute_loss = delta * (x - 0.5*delta)
@@ -222,9 +209,7 @@ def update_keras_custom_objects():
     'masked_huber_loss': masked_huber_loss,
     'unmasked_huber_loss': unmasked_huber_loss,
     'masked_binary_crossentropy': masked_binary_crossentropy,
-    'NewLeakyReLU': NewLeakyReLU,
     'NewTanh': NewTanh,
-    'NewElu': NewElu,
     'LCountParams': LCountParams,
     'ZeroSomeWeights': ZeroSomeWeights,
   }
