@@ -68,14 +68,14 @@ figure.titleweight : 500
 image.cmap : viridis
 
 ### FONT
-font.size : 12
+font.size : 11
 font.family: sans-serif
 font.sans-serif : Helvetica, Arial, Liberation Sans, Bitstream Vera Sans, sans-serif
 
 ### AXES
 axes.grid: True
-axes.titlesize : large
-axes.labelsize : large
+axes.titlesize : medium
+axes.labelsize : medium
 axes.labelweight : 500
 
 #axes.autolimit_mode: round_numbers
@@ -87,8 +87,8 @@ axes.labelweight : 500
 #lines.markersize : 10
 
 ### TICKS
-xtick.labelsize : medium
-ytick.labelsize : medium
+xtick.labelsize : small
+ytick.labelsize : small
 xtick.major.size : 6.0
 ytick.major.size : 6.0
 xtick.minor.size : 3.0
