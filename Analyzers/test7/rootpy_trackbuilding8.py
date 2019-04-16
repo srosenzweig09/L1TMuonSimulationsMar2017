@@ -626,6 +626,22 @@ def is_emtf_legit_hit(hit):
       return True
   return check_bx(hit) and check_emtf_phi(hit)
 
+def is_emtf_images_hit(hit):
+  def check_quality(hit):
+    # quality 0&1 are RPC digis
+    if hit.type == kDT:
+      return hit.quality >= 2
+    else:
+      return True
+  def check_emtf_phi(hit):
+    if hit.type == kME0:
+      return hit.emtf_phi > 0
+    elif hit.type == kDT:
+      return hit.emtf_phi > 0
+    else:
+      return True
+  return check_quality(hit) and check_emtf_phi(hit)
+
 def is_valid_for_run2(hit):
   is_csc = (hit.type == kCSC)
   is_rpc = (hit.type == kRPC)
@@ -2487,10 +2503,10 @@ class ImagesAnalysis(object):
       for ind in np.ndindex(sector_hits_array.shape):
         sector_hits_array[ind] = []
 
-      legit_hits = filter(is_emtf_legit_hit, evt.hits)
+      images_hits = filter(is_emtf_images_hit, evt.hits)
 
       # Loop over hits
-      for ihit, hit in enumerate(legit_hits):
+      for ihit, hit in enumerate(images_hits):
         #assert(hit.emtf_phi < 5040)  # 84*60
         assert(hit.emtf_phi < 5400)  # 90*60
 
