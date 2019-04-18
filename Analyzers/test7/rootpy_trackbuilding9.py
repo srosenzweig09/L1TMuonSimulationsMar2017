@@ -690,16 +690,12 @@ class PatternBank(object):
     with np.load(bankfile) as data:
       patterns_phi = data['patterns_phi']
       #patterns_theta = data['patterns_theta']
-      patterns_match = data['patterns_match']
     self.x_array = patterns_phi
     #self.y_array = patterns_theta
-    self.z_array = patterns_match
     assert(self.x_array.dtype == np.int32)
     #assert(self.y_array.dtype == np.int32)
-    assert(self.z_array.dtype == np.int32)
     assert(self.x_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
     #assert(self.y_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
-    assert(self.z_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
 
 class Hit(object):
   def __init__(self, _id, emtf_layer, emtf_phi, emtf_theta, emtf_bend,
@@ -950,13 +946,12 @@ class PatternRecognition(object):
       (endcap, sector, ipt, ieta, iphi) = road_id
       road_mode = 0
       road_mode_csc = 0
-      road_mode_me0 = 0
-      road_mode_me1 = 0
-      road_mode_mb1 = 0
-      road_mode_mb2 = 0
-      road_mode_me13 = 0
-      road_mode_me22 = 0
-      road_mode_omtf = 0
+      road_mode_me0 = 0  # zones 0,1
+      road_mode_me12 = 0 # zone 4
+      road_mode_mb1 = 0  # zone 6
+      road_mode_mb2 = 0  # zone 6
+      road_mode_me13 = 0 # zone 6
+      #road_mode_me22 = 0 # zone 6
       tmp_road_hits = []
       tmp_thetas = []
 
@@ -972,14 +967,10 @@ class PatternRecognition(object):
         elif _type == kCSC and station == 1 and (ring == 1 or ring == 4):
           road_mode_me0 |= (1 << 0)
 
-        if _type == kCSC and station == 1 and (ring == 1 or ring == 4):
-          road_mode_me1 |= (1 << (4 - 1))
-        elif _type == kCSC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
-          road_mode_me1 |= (1 << (4 - 2))
+        if _type == kCSC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
+          road_mode_me12 |= (1 << (4 - 2))
         elif _type == kRPC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
-          road_mode_me1 |= (1 << (4 - 2))
-        else:
-          road_mode_me1 |= (1 << (4 - station))
+          road_mode_me12 |= (1 << (4 - 2))
 
         if _type == kDT and station == 1:
           road_mode_mb1 |= (1 << 1)
@@ -1017,20 +1008,20 @@ class PatternRecognition(object):
         #elif _type == kRPC and station >= 3 and (ring == 2 or ring == 3):
         #  road_mode_me22 |= (1 << 0)
 
-        road_mode_omtf = np.max((road_mode_mb1, road_mode_mb2, road_mode_me13))
-
         tmp_road_hits.append(hit)
-
         tmp_thetas.append(hit.emtf_theta)
         continue  # end loop over road_hits
 
       # Apply SingleMu requirement
       # + (zones 0,1) any road with ME0 and ME1
+      # + (zone 4) any road with ME1/1, ME1/2 + one more station
+      # + (zone 5) any road with 2 stations
       # + (zone 6) any road with MB1+MB2, MB1+MB3, MB1+ME1/3, MB1+ME2/2, MB2+MB3, MB2+ME1/3, MB2+ME2/2, ME1/3+ME2/2
       if ((is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
           (ieta in (0,1) and road_mode_me0 == 3) or \
-          (ieta in (4,) and road_mode_me1 in (11,13,14,15)) or \
-          (ieta in (6,) and road_mode_omtf == 3)):
+          (ieta in (4,) and is_emtf_singlemu(road_mode | road_mode_me12) and is_emtf_muopen(road_mode_csc | road_mode_me12)) or \
+          (ieta in (5,) and is_emtf_muopen(road_mode_csc)) or \
+          (ieta in (6,) and (road_mode_mb1 == 3 or road_mode_mb2 == 3 or road_mode_me13 == 3)) ):
         road_quality = find_emtf_road_quality(ipt)
         road_sort_code = find_emtf_road_sort_code(road_mode, road_quality, tmp_road_hits)
         tmp_theta = np.median(tmp_thetas, overwrite_input=True)
@@ -1075,10 +1066,8 @@ class PatternRecognition(object):
         sector_mode = sector_mode_array[endsec]
         sector_hits = sector_hits_array[endsec]
 
-        # Provide early exit if fail MuOpen and no hit in stations 1&2 (check CSC, ME0, DT)
-        if not is_emtf_muopen(sector_mode) and \
-            not is_emtf_singlehit(sector_mode) and \
-            not is_emtf_singlehit_me2(sector_mode):
+        # Provide early exit if no hit in stations 1&2 (check CSC, ME0, DT)
+        if not is_emtf_singlehit(sector_mode) and not is_emtf_singlehit_me2(sector_mode):
           continue
 
         # Remove all RPC hits
@@ -1104,18 +1093,6 @@ class PatternRecognition(object):
 class RoadCleaning(object):
   def __init__(self):
     pass
-
-  # https://stackoverflow.com/a/30396816
-  def _iter_from_middle(self, lst):
-    try:
-      middle = len(lst)//2
-      yield lst[middle]
-      for shift in xrange(1, middle+1):
-        # order is important!
-        yield lst[middle - shift]
-        yield lst[middle + shift]
-    except IndexError: # occures on lst[len(lst)] or for empty list
-      raise StopIteration
 
   def _groupby(self, data):
     def is_adjacent(prev, curr, length):
@@ -1144,32 +1121,66 @@ class RoadCleaning(object):
         if stop:
           return
 
-  def _sortby(self, clean_roads, groupinfo):
-    def select_bx_zero(road):
-      bx_counter1 = 0  # count hits with BX <= -1
-      bx_counter2 = 0  # count hits with BX <= 0
-      bx_counter3 = 0  # count hits with BX > 0
-      layer_has_been_used = set()
-      for hit in road.hits:
-        if hit.emtf_layer not in layer_has_been_used:
-          layer_has_been_used.add(hit.emtf_layer)
-          if hit.get_bx() <= -1:
-            bx_counter1 += 1
-          if hit.get_bx() <= 0:
-            bx_counter2 += 1
-          if hit.get_bx() > 0:
-            bx_counter3 += 1
-      #trk_bx_zero = (bx_counter1 < 2 and bx_counter2 >= 2)
-      trk_bx_zero = (bx_counter1 <= 2 and bx_counter2 >= 2 and bx_counter3 <= 1)
-      return trk_bx_zero
+  def _pick_the_median(self, lst):
+    middle = len(lst)//2
+    return lst[middle]
 
-    clean_roads = list(filter(select_bx_zero, clean_roads))
+  def select_bx_zero(self, road):
+    bx_counter1 = 0  # count hits with BX <= -1
+    bx_counter2 = 0  # count hits with BX <= 0
+    bx_counter3 = 0  # count hits with BX > 0
+    layer_has_been_used = set()
+    for hit in road.hits:
+      if hit.emtf_layer not in layer_has_been_used:
+        layer_has_been_used.add(hit.emtf_layer)
+        if hit.get_bx() <= -1:
+          bx_counter1 += 1
+        if hit.get_bx() <= 0:
+          bx_counter2 += 1
+        if hit.get_bx() > 0:
+          bx_counter3 += 1
+    #trk_bx_zero = (bx_counter1 < 2 and bx_counter2 >= 2)
+    trk_bx_zero = (bx_counter1 <= 3 and bx_counter2 >= 2 and bx_counter3 <= 2)
+    return trk_bx_zero
+
+  def run(self, roads):
+    # road_id = (endcap, sector, ipt, ieta, iphi)
+    amap = {road.id : road for road in roads}
+    groupinfo = {}
+    clean_roads = []
+
+    # Loop over road clusters (groups), pick the highest sort code
+    for group in self._groupby(amap.keys()):
+      best_sort_code = -1
+      best_roads = []
+
+      for i in xrange(len(group)):
+        road_id = group[i]
+        road = amap[road_id]
+        if best_sort_code < road.sort_code:
+          best_sort_code = road.sort_code
+          del best_roads[:]
+          best_roads.append(road)
+        elif best_sort_code == road.sort_code:
+          best_roads.append(road)
+
+      best_road = self._pick_the_median(best_roads)
+
+      _get_iphi = lambda x: x[4]
+      g = (_get_iphi(group[0]), _get_iphi(group[-1]))  # first and last road_id's in the iphi group
+      groupinfo[best_road.id] = g
+      clean_roads.append(best_road)
+
+    # Check consistency with BX=0
+    clean_roads = list(filter(self.select_bx_zero, clean_roads))
+
+    sorted_clean_roads = []
 
     if clean_roads:
       # Sort by 'sort code'
       clean_roads.sort(key=lambda road: road.sort_code, reverse=True)
 
-      # Iterate over clean_roads
+      # Loop over the sorted roads, kill the siblings
       for i, road in enumerate(clean_roads):
         keep = True
         gi = groupinfo[road.id]
@@ -1183,52 +1194,17 @@ class RoadCleaning(object):
           if (_get_endsec(road.id) == _get_endsec(road_to_check.id)) and (gi[1]+2 >= gj[0]) and (gi[0]-2 <= gj[1]):
             keep = False
             break
-
+        # Do not share ME1/1, ME1/2, ME0, MB1, MB2
         if keep:
-          # Do not share ME1/1, ME1/2, ME0, MB1, MB2
           for j, road_to_check in enumerate(clean_roads[:i]):
             hits_i = [(hit.emtf_layer, hit.emtf_phi) for hit in road.hits if hit.emtf_layer in (0,1,11,12,13)]
             hits_j = [(hit.emtf_layer, hit.emtf_phi) for hit in road_to_check.hits if hit.emtf_layer in (0,1,11,12,13)]
             if set(hits_i).intersection(hits_j):
               keep = False
               break
-
+        # Finally, keep the road
         if keep:
-          yield road
-      return
-
-  def run(self, roads):
-    # road_id = (endcap, sector, ipt, ieta, iphi)
-    amap = {road.id : road for road in roads}
-
-    # pick median in each iphi group
-    clean_roads = []
-    groupinfo = {}
-
-    # Loop over road clusters
-    for group in self._groupby(amap.keys()):
-
-      # Loop over roads in road clusters, starting from middle
-      for index in self._iter_from_middle(xrange(len(group))):
-        road_id = group[index]
-        road = amap[road_id]
-        keep = True
-        if (0 <= index-1) and road.sort_code < amap[group[index-1]].sort_code:
-          keep = False
-        if (index+1 < len(group)) and road.sort_code < amap[group[index+1]].sort_code:
-          keep = False
-        if keep:
-          break
-
-      _get_iphi = lambda x: x[4]
-      g = (_get_iphi(group[0]), _get_iphi(group[-1]))  # first and last road_id's in the iphi group
-      groupinfo[road_id] = g
-      clean_roads.append(road)
-
-    # sort the roads + kill the siblings
-    sorted_clean_roads = []
-    for road in self._sortby(clean_roads, groupinfo):
-      sorted_clean_roads.append(road)
+          sorted_clean_roads.append(road)
     return sorted_clean_roads
 
 
@@ -1243,7 +1219,7 @@ class RoadSlimming(object):
     for road in roads:
       ipt, ieta, iphi = road.id[2:]
 
-      prim_match_lut = self.bank.z_array[ipt, ieta, :, 1]
+      prim_match_lut = (self.bank.x_array[ipt, ieta, :, 1] * 32)  # multiply by 'quadstrip' unit (4 * 8)
 
       tmp_phi = (iphi * 32)  # multiply by 'quadstrip' unit (4 * 8)
 
@@ -1600,6 +1576,7 @@ class GhostBusting(object):
   def run(self, tracks):
     tracks_after_gb = []
 
+    #FIXME
     # Sort by (zone, chi2)
     # zone is reordered such that zone 6 has the lowest priority.
     tracks.sort(key=lambda track: ((track.zone+1) % 7, track.chi2), reverse=True)
@@ -2654,11 +2631,11 @@ if use_condor:
 
 
 # Input files
-bankfile = 'pattern_bank_omtf.25.npz'
+bankfile = 'pattern_bank.26.npz'
 
-kerasfile = ['model.25.json', 'model_weights.25.h5',
-             'model_run3.25.json', 'model_run3_weights.25.h5',
-             'model_omtf.25.json', 'model_omtf_weights.25.h5',]
+kerasfile = ['model.26.json', 'model_weights.26.h5',
+             'model_run3.26.json', 'model_run3_weights.26.h5',
+             'model_omtf.26.json', 'model_omtf_weights.26.h5',]
 
 infile_r = None  # input file handle
 
