@@ -597,7 +597,8 @@ def is_emtf_singlemu(mode):
   return mode in (11,13,14,15)
 
 def is_emtf_doublemu(mode):
-  return mode in (7,10,12) + (11,13,14,15)
+  #return mode in (7,10,12) + (11,13,14,15)
+  return mode in (9,10,12) + (11,13,14,15)  # replace 2-3-4 with 1-4
 
 def is_emtf_muopen(mode):
   return mode in (3,5,6,9) + (7,10,12) + (11,13,14,15)
@@ -694,7 +695,8 @@ class PatternBank(object):
     #self.y_array = patterns_theta
     assert(self.x_array.dtype == np.int32)
     #assert(self.y_array.dtype == np.int32)
-    assert(self.x_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
+    #assert(self.x_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
+    assert(self.x_array.shape == ((len(pt_bins)-1)*2, len(eta_bins)-1, nlayers, 3))  # using 18 patterns
     #assert(self.y_array.shape == (len(pt_bins)-1, len(eta_bins)-1, nlayers, 3))
 
 class Hit(object):
@@ -865,7 +867,7 @@ def create_ragged_array(pylist):
 # ______________________________________________________________________________
 # Modules
 
-PATTERN_X_CENTRAL = 23  # pattern bin number 23 is the central
+PATTERN_X_CENTRAL = 31  # pattern bin number 31 is the central
 PATTERN_X_SEARCH_MIN = 33
 #PATTERN_X_SEARCH_MAX = 154-10
 PATTERN_X_SEARCH_MAX = 154-10+12  # account for DT
@@ -929,7 +931,7 @@ class PatternRecognition(object):
 
         for index in result:
           ipt, iphi = index
-          iphi = hit_x - (iphi - PATTERN_X_CENTRAL)  # iphi 0 starts at -23
+          iphi = hit_x - (iphi - PATTERN_X_CENTRAL)  # iphi 0 starts at -31
           ieta = zone
 
           # Full range is 0 <= iphi <= 154. but a reduced range is sufficient (27% saving on patterns)
@@ -1020,9 +1022,10 @@ class PatternRecognition(object):
       if ((is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
           (ieta in (0,1) and road_mode_me0 == 3) or \
           (ieta in (4,) and is_emtf_singlemu(road_mode | road_mode_me12) and is_emtf_muopen(road_mode_csc | road_mode_me12)) or \
-          (ieta in (5,) and is_emtf_muopen(road_mode_csc)) or \
+          (ieta in (5,) and is_emtf_doublemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
           (ieta in (6,) and (road_mode_mb1 == 3 or road_mode_mb2 == 3 or road_mode_me13 == 3)) ):
-        road_quality = find_emtf_road_quality(ipt)
+        #road_quality = find_emtf_road_quality(ipt)
+        road_quality = find_emtf_road_quality((ipt%9))  # using 18 patterns
         road_sort_code = find_emtf_road_sort_code(road_mode, road_quality, tmp_road_hits)
         tmp_theta = np.median(tmp_thetas, overwrite_input=True)
 
@@ -2221,13 +2224,17 @@ class MixingAnalysis(object):
     else:
       bx_shifts = [0]
 
-    def keep_old_bx(hits):
+    def keep_old_bx(hits, particles):
       for hit in hits:
         hit.old_bx = hit.bx
+      for part in particles:
+        part.old_bx = part.bx
 
-    def manipulate_bx(hits, bx_shift):
+    def manipulate_bx(hits, particles, bx_shift):
       for hit in hits:
         hit.bx = hit.old_bx + bx_shift
+      for part in particles:
+        part.bx = part.old_bx + bx_shift
 
     # Event range
     n = -1
@@ -2239,13 +2246,13 @@ class MixingAnalysis(object):
         break
 
       # Remember the BX
-      keep_old_bx(evt.hits)
+      keep_old_bx(evt.hits, evt.particles)
 
       # Manipulate hit BX multiple times
       for bx_shift in bx_shifts:
 
         # Manipulate hit BX
-        manipulate_bx(evt.hits, bx_shift=bx_shift)
+        manipulate_bx(evt.hits, evt.particles, bx_shift=bx_shift)
 
         roads = recog.run(evt.hits)
         clean_roads = clean.run(roads)
@@ -2631,7 +2638,7 @@ if use_condor:
 
 
 # Input files
-bankfile = 'pattern_bank.26.npz'
+bankfile = 'pattern_bank_18patt.26.npz'
 
 kerasfile = ['model.26.json', 'model_weights.26.h5',
              'model_run3.26.json', 'model_run3_weights.26.h5',
