@@ -6,10 +6,10 @@ import numpy as np
 import tensorflow as tf
 
 from keras import backend as K
+from keras import initializers, regularizers, constraints, optimizers, losses
 from keras.models import Sequential, Model, clone_model, load_model, model_from_json
 from keras.layers import Dense, Activation, Dropout, Input, Concatenate, Lambda, BatchNormalization
-from keras.callbacks import LearningRateScheduler, TerminateOnNaN, ModelCheckpoint
-from keras import initializers, regularizers, constraints, optimizers, losses
+from keras.callbacks import LearningRateScheduler, ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, TerminateOnNaN
 
 import h5py
 import json
@@ -196,10 +196,15 @@ def lr_schedule(epoch, lr):
 
 lr_decay = LearningRateScheduler(lr_schedule, verbose=0)
 
-terminate_on_nan = TerminateOnNaN()
-
 modelbestcheck = ModelCheckpoint(filepath='keras_logs/model_bchk.h5', monitor='val_loss', verbose=1, save_best_only=True)
 modelbestcheck_weights = ModelCheckpoint(filepath='keras_logs/model_bchk_weights.h5', monitor='val_loss', verbose=1, save_best_only=True, save_weights_only=True)
+
+early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.005, patience=40, verbose=1, mode='min')
+
+reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.9, patience=4, verbose=1, mode='min', epsilon=0.01, min_lr=1e-6)
+
+terminate_on_nan = TerminateOnNaN()
+
 
 # ______________________________________________________________________________
 # Custom objects
