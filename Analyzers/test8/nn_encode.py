@@ -114,20 +114,12 @@ class Encoder(object):
     self.x_phi_median    = self.x_road[:, 2] * 32  # multiply by 'quadstrip' unit (4 * 8)
     self.x_phi_median    = self.x_phi_median[:, np.newaxis]
     self.x_phi          -= self.x_phi_median
-    self.x_phi          /= 32
-
     self.x_old_phi      -= self.x_phi_median
-    self.x_old_phi      /= 32
 
     # Subtract median theta from hit thetas
     self.x_theta_median  = np.nanmedian(self.x_theta, axis=1)
     self.x_theta_median  = self.x_theta_median[:, np.newaxis]
     #self.x_theta        -= self.x_theta_median
-    self.x_theta        /= 8
-
-    # Rescale ME0 & DT bending angles
-    self.x_bend[:, 11:12] /= 4
-    self.x_bend[:, 12:16] /= 32
 
     # Modify ring and F/R definitions
     x_ring_tmp = self.x_ring.astype(np.int32)
