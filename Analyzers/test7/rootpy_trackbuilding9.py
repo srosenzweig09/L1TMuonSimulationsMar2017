@@ -1417,8 +1417,8 @@ class TrackProducer(object):
     self.s_step = np.asarray(self.s_step)
     self.s_lut = np.asarray(self.s_lut)
 
-  def get_trigger_pt(self, x, y_meas):
-    xml_pt = np.abs(1.0/y_meas)
+  def get_trigger_pt(self, x, y_pred):
+    xml_pt = np.abs(1.0/y_pred)
     if xml_pt <= 2.:  # do not use the LUT if below 2 GeV
       return xml_pt
 
@@ -1440,17 +1440,14 @@ class TrackProducer(object):
     pt = interpolate(xml_pt, x0, x1, y0, y1)
     return pt
 
-  def pass_trigger(self, ndof, modes, strg, zone, theta_median, y_meas, y_discr):
+  def pass_trigger(self, ndof, mode, strg, zone, theta_median, y_pred, y_discr):
     ipt1 = strg
-    ipt2 = find_pt_bin(y_meas)
+    ipt2 = find_pt_bin(y_pred)
     quality1 = find_emtf_road_quality(ipt1)
     quality2 = find_emtf_road_quality(ipt2)
 
-    (mode, mode_me0, mode_omtf) = modes
-    if self.omtf_input:
-      mode_ok = (mode in (11,13,14,15)) or (mode_omtf == 3)
-    else:
-      mode_ok = (mode in (11,13,14,15)) or (mode_me0 == 3)
+    #mode_ok = (mode in (11,13,14,15))
+    mode_ok = True
 
     strg_ok = quality2 <= (quality1+1)
 
@@ -1458,24 +1455,24 @@ class TrackProducer(object):
 
     if mode_ok:
       if self.omtf_input:
-        if np.abs(1.0/y_meas) > self.discr_pt_cut_high:  # >14 GeV
+        if np.abs(1.0/y_pred) > self.discr_pt_cut_high:  # >14 GeV
           trigger = (y_discr > 0.6043) # 98.0% coverage
-        elif np.abs(1.0/y_meas) > self.discr_pt_cut:  # 8-14 GeV
+        elif np.abs(1.0/y_pred) > self.discr_pt_cut:  # 8-14 GeV
           trigger = (y_discr > 0.2905) # 98.0% coverage
         else:
           trigger = (y_discr >= 0.) and strg_ok
       elif self.run2_input:
-        if np.abs(1.0/y_meas) > self.discr_pt_cut_high:  # >14 GeV
+        if np.abs(1.0/y_pred) > self.discr_pt_cut_high:  # >14 GeV
           trigger = (y_discr > 0.8557) # 97.0% coverage
-        elif np.abs(1.0/y_meas) > self.discr_pt_cut:  # 8-14 GeV
+        elif np.abs(1.0/y_pred) > self.discr_pt_cut:  # 8-14 GeV
           trigger = (y_discr > 0.6640) # 97.0% coverage
         else:
           trigger = (y_discr >= 0.) and strg_ok
       else:
-        if np.abs(1.0/y_meas) > self.discr_pt_cut_high:  # >14 GeV
-          trigger = (y_discr > 0.9304) # 98.0% coverage
-        elif np.abs(1.0/y_meas) > self.discr_pt_cut:  # 8-14 GeV
-          trigger = (y_discr > 0.7720) # 98.0% coverage
+        if np.abs(1.0/y_pred) > self.discr_pt_cut_high:  # >14 GeV
+          trigger = (y_discr > 0.9286) # 98.5% coverage
+        elif np.abs(1.0/y_pred) > self.discr_pt_cut:  # 8-14 GeV
+          trigger = (y_discr > 0.7767) # 98.5% coverage
         else:
           trigger = (y_discr >= 0.) and strg_ok
     return trigger
@@ -1491,7 +1488,7 @@ class TrackProducer(object):
       valid = ~x_mask
       return valid.sum()
 
-    def get_modes_from_x_mask(x_mask):
+    def get_mode_from_x_mask(x_mask):
       assert(x_mask.shape[0] == nlayers)
       assert(x_mask.dtype == np.bool)
       valid = ~x_mask
@@ -1504,39 +1501,7 @@ class TrackProducer(object):
         mode |= (1<<1)
       if np.any((valid[4], valid[8])):  # ME4, RE4
         mode |= (1<<0)
-
-      mode_me0 = np.int32(0)
-      if valid[11]: # ME0
-        mode_me0 |= (1 << 1)
-      if valid[0]:  # ME1/1
-        mode_me0 |= (1 << 0)
-
-      mode_mb1 = np.int32(0)
-      if valid[12]: # MB1
-        mode_mb1 |= (1 << 1)
-      if np.any((valid[1], valid[2], valid[3], valid[5], valid[6], valid[7], valid[13], valid[14])):
-        mode_mb1 |= (1 << 0)
-
-      mode_mb2 = np.int32(0)
-      if valid[13]: # MB2
-        mode_mb2 |= (1 << 1)
-      if np.any((valid[1], valid[2], valid[3], valid[5], valid[6], valid[7], valid[14])):
-        mode_mb2 |= (1 << 0)
-
-      mode_me13 = np.int32(0)
-      if np.any((valid[1], valid[5])):  # ME1/2+3, RE1/2+3
-        mode_me13 |= (1 << 1)
-      if np.any((valid[2], valid[3], valid[6], valid[7])):
-        mode_me13 |= (1 << 0)
-
-      #mode_me22 = np.int32(0)
-      #if np.any((valid[2], valid[6])):  # ME2/2, RE2/2+3
-      #  mode_me22 |= (1 << 1)
-      #if np.any((valid[3], valid[7])):
-      #  mode_me22 |= (1 << 0)
-
-      mode_omtf = np.max((mode_mb1, mode_mb2, mode_me13))
-      return (mode, mode_me0, mode_omtf)
+      return mode
 
     # __________________________________________________________________________
     assert(len(slim_roads) == len(variables))
@@ -1552,21 +1517,21 @@ class TrackProducer(object):
       assert(x_mask.shape == (nlayers,))
       assert(x_road.shape == (3,))
 
-      y_meas = np.asscalar(y[0,0])
+      y_pred = np.asscalar(y[0,0])
       y_discr = np.asscalar(y[0,1])
       ndof = get_ndof_from_x_mask(x_mask)
-      modes = get_modes_from_x_mask(x_mask)
+      mode = get_mode_from_x_mask(x_mask)
       strg, zone, theta_median = x_road
 
-      passed = self.pass_trigger(ndof, modes, strg, zone, theta_median, y_meas, y_discr)
-      xml_pt = np.abs(1.0/y_meas)
-      pt = self.get_trigger_pt(x, y_meas)
+      passed = self.pass_trigger(ndof, mode, strg, zone, theta_median, y_pred, y_discr)
+      xml_pt = np.abs(1.0/y_pred)
+      pt = self.get_trigger_pt(x, y_pred)
 
       if passed:
-        trk_q = np.sign(y_meas)
+        trk_q = np.sign(y_pred)
         trk_emtf_phi = myroad.id[4]
         trk_emtf_theta = theta_median
-        trk = Track(myroad.id, myroad.hits, modes[0], zone, xml_pt, pt, trk_q, trk_emtf_phi, trk_emtf_theta, ndof, y_discr)
+        trk = Track(myroad.id, myroad.hits, mode, zone, xml_pt, pt, trk_q, trk_emtf_phi, trk_emtf_theta, ndof, y_discr)
         tracks.append(trk)
     return tracks
 
