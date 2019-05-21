@@ -25,6 +25,8 @@ scram b -j 10
 
 ## Version
 
+- v1.5.0 (2019-05-06): Add displaced muon patterns. NN development incomplete.
+
 - v1.4.0 (2019-03-20): Add feasiblity study with displaced muons.
 
 - v1.3.0 (2019-03-12): Results using CMSSW_10_4_0 including overlap region.
