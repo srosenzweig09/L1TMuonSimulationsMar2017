@@ -571,10 +571,9 @@ class EMTFRoadSortCode(object):
     self.lut = np.array([8,7,6,4,3,5,5,4,3,7,5,9,9,8,5,5], dtype=np.int32)
     assert(self.lut.shape[0] == nlayers)
 
-  def __call__(self, road_mode, road_quality, road_hits):
+  def __call__(self, road_quality, road_hits_layers):
     sort_code = np.int32(0)
-    for hit in road_hits:
-      hit_lay = hit.emtf_layer
+    for hit_lay in road_hits_layers:
       mlayer = self.lut[hit_lay]
       sort_code |= (1 << mlayer)
     sort_code |= road_quality
@@ -894,6 +893,101 @@ class PatternRecognition(object):
                 extra_emtf_theta, sim_tp)
     return myhit
 
+  def _create_road(self, road_id, road_hits):
+    # Find road modes
+    road_mode = 0
+    road_mode_csc = 0
+    road_mode_me0 = 0  # zones 0,1
+    road_mode_me12 = 0 # zone 4
+    road_mode_csc_me12 = 0 # zone 4
+    road_mode_mb1 = 0  # zone 6
+    road_mode_mb2 = 0  # zone 6
+    road_mode_me13 = 0 # zone 6
+    #road_mode_me22 = 0 # zone 6
+
+    for hit in road_hits:
+      (_type, station, ring, endsec, fr, bx) = hit.id
+      road_mode |= (1 << (4 - station))
+
+      if _type == kCSC or _type == kME0:
+        road_mode_csc |= (1 << (4 - station))
+
+      if _type == kME0:
+        road_mode_me0 |= (1 << 1)
+      elif _type == kCSC and station == 1 and (ring == 1 or ring == 4):
+        road_mode_me0 |= (1 << 0)
+
+      if _type == kCSC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
+        road_mode_me12 |= (1 << (4 - 2))
+      elif _type == kRPC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
+        road_mode_me12 |= (1 << (4 - 2))
+      else:
+        road_mode_me12 |= (1 << (4 - station))
+
+      if _type == kCSC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
+        road_mode_csc_me12 |= (1 << (4 - 2))
+      elif _type == kCSC:
+        road_mode_csc_me12 |= (1 << (4 - station))
+
+      if _type == kDT and station == 1:
+        road_mode_mb1 |= (1 << 1)
+      elif _type == kDT and station >= 2:
+        road_mode_mb1 |= (1 << 0)
+      elif _type == kCSC and station >= 1 and (ring == 2 or ring == 3):
+        road_mode_mb1 |= (1 << 0)
+      elif _type == kRPC and station >= 1 and (ring == 2 or ring == 3):
+        road_mode_mb1 |= (1 << 0)
+
+      if _type == kDT and station == 2:
+        road_mode_mb2 |= (1 << 1)
+      elif _type == kDT and station >= 3:
+        road_mode_mb2 |= (1 << 0)
+      elif _type == kCSC and station >= 1 and (ring == 2 or ring == 3):
+        road_mode_mb2 |= (1 << 0)
+      elif _type == kRPC and station >= 1 and (ring == 2 or ring == 3):
+        road_mode_mb2 |= (1 << 0)
+
+      if _type == kCSC and station == 1 and (ring == 2 or ring == 3):
+        road_mode_me13 |= (1 << 1)
+      elif _type == kCSC and station >= 2 and (ring == 2 or ring == 3):
+        road_mode_me13 |= (1 << 0)
+      elif _type == kRPC and station == 1 and (ring == 2 or ring == 3):
+        road_mode_me13 |= (1 << 1)
+      elif _type == kRPC and station >= 2 and (ring == 2 or ring == 3):
+        road_mode_me13 |= (1 << 0)
+
+      #if _type == kCSC and station == 2 and (ring == 2 or ring == 3):
+      #  road_mode_me22 |= (1 << 1)
+      #elif _type == kCSC and station >= 3 and (ring == 2 or ring == 3):
+      #  road_mode_me22 |= (1 << 0)
+      #elif _type == kRPC and station == 2 and (ring == 2 or ring == 3):
+      #  road_mode_me22 |= (1 << 1)
+      #elif _type == kRPC and station >= 3 and (ring == 2 or ring == 3):
+      #  road_mode_me22 |= (1 << 0)
+
+    # Create road
+    myroad = None
+    (endcap, sector, ipt, ieta, iphi) = road_id
+
+    # Apply SingleMu requirement
+    # + (zones 0,1) any road with ME0 and ME1
+    # + (zone 4) any road with ME1/1, ME1/2 + one more station
+    # + (zone 5) any road with 2 stations
+    # + (zone 6) any road with MB1+MB2, MB1+MB3, MB1+ME1/3, MB1+ME2/2, MB2+MB3, MB2+ME1/3, MB2+ME2/2, ME1/3+ME2/2
+    if ((is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
+        (ieta in (0,1) and road_mode_me0 == 3) or \
+        (ieta in (4,) and is_emtf_singlemu(road_mode_me12) and is_emtf_muopen(road_mode_csc_me12)) or \
+        (ieta in (5,) and is_emtf_doublemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
+        (ieta in (6,) and (road_mode_mb1 == 3 or road_mode_mb2 == 3 or road_mode_me13 == 3)) ):
+      #road_quality = find_emtf_road_quality(ipt)
+      road_quality = find_emtf_road_quality((ipt%9))  # using 18 patterns
+      road_sort_code = find_emtf_road_sort_code(road_quality, [hit.emtf_layer for hit in road_hits])
+      #road_theta_median = np.median([hit.emtf_theta for hit in road_hits], overwrite_input=True)  # Numpy has special treatment when N is even
+      road_theta_median = np.sort(np.array([hit.emtf_theta for hit in road_hits]))
+      road_theta_median = road_theta_median[(len(road_theta_median)-1)//2]
+      myroad = Road(road_id, road_hits, road_mode, road_quality, road_sort_code, road_theta_median)
+    return myroad
+
   def _apply_patterns_in_zone(self, hit_zone, hit_lay):
     result = self.cache.get((hit_zone, hit_lay), None)
     if result is not None:
@@ -952,93 +1046,9 @@ class PatternRecognition(object):
     # Create roads
     roads = []
     for road_id, road_hits in amap.iteritems():
-      (endcap, sector, ipt, ieta, iphi) = road_id
-      road_mode = 0
-      road_mode_csc = 0
-      road_mode_me0 = 0  # zones 0,1
-      road_mode_me12 = 0 # zone 4
-      road_mode_mb1 = 0  # zone 6
-      road_mode_mb2 = 0  # zone 6
-      road_mode_me13 = 0 # zone 6
-      #road_mode_me22 = 0 # zone 6
-      tmp_road_hits = []
-      tmp_thetas = []
-
-      for hit in road_hits:
-        (_type, station, ring, endsec, fr, bx) = hit.id
-        road_mode |= (1 << (4 - station))
-
-        if _type == kCSC or _type == kME0:
-          road_mode_csc |= (1 << (4 - station))
-
-        if _type == kME0:
-          road_mode_me0 |= (1 << 1)
-        elif _type == kCSC and station == 1 and (ring == 1 or ring == 4):
-          road_mode_me0 |= (1 << 0)
-
-        if _type == kCSC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
-          road_mode_me12 |= (1 << (4 - 2))
-        elif _type == kRPC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
-          road_mode_me12 |= (1 << (4 - 2))
-
-        if _type == kDT and station == 1:
-          road_mode_mb1 |= (1 << 1)
-        elif _type == kDT and station >= 2:
-          road_mode_mb1 |= (1 << 0)
-        elif _type == kCSC and station >= 1 and (ring == 2 or ring == 3):
-          road_mode_mb1 |= (1 << 0)
-        elif _type == kRPC and station >= 1 and (ring == 2 or ring == 3):
-          road_mode_mb1 |= (1 << 0)
-
-        if _type == kDT and station == 2:
-          road_mode_mb2 |= (1 << 1)
-        elif _type == kDT and station >= 3:
-          road_mode_mb2 |= (1 << 0)
-        elif _type == kCSC and station >= 1 and (ring == 2 or ring == 3):
-          road_mode_mb2 |= (1 << 0)
-        elif _type == kRPC and station >= 1 and (ring == 2 or ring == 3):
-          road_mode_mb2 |= (1 << 0)
-
-        if _type == kCSC and station == 1 and (ring == 2 or ring == 3):
-          road_mode_me13 |= (1 << 1)
-        elif _type == kCSC and station >= 2 and (ring == 2 or ring == 3):
-          road_mode_me13 |= (1 << 0)
-        elif _type == kRPC and station == 1 and (ring == 2 or ring == 3):
-          road_mode_me13 |= (1 << 1)
-        elif _type == kRPC and station >= 2 and (ring == 2 or ring == 3):
-          road_mode_me13 |= (1 << 0)
-
-        #if _type == kCSC and station == 2 and (ring == 2 or ring == 3):
-        #  road_mode_me22 |= (1 << 1)
-        #elif _type == kCSC and station >= 3 and (ring == 2 or ring == 3):
-        #  road_mode_me22 |= (1 << 0)
-        #elif _type == kRPC and station == 2 and (ring == 2 or ring == 3):
-        #  road_mode_me22 |= (1 << 1)
-        #elif _type == kRPC and station >= 3 and (ring == 2 or ring == 3):
-        #  road_mode_me22 |= (1 << 0)
-
-        tmp_road_hits.append(hit)
-        tmp_thetas.append(hit.emtf_theta)
-        continue  # end loop over road_hits
-
-      # Apply SingleMu requirement
-      # + (zones 0,1) any road with ME0 and ME1
-      # + (zone 4) any road with ME1/1, ME1/2 + one more station
-      # + (zone 5) any road with 2 stations
-      # + (zone 6) any road with MB1+MB2, MB1+MB3, MB1+ME1/3, MB1+ME2/2, MB2+MB3, MB2+ME1/3, MB2+ME2/2, ME1/3+ME2/2
-      if ((is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
-          (ieta in (0,1) and road_mode_me0 == 3) or \
-          (ieta in (4,) and is_emtf_singlemu(road_mode | road_mode_me12) and is_emtf_muopen(road_mode_csc | road_mode_me12)) or \
-          (ieta in (5,) and is_emtf_doublemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
-          (ieta in (6,) and (road_mode_mb1 == 3 or road_mode_mb2 == 3 or road_mode_me13 == 3)) ):
-        #road_quality = find_emtf_road_quality(ipt)
-        road_quality = find_emtf_road_quality((ipt%9))  # using 18 patterns
-        road_sort_code = find_emtf_road_sort_code(road_mode, road_quality, tmp_road_hits)
-        tmp_theta = np.median(tmp_thetas, overwrite_input=True)
-
-        myroad = Road(road_id, tmp_road_hits, road_mode, road_quality, road_sort_code, tmp_theta)
+      myroad = self._create_road(road_id, road_hits)
+      if myroad is not None:
         roads.append(myroad)
-      continue  # end loop over map of road_id -> road_hits
     return roads
 
   def run(self, hits):
@@ -1101,40 +1111,11 @@ class PatternRecognition(object):
 
 
 # Road cleaning module
+# - reject ghost roads and out-of-time roads
+# - needs to be replaced by something firmware-friendly
 class RoadCleaning(object):
   def __init__(self):
     pass
-
-  def _groupby(self, data):
-    def is_adjacent(prev, curr, length):
-      # adjacent if (x,y,z) == (x,y,z+length)
-      return prev[:-1] == curr[:-1] and (prev[-1] + length) == curr[-1]
-
-    if data:
-      data.sort()
-      myiter = iter(data)
-      prev = curr = next(myiter)
-      # Iterate over data
-      while True:
-        group = []
-        stop = False
-        # Iterate until the next value is different
-        while is_adjacent(prev, curr, len(group)):
-          try:
-            group.append(curr)
-            curr = next(myiter)
-          except StopIteration:
-            stop = True
-            break
-        # Output group
-        yield group
-        prev = curr
-        if stop:
-          return
-
-  def _pick_the_median(self, lst):
-    middle = len(lst)//2
-    return lst[middle]
 
   def select_bx_zero(self, road):
     bx_counter1 = 0  # count hits with BX <= -1
@@ -1155,68 +1136,116 @@ class RoadCleaning(object):
     return trk_bx_zero
 
   def run(self, roads):
+    # Skip if no roads
+    if len(roads) == 0:
+      return []
+
     # road_id = (endcap, sector, ipt, ieta, iphi)
     amap = {road.id : road for road in roads}
-    groupinfo = {}
-    clean_roads = []
 
-    # Loop over road clusters (groups), pick the highest sort code
-    for group in self._groupby(amap.keys()):
+    # sorted list of road_id's
+    road_ids = sorted(amap.keys())
+
+    def is_adjacent(prev, curr):
+      # adjacent if (x,y,z') == (x,y,z+1)
+      return (prev[:-1] == curr[:-1]) and ((prev[-1] + 1) == curr[-1])
+
+    def make_row_splits(lst):
+      # assume 'lst' is sorted
+      row_splits = []
+      row_splits.append(0)
+      if len(lst) == 0:
+        return row_splits
+
+      prev = lst[0]
+      for i in xrange(1,len(lst)):
+        curr = lst[i]
+        if not is_adjacent(prev, curr):
+          row_splits.append(i)
+        prev = curr
+      row_splits.append(len(lst))
+      return row_splits
+
+    def pick_the_median(lst):
+      middle = 0 if len(lst) == 0 else (len(lst)-1)//2
+      return lst[middle]
+
+    # Make road clusters (groups)
+    splits = make_row_splits(road_ids)
+    assert(len(splits) >= 2)
+
+    # Loop over groups, pick the road with best sort code in each group
+    tmp_clean_roads = []            # the "best" roads in each group
+    tmp_clean_roads_groupinfo = []  # keep track of the iphi range of each group
+
+    for igroup in xrange(len(splits)-1):
+      group = [road_ids[i] for i in xrange(splits[igroup], splits[igroup+1])]
+
       best_sort_code = -1
-      best_roads = []
-
       for i in xrange(len(group)):
         road_id = group[i]
         road = amap[road_id]
         if best_sort_code < road.sort_code:
           best_sort_code = road.sort_code
-          del best_roads[:]
+
+      best_roads = []
+      for i in xrange(len(group)):
+        road_id = group[i]
+        road = amap[road_id]
+        if best_sort_code == road.sort_code:
           best_roads.append(road)
-        elif best_sort_code == road.sort_code:
-          best_roads.append(road)
 
-      best_road = self._pick_the_median(best_roads)
+      best_road = pick_the_median(best_roads)
 
-      _get_iphi = lambda x: x[4]
-      g = (_get_iphi(group[0]), _get_iphi(group[-1]))  # first and last road_id's in the iphi group
-      groupinfo[best_road.id] = g
-      clean_roads.append(best_road)
+      # Check consistency with BX=0
+      if self.select_bx_zero(best_road):
+        tmp_clean_roads.append(best_road)
 
-    # Check consistency with BX=0
-    clean_roads = list(filter(self.select_bx_zero, clean_roads))
+        _get_iphi = lambda x: x[4]
+        iphi_range = (_get_iphi(group[0]), _get_iphi(group[-1]))  # first and last road_id's in the iphi group
+        tmp_clean_roads_groupinfo.append(iphi_range)
 
-    sorted_clean_roads = []
+    if len(tmp_clean_roads) == 0:
+      return []
 
-    if clean_roads:
-      # Sort by 'sort code'
-      clean_roads.sort(key=lambda road: road.sort_code, reverse=True)
+    # Sort by 'sort code'
+    tmp_clean_roads.sort(key=lambda road: road.sort_code, reverse=True)
 
-      # Loop over the sorted roads, kill the siblings
-      for i, road in enumerate(clean_roads):
-        keep = True
-        gi = groupinfo[road.id]
+    # Loop over the sorted roads, kill the siblings
+    clean_roads = []
 
+    for i in xrange(len(tmp_clean_roads)):
+      keep = True
+      road_i = tmp_clean_roads[i]
+      group_i = tmp_clean_roads_groupinfo[i]
+
+      # Check for intersection in the iphi range
+      for j in xrange(i):
+        road_j = tmp_clean_roads[j]
+        group_j = tmp_clean_roads_groupinfo[j]
         # No intersect between two ranges (x1, x2), (y1, y2): (x2 < y1) || (x1 > y2)
         # Intersect: !((x2 < y1) || (x1 > y2)) = (x2 >= y1) and (x1 <= y2)
-        for j, road_to_check in enumerate(clean_roads[:i]):
-          gj = groupinfo[road_to_check.id]
-          _get_endsec = lambda x: x[:2]
-          # Allow +/-2 due to extrapolation-to-EMTF error
-          if (_get_endsec(road.id) == _get_endsec(road_to_check.id)) and (gi[1]+2 >= gj[0]) and (gi[0]-2 <= gj[1]):
+        # Allow +/-2 due to extrapolation-to-EMTF error
+        _get_endsec = lambda x: x[:2]
+        if (_get_endsec(road_i.id) == _get_endsec(road_j.id)) and (group_i[1]+2 >= group_j[0]) and (group_i[0]-2 <= group_j[1]):
+          keep = False
+          break
+
+      # Do not share ME1/1, ME1/2, ME0, MB1, MB2
+      if keep:
+        hits_i = [(hit.emtf_layer, hit.emtf_phi) for hit in road_i.hits if hit.emtf_layer in (0,1,11,12,13)]
+
+        for j in xrange(i):
+          road_j = tmp_clean_roads[j]
+          hits_j = [(hit.emtf_layer, hit.emtf_phi) for hit in road_j.hits if hit.emtf_layer in (0,1,11,12,13)]
+          if set(hits_i).intersection(hits_j):  # has sharing
             keep = False
             break
-        # Do not share ME1/1, ME1/2, ME0, MB1, MB2
-        if keep:
-          for j, road_to_check in enumerate(clean_roads[:i]):
-            hits_i = [(hit.emtf_layer, hit.emtf_phi) for hit in road.hits if hit.emtf_layer in (0,1,11,12,13)]
-            hits_j = [(hit.emtf_layer, hit.emtf_phi) for hit in road_to_check.hits if hit.emtf_layer in (0,1,11,12,13)]
-            if set(hits_i).intersection(hits_j):
-              keep = False
-              break
-        # Finally, keep the road
-        if keep:
-          sorted_clean_roads.append(road)
-    return sorted_clean_roads
+
+      # Finally, keep the road
+      if keep:
+        clean_roads.append(road_i)
+    return clean_roads
 
 
 # Road slimming module
