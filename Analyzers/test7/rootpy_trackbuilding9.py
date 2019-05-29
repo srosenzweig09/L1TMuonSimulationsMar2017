@@ -144,6 +144,9 @@ def find_eta_bin(eta):
 def find_pattern_x(emtf_phi):
   return (emtf_phi+16)//32  # divide by 'quadstrip' unit (4 * 8)
 
+def find_pattern_x_inverse(x):
+  return (x*32)  # multiply by 'quadstrip' unit (4 * 8)
+
 def calculate_d0(invPt, phi, xv, yv, B=3.811):
   _invPt = np.asarray(invPt, dtype=np.float64)   # needs double precision
   _invPt = np.where(np.abs(_invPt) < 1./10000, np.sign(_invPt+1e-15) * 1./10000, _invPt)
@@ -302,18 +305,18 @@ class EMTFBend(object):
         emtf_bend = np.clip(emtf_bend, -32, 31)
       emtf_bend *= hit.endcap
       emtf_bend /= 2  # from 1/32-strip unit to 1/16-strip unit
-    elif hit.type == kGEM:
-      emtf_bend *= hit.endcap
+    #elif hit.type == kGEM:
+    #  emtf_bend *= hit.endcap
     elif hit.type == kME0:
       emtf_bend = np.clip(emtf_bend, -64, 63)  # currently in 1/2-strip unit
     elif hit.type == kDT:
       if hit.quality >= 4:
         emtf_bend = np.clip(emtf_bend, -512, 511)
       else:
-        #emtf_bend = 0
+        #emtf_bend = np.int32(0)
         emtf_bend = np.clip(emtf_bend, -512, 511)
-    else:  # kRPC
-      emtf_bend = 0
+    else:  # kRPC, kGEM
+      emtf_bend = np.int32(0)
     return emtf_bend
 
 # Decide EMTF hit bend (old version)
@@ -326,14 +329,14 @@ class EMTFOldBend(object):
       clct = int(hit.pattern)
       bend = self.lut[clct]
       bend *= hit.endcap
-    elif hit.type == kGEM:
-      bend = np.int32(hit.bend)
-      bend *= hit.endcap
+    #elif hit.type == kGEM:
+    #  bend = np.int32(hit.bend)
+    #  bend *= hit.endcap
     elif hit.type == kME0:
       bend = np.int32(hit.bend)
     elif hit.type == kDT:
       bend = np.int32(hit.bend)
-    else:  # kRPC
+    else:  # kRPC, kGEM
       bend = np.int32(0)
     return bend
 
@@ -702,7 +705,7 @@ class PatternBank(object):
 class Hit(object):
   def __init__(self, _id, emtf_layer, emtf_phi, emtf_theta, emtf_bend,
                emtf_qual, emtf_time, old_emtf_phi, old_emtf_bend,
-               extra_emtf_theta, sim_tp):
+               sim_tp):
     self.id = _id  # (_type, station, ring, endsec, fr, bx)
     self.emtf_layer = emtf_layer
     self.emtf_phi = emtf_phi
@@ -712,7 +715,6 @@ class Hit(object):
     self.emtf_time = emtf_time
     self.old_emtf_phi = old_emtf_phi
     self.old_emtf_bend = old_emtf_bend
-    self.extra_emtf_theta = extra_emtf_theta
     self.sim_tp = sim_tp
 
   def get_type(self):
@@ -728,38 +730,40 @@ class Hit(object):
   def get_bx(self):
     return self.id[5]
 
-ROAD_LAYER_NVARS = 10  # each layer in the road carries 10 variables
+ROAD_LAYER_NVARS = 9  # each layer in the road carries 9 variables
 ROAD_LAYER_NVARS_P1 = ROAD_LAYER_NVARS + 1  # plus layer mask
-ROAD_INFO_NVARS = 3
+ROAD_INFO_NVARS = 4
 
 class Road(object):
-  def __init__(self, _id, hits, mode, quality, sort_code, theta_median):
+  def __init__(self, _id, hits, mode, quality, sort_code, phi_median, theta_median):
     self.id = _id  # (endcap, sector, ipt, ieta, iphi)
     self.hits = hits
     self.mode = mode
     self.quality = quality
     self.sort_code = sort_code
+    self.phi_median = phi_median
     self.theta_median = theta_median
 
   def to_variables(self):
     # Convert into an entry in a numpy array
-    # At the moment, each entry carries (nlayers * 11) + 3 values
+    # At the moment, each entry carries (nlayers * (9+1)) + 4 values
     amap = {}
     (endcap, sector, ipt, ieta, iphi) = self.id
-    road_info = (ipt, ieta, iphi)
+    #road_info = (ipt, ieta, iphi)
+    road_info = (ipt, ieta, self.phi_median, self.theta_median)
     #np.random.shuffle(self.hits)  # randomize the order
     for hit in self.hits:
       hit_lay = hit.emtf_layer
       if hit_lay not in amap:
         amap[hit_lay] = hit
     arr = np.zeros((ROAD_LAYER_NVARS_P1 * nlayers) + ROAD_INFO_NVARS, dtype=np.float32)
-    arr[0*nlayers:ROAD_LAYER_NVARS*nlayers] = np.nan                # variables (n=nlayers * 10)
+    arr[0*nlayers:ROAD_LAYER_NVARS*nlayers] = np.nan                # variables (n=nlayers * 9)
     arr[ROAD_LAYER_NVARS*nlayers:ROAD_LAYER_NVARS_P1*nlayers] = 1.0 # mask      (n=nlayers * 1)
-    arr[ROAD_LAYER_NVARS_P1*nlayers:] = road_info                   # road info (n=3)
+    arr[ROAD_LAYER_NVARS_P1*nlayers:] = road_info                   # road info (n=4)
     for lay, hit in amap.iteritems():
       ind = [i*nlayers + lay for i in xrange(ROAD_LAYER_NVARS)]
       arr[ind] = (hit.emtf_phi, hit.emtf_theta, hit.emtf_bend, hit.emtf_qual, hit.emtf_time,
-                  hit.get_ring(), hit.get_fr(), hit.old_emtf_phi, hit.old_emtf_bend, hit.extra_emtf_theta)
+                  hit.get_ring(), hit.get_fr(), hit.old_emtf_phi, hit.old_emtf_bend)
       ind = (ROAD_LAYER_NVARS*nlayers + lay)
       arr[ind] = 0.0  # unmask
     return arr
@@ -886,11 +890,10 @@ class PatternRecognition(object):
     emtf_bend = find_emtf_bend(hit)
     emtf_qual = find_emtf_qual(hit)
     emtf_time = find_emtf_time(hit)
-    extra_emtf_theta = 0  #FIXME
     sim_tp = hit.sim_tp1
     myhit = Hit(hit_id, hit.lay, hit.emtf_phi, hit.emtf_theta, emtf_bend,
                 emtf_qual, emtf_time, hit.old_emtf_phi, hit.old_emtf_bend,
-                extra_emtf_theta, sim_tp)
+                sim_tp)
     return myhit
 
   def _create_road(self, road_id, road_hits):
@@ -982,10 +985,9 @@ class PatternRecognition(object):
       #road_quality = find_emtf_road_quality(ipt)
       road_quality = find_emtf_road_quality((ipt%9))  # using 18 patterns
       road_sort_code = find_emtf_road_sort_code(road_quality, [hit.emtf_layer for hit in road_hits])
-      #road_theta_median = np.median([hit.emtf_theta for hit in road_hits], overwrite_input=True)  # Numpy has special treatment when N is even
-      road_theta_median = np.sort(np.array([hit.emtf_theta for hit in road_hits]))
-      road_theta_median = road_theta_median[(len(road_theta_median)-1)//2]
-      myroad = Road(road_id, road_hits, road_mode, road_quality, road_sort_code, road_theta_median)
+      road_phi_median = 0    # to be determined later
+      road_theta_median = 0  # to be determined later
+      myroad = Road(road_id, road_hits, road_mode, road_quality, road_sort_code, road_phi_median, road_theta_median)
     return myroad
 
   def _apply_patterns_in_zone(self, hit_zone, hit_lay):
@@ -1174,7 +1176,7 @@ class RoadCleaning(object):
     splits = make_row_splits(road_ids)
     assert(len(splits) >= 2)
 
-    # Loop over groups, pick the road with best sort code in each group
+    # Loop over the groups, pick the road with best sort code in each group
     tmp_clean_roads = []            # the "best" roads in each group
     tmp_clean_roads_groupinfo = []  # keep track of the iphi range of each group
 
@@ -1196,14 +1198,11 @@ class RoadCleaning(object):
           best_roads.append(road)
 
       best_road = pick_the_median(best_roads)
+      tmp_clean_roads.append(best_road)
 
-      # Check consistency with BX=0
-      if self.select_bx_zero(best_road):
-        tmp_clean_roads.append(best_road)
-
-        _get_iphi = lambda x: x[4]
-        iphi_range = (_get_iphi(group[0]), _get_iphi(group[-1]))  # first and last road_id's in the iphi group
-        tmp_clean_roads_groupinfo.append(iphi_range)
+      _get_iphi = lambda x: x[4]
+      iphi_range = (_get_iphi(group[0]), _get_iphi(group[-1]))  # first and last road_id's in the iphi group
+      tmp_clean_roads_groupinfo.append(iphi_range)
 
     if len(tmp_clean_roads) == 0:
       return []
@@ -1242,9 +1241,10 @@ class RoadCleaning(object):
             keep = False
             break
 
-      # Finally, keep the road
+      # Finally, check consistency with BX=0
       if keep:
-        clean_roads.append(road_i)
+        if self.select_bx_zero(road_i):
+          clean_roads.append(road_i)
     return clean_roads
 
 
@@ -1254,83 +1254,47 @@ class RoadSlimming(object):
     self.bank = bank
 
   def run(self, roads):
+    def pick_the_median(lst):
+      middle = 0 if len(lst) == 0 else (len(lst)-1)//2
+      return lst[middle]
+
     slim_roads = []
 
+    # Loop over roads
     for road in roads:
       ipt, ieta, iphi = road.id[2:]
 
-      prim_match_lut = (self.bank.x_array[ipt, ieta, :, 1] * 32)  # multiply by 'quadstrip' unit (4 * 8)
+      # Retrieve the phi offset terms for each emtf_layer
+      patterns_xc = self.bank.x_array[ipt, ieta, :, 1]
+      patterns_xc = find_pattern_x_inverse(patterns_xc)
 
-      tmp_phi = (iphi * 32)  # multiply by 'quadstrip' unit (4 * 8)
+      # Find median phi and theta
+      road_phi_median = np.sort(np.array([hit.emtf_phi - patterns_xc[hit.emtf_layer] for hit in road.hits]))
+      road_phi_median = pick_the_median(road_phi_median)
 
-      #_select_csc = lambda x: (x.emtf_layer <= 4)
-      #tmp_thetas = [hit.emtf_theta for hit in road.hits if _select_csc(hit)]
-      #tmp_theta = np.median(tmp_thetas, overwrite_input=True)
-      tmp_theta = road.theta_median
+      road_theta_median = np.sort(np.array([hit.emtf_theta for hit in road.hits]))
+      road_theta_median = pick_the_median(road_theta_median)
 
-      hits_array = np.empty((nlayers,), dtype=np.object)
-      for ind in np.ndindex(hits_array.shape):
-        hits_array[ind] = []
-
-      best_phi_array = np.full((nlayers,), tmp_phi, dtype=np.int32)
-      best_theta_array = np.full((nlayers,), tmp_theta, dtype=np.int32)
-
-      # Put in the best estimate for the CSC stations
-      best_estimate_me11 = tmp_phi + prim_match_lut[0]
-      best_estimate_me12 = tmp_phi + prim_match_lut[1]
-      if ieta >= 5:  # zones 5&6, use ME1/2
-        best_estimate_me2 = best_estimate_me12 + prim_match_lut[2]
-        best_estimate_me3 = best_estimate_me12 + prim_match_lut[3]
-        best_estimate_me4 = best_estimate_me12 + prim_match_lut[4]
-      else:
-        best_estimate_me2 = best_estimate_me11 + prim_match_lut[2]
-        best_estimate_me3 = best_estimate_me11 + prim_match_lut[3]
-        best_estimate_me4 = best_estimate_me11 + prim_match_lut[4]
-      best_phi_array[0:5] = (best_estimate_me11, best_estimate_me12, best_estimate_me2, best_estimate_me3, best_estimate_me4)
-
-      for hit in road.hits:
-        hit_lay = hit.emtf_layer
-        hits_array[hit_lay].append(hit)
-
-      # Assume going through ME1, ME2, ... in order
-      for hit_lay in xrange(nlayers):
-        mean_dphi = prim_match_lut[hit_lay]
-        hit_lay_p = find_emtf_layer_partner(hit_lay, ieta)
-
-        # Make pairs of (hit1, hit2)
-        # Want to pick the best hit1, given the selection of hit2 and mean_dphi
-        pairs = []
-        if hits_array[hit_lay]:
-          for hit1 in hits_array[hit_lay]:
-            if hits_array[hit_lay_p]:
-              for hit2 in hits_array[hit_lay_p]:
-                dphi = np.abs((hit1.emtf_phi - hit2.emtf_phi) - mean_dphi)
-                dtheta = np.abs(hit1.emtf_theta - tmp_theta)
-                neg_qual = -np.abs(hit1.emtf_qual)
-                pairs.append((hit1, hit2, dphi, dtheta, neg_qual))
-                #print hit1.emtf_phi, hit2.emtf_phi, abs((hit1.emtf_phi - hit2.emtf_phi)), dphi
-                continue  # end loop over hit2
-            else:
-              dphi = np.abs((hit1.emtf_phi - best_phi_array[hit_lay_p]) - mean_dphi)
-              dtheta = np.abs(hit1.emtf_theta - tmp_theta)
-              neg_qual = -np.abs(hit1.emtf_qual)
-              pairs.append((hit1, hit1, dphi, dtheta, neg_qual))
-            continue  # end loop over hit1
-
-          # Find best pair, which is min (neg_qual, dtheta, dphi)
-          best_pair = min(pairs, key=lambda x: (x[4], x[3], x[2]))
-          best_hit = best_pair[0]
-          hits_array[hit_lay] = [best_hit]
-          best_phi_array[hit_lay] = best_hit.emtf_phi
-          best_theta_array[hit_lay] = best_hit.emtf_theta
-
+      # Loop over all the emtf_layer's, select unique hit for each emtf_layer
       slim_road_hits = []
-      for hit_lay in xrange(nlayers):
-        if hits_array[hit_lay]:
-          assert(len(hits_array[hit_lay]) == 1)
-          slim_road_hits.append(hits_array[hit_lay][0])
 
-      slim_road = Road(road.id, slim_road_hits, road.mode, road.quality, road.sort_code, road.theta_median)
+      for hit_lay in xrange(nlayers):
+        sort_criteria = []  # for sorting hits
+
+        for ihit, hit in enumerate(road.hits):
+          if hit_lay == hit.emtf_layer:
+            dphi = np.abs(hit.emtf_phi - (road_phi_median + patterns_xc[hit.emtf_layer]))
+            dtheta = np.abs(hit.emtf_theta - road_theta_median)
+            qual = np.abs(hit.emtf_qual)
+            sort_criteria.append((ihit, dphi, dtheta, qual))
+
+        # Find the best hit, which is (max qual, min dtheta, min dphi)
+        if sort_criteria:
+          best_ihit = min(sort_criteria, key=lambda x: (-x[3], x[2], x[1]))[0]
+          best_hit = road.hits[best_ihit]
+          slim_road_hits.append(best_hit)
+
+      slim_road = Road(road.id, slim_road_hits, road.mode, road.quality, road.sort_code, road_phi_median, road_theta_median)
       slim_roads.append(slim_road)
     return slim_roads
 
@@ -1552,13 +1516,13 @@ class TrackProducer(object):
       assert(len(x.shape) == 1)
       assert(y.shape == (1,2))
       assert(x_mask.shape == (nlayers,))
-      assert(x_road.shape == (3,))
+      assert(x_road.shape == (4,))
 
       y_pred = np.asscalar(y[...,0])
       y_discr = np.asscalar(y[...,1])
       ndof = get_ndof_from_x_mask(x_mask)
       mode = get_mode_from_x_mask(x_mask)
-      strg, zone, theta_median = x_road
+      strg, zone, phi_median, theta_median = x_road
 
       passed = self.pass_trigger(ndof, mode, strg, zone, theta_median, y_pred, y_discr)
       xml_pt = np.abs(1.0/y_pred)
@@ -2172,12 +2136,17 @@ class EffieAnalysis(object):
     # End loop over events
     unload_tree()
 
-    # Quick efficiency at 20 GeV
-    h = histograms['emtf2026_eff_vs_genpt_l1pt20_numer']
-    npassed = h.GetBinContent(h.FindBin(20))
-    h = histograms['emtf2026_eff_vs_genpt_l1pt20_denom']
-    ntotal = h.GetBinContent(h.FindBin(20))
-    print('[INFO] npassed/ntotal: %i/%i = %f' % (npassed, ntotal, float(npassed)/ntotal))
+    # Quick efficiency
+    for l in (20, 30, 40, 50):
+      for k in ("denom", "numer"):
+        m = 'emtf2026'
+        hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
+        h = histograms[hname]
+        if k == 'numer' :
+          npassed = h.GetBinContent(h.FindBin(l))
+        else:
+          ntotal = h.GetBinContent(h.FindBin(l))
+      print('[INFO] @%i GeV npassed/ntotal: %i/%i = %f' % (l, npassed, ntotal, float(npassed)/ntotal))
 
     # __________________________________________________________________________
     # Save histograms

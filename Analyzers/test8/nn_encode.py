@@ -4,7 +4,7 @@ nlayers = 16  # 5 (CSC) + 4 (RPC) + 3 (GEM) + 4 (DT)
 
 nvariables = 36  # 20 (CSC) + 8 (RPC) + 4 (GEM) + 4 (ME0)
 
-nvariables_input = (nlayers * (10+1)) + 3
+nvariables_input = (nlayers * (9+1)) + 4
 
 nparameters_input = 6
 
@@ -36,10 +36,11 @@ class Encoder(object):
     # Get views
 
     # Each layer can have 0 or 1 hit. If there is a hit, each hit has several
-    # features (phi, theta, bend, quality, time, etc). Currently there are 10.
+    # features (phi, theta, bend, quality, time, etc). Currently there are 9.
     # Each layer also has a 'mask' variable that indicates if there is a hit
     # (0: has hit, 1: no hit).
-    # Additionally, each pattern has 3 features (straightness, zone, key_phi)
+    # Additionally, each road has 4 features (straightness, zone, phi_median,
+    # theta_median).
     # Note that some inputs are not actually used.
     self.x_phi       = self.x_copy[:, nlayers*0:nlayers*1]
     self.x_theta     = self.x_copy[:, nlayers*1:nlayers*2]
@@ -50,9 +51,8 @@ class Encoder(object):
     self.x_fr        = self.x_copy[:, nlayers*6:nlayers*7]
     self.x_old_phi   = self.x_copy[:, nlayers*7:nlayers*8]
     self.x_old_bend  = self.x_copy[:, nlayers*8:nlayers*9]
-    self.x_ext_theta = self.x_copy[:, nlayers*9:nlayers*10]
-    self.x_mask      = self.x_copy[:, nlayers*10:nlayers*11].astype(np.bool)  # this makes a copy
-    self.x_road      = self.x_copy[:, nlayers*11:nlayers*12]  # ipt, ieta, iphi
+    self.x_mask      = self.x_copy[:, nlayers*9:nlayers*10].astype(np.bool)  # this makes a copy
+    self.x_road      = self.x_copy[:, nlayers*10:nlayers*11]
     self.y_pt        = self.y_copy[:, 0]  # q/pT
     self.y_phi       = self.y_copy[:, 1]
     self.y_eta       = self.y_copy[:, 2]
@@ -102,7 +102,6 @@ class Encoder(object):
     self.x_fr       [x_dropit] = np.nan
     self.x_old_phi  [x_dropit] = np.nan
     self.x_old_bend [x_dropit] = np.nan
-    self.x_ext_theta[x_dropit] = np.nan
     self.x_mask     [x_dropit] = 1
 
     # ________________________________________________________________________
@@ -111,14 +110,12 @@ class Encoder(object):
     self.x_zone          = self.x_road[:, 1][:, np.newaxis]
 
     # Subtract median phi from hit phis
-    self.x_phi_median    = self.x_road[:, 2] * 32  # multiply by 'quadstrip' unit (4 * 8)
-    self.x_phi_median    = self.x_phi_median[:, np.newaxis]
+    self.x_phi_median    = self.x_road[:, 2][:, np.newaxis]
     self.x_phi          -= self.x_phi_median
     self.x_old_phi      -= self.x_phi_median
 
     # Subtract median theta from hit thetas
-    self.x_theta_median  = np.nanmedian(self.x_theta, axis=1)
-    self.x_theta_median  = self.x_theta_median[:, np.newaxis]
+    self.x_theta_median  = self.x_road[:, 3][:, np.newaxis]
     #self.x_theta        -= self.x_theta_median
 
     # Modify ring and F/R definitions
@@ -130,12 +127,6 @@ class Encoder(object):
     self.x_fr[(x_fr_tmp == 0)] = -1  # rear chamber  -> -1
 
     # ________________________________________________________________________
-    # Zero out certain variables
-    self.x_bend    [:, 5:11] = 0 # no bend for RPC, GEM
-    self.x_old_bend[:, 5:11] = 0 # ^
-    self.x_qual    [:, 5:11] = 0 # no qual for RPC, GEM
-    self.x_time    [:, 0:16] = 0 # no time for everyone
-
     # Add dedicated GEM-CSC bend
     # Need to account for ME1/1 f or r
     #self.x_gem_csc_bend = (self.x_orig[:,9] - self.x_orig[:,0])         # 9: GE1/1, 0: ME1/1
@@ -210,7 +201,7 @@ class Encoder(object):
     return x_mask
 
   def get_x_road(self):
-    x_road = np.hstack((self.x_straightness, self.x_zone, self.x_theta_median))
+    x_road = self.x_road.copy()
     return x_road
 
   def get_y(self):
