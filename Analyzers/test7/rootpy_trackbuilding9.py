@@ -717,17 +717,28 @@ class Hit(object):
     self.old_emtf_bend = old_emtf_bend
     self.sim_tp = sim_tp
 
-  def get_type(self):
+  @property
+  def _type(self):
     return self.id[0]
-  def get_station(self):
+
+  @property
+  def station(self):
     return self.id[1]
-  def get_ring(self):
+
+  @property
+  def ring(self):
     return self.id[2]
-  def get_endsec(self):
+
+  @property
+  def endsec(self):
     return self.id[3]
-  def get_fr(self):
+
+  @property
+  def fr(self):
     return self.id[4]
-  def get_bx(self):
+
+  @property
+  def bx(self):
     return self.id[5]
 
 ROAD_LAYER_NVARS = 9  # each layer in the road carries 9 variables
@@ -763,15 +774,15 @@ class Road(object):
     for lay, hit in amap.iteritems():
       ind = [i*nlayers + lay for i in xrange(ROAD_LAYER_NVARS)]
       arr[ind] = (hit.emtf_phi, hit.emtf_theta, hit.emtf_bend, hit.emtf_qual, hit.emtf_time,
-                  hit.get_ring(), hit.get_fr(), hit.old_emtf_phi, hit.old_emtf_bend)
+                  hit.ring, hit.fr, hit.old_emtf_phi, hit.old_emtf_bend)
       ind = (ROAD_LAYER_NVARS*nlayers + lay)
       arr[ind] = 0.0  # unmask
     return arr
 
 class Track(object):
-  def __init__(self, _id, hits, mode, quality, zone, xml_pt, pt, q, emtf_phi, emtf_theta, ndof, chi2):
+  def __init__(self, _id, hits, mode, quality, zone, xml_pt, pt, q, ndof, chi2, emtf_phi, emtf_theta):
     assert(pt > 0.)
-    self.id = _id  # (endcap, sector)
+    self.id = _id  # (endcap, sector, ipt, ieta, iphi)
     self.hits = hits
     self.mode = mode
     self.quality = quality
@@ -779,10 +790,10 @@ class Track(object):
     self.xml_pt = xml_pt
     self.pt = pt
     self.q = q
-    self.emtf_phi = emtf_phi
-    self.emtf_theta = emtf_theta
     self.ndof = ndof
     self.chi2 = chi2
+    self.emtf_phi = emtf_phi
+    self.emtf_theta = emtf_theta
     self.phi = calc_phi_glob_deg(calc_phi_loc_deg(emtf_phi), _id[1])
     self.eta = calc_eta_from_theta_deg(calc_theta_deg_from_int(emtf_theta), _id[0])
 
@@ -1127,11 +1138,11 @@ class RoadCleaning(object):
     for hit in road.hits:
       if hit.emtf_layer not in layer_has_been_used:
         layer_has_been_used.add(hit.emtf_layer)
-        if hit.get_bx() <= -1:
+        if hit.bx <= -1:
           bx_counter1 += 1
-        if hit.get_bx() <= 0:
+        if hit.bx <= 0:
           bx_counter2 += 1
-        if hit.get_bx() > 0:
+        if hit.bx > 0:
           bx_counter3 += 1
     #trk_bx_zero = (bx_counter1 < 2 and bx_counter2 >= 2)
     trk_bx_zero = (bx_counter1 <= 3 and bx_counter2 >= 2 and bx_counter3 <= 2)
@@ -1178,6 +1189,7 @@ class RoadCleaning(object):
 
     # Loop over the groups, pick the road with best sort code in each group
     tmp_clean_roads = []            # the "best" roads in each group
+    tmp_clean_roads_sortcode = []   # keep track of the sort code of each group
     tmp_clean_roads_groupinfo = []  # keep track of the iphi range of each group
 
     for igroup in xrange(len(splits)-1):
@@ -1199,6 +1211,7 @@ class RoadCleaning(object):
 
       best_road = pick_the_median(best_roads)
       tmp_clean_roads.append(best_road)
+      tmp_clean_roads_sortcode.append(best_sort_code)
 
       _get_iphi = lambda x: x[4]
       iphi_range = (_get_iphi(group[0]), _get_iphi(group[-1]))  # first and last road_id's in the iphi group
@@ -1208,19 +1221,21 @@ class RoadCleaning(object):
       return []
 
     # Sort by 'sort code'
-    tmp_clean_roads.sort(key=lambda road: road.sort_code, reverse=True)
+    ind = np.argsort(tmp_clean_roads_sortcode)[::-1]  # sort reverse
+    tmp_clean_roads = [tmp_clean_roads[i] for i in ind]
+    tmp_clean_roads_groupinfo = [tmp_clean_roads_groupinfo[i] for i in ind]
 
     # Loop over the sorted roads, kill the siblings
     clean_roads = []
 
     for i in xrange(len(tmp_clean_roads)):
       keep = True
-      road_i = tmp_clean_roads[i]
-      group_i = tmp_clean_roads_groupinfo[i]
 
       # Check for intersection in the iphi range
       for j in xrange(i):
+        road_i = tmp_clean_roads[i]
         road_j = tmp_clean_roads[j]
+        group_i = tmp_clean_roads_groupinfo[i]
         group_j = tmp_clean_roads_groupinfo[j]
         # No intersect between two ranges (x1, x2), (y1, y2): (x2 < y1) || (x1 > y2)
         # Intersect: !((x2 < y1) || (x1 > y2)) = (x2 >= y1) and (x1 <= y2)
@@ -1232,17 +1247,19 @@ class RoadCleaning(object):
 
       # Do not share ME1/1, ME1/2, ME0, MB1, MB2
       if keep:
-        hits_i = [(hit.emtf_layer, hit.emtf_phi) for hit in road_i.hits if hit.emtf_layer in (0,1,11,12,13)]
+        road_i = tmp_clean_roads[i]
+        hits_i = [(hit.endsec*100 + hit.emtf_layer, hit.emtf_phi) for hit in road_i.hits if hit.emtf_layer in (0,1,11,12,13)]
 
         for j in xrange(i):
           road_j = tmp_clean_roads[j]
-          hits_j = [(hit.emtf_layer, hit.emtf_phi) for hit in road_j.hits if hit.emtf_layer in (0,1,11,12,13)]
+          hits_j = [(hit.endsec*100 + hit.emtf_layer, hit.emtf_phi) for hit in road_j.hits if hit.emtf_layer in (0,1,11,12,13)]
           if set(hits_i).intersection(hits_j):  # has sharing
             keep = False
             break
 
       # Finally, check consistency with BX=0
       if keep:
+        road_i = tmp_clean_roads[i]
         if self.select_bx_zero(road_i):
           clean_roads.append(road_i)
     return clean_roads
@@ -1285,12 +1302,12 @@ class RoadSlimming(object):
           if hit_lay == hit.emtf_layer:
             dphi = np.abs(hit.emtf_phi - (road_phi_median + patterns_xc[hit.emtf_layer]))
             dtheta = np.abs(hit.emtf_theta - road_theta_median)
-            qual = np.abs(hit.emtf_qual)
-            sort_criteria.append((ihit, dphi, dtheta, qual))
+            neg_qual = -np.abs(hit.emtf_qual)
+            sort_criteria.append((ihit, dphi, dtheta, neg_qual))
 
         # Find the best hit, which is (max qual, min dtheta, min dphi)
         if sort_criteria:
-          best_ihit = min(sort_criteria, key=lambda x: (-x[3], x[2], x[1]))[0]
+          best_ihit = min(sort_criteria, key=lambda x: (x[3], x[2], x[1]))[0]
           best_hit = road.hits[best_ihit]
           slim_road_hits.append(best_hit)
 
@@ -1418,7 +1435,7 @@ class TrackProducer(object):
     self.s_step = np.asarray(self.s_step)
     self.s_lut = np.asarray(self.s_lut)
 
-  def get_trigger_pt(self, x, y_pred):
+  def get_trigger_pt(self, y_pred):
     xml_pt = np.abs(1.0/y_pred)
     if xml_pt <= 2.:  # do not use the LUT if below 2 GeV
       return xml_pt
@@ -1433,7 +1450,7 @@ class TrackProducer(object):
       return y
 
     binx = digitize(xml_pt)
-    if binx == self.s_nbins-1:  # check boundary
+    if binx == self.s_nbins-1:  # avoid boundary
       binx -= 1
 
     x0, x1 = binx * self.s_step, (binx+1) * self.s_step
@@ -1446,36 +1463,33 @@ class TrackProducer(object):
     ipt2 = find_pt_bin(y_pred)
     quality1 = find_emtf_road_quality(ipt1)
     quality2 = find_emtf_road_quality(ipt2)
-
-    #mode_ok = (mode in (11,13,14,15))
-    mode_ok = True
-
     strg_ok = quality2 <= (quality1+1)
 
-    trigger = (y_discr < 0.)  # False
+    xml_pt = np.abs(1.0/y_pred)
 
-    if mode_ok:
-      if self.omtf_input:
-        if np.abs(1.0/y_pred) > self.discr_pt_cut_high:  # >14 GeV
-          trigger = (y_discr > 0.6043) # 98.0% coverage
-        elif np.abs(1.0/y_pred) > self.discr_pt_cut:  # 8-14 GeV
-          trigger = (y_discr > 0.2905) # 98.0% coverage
-        else:
-          trigger = (y_discr >= 0.) and strg_ok
-      elif self.run2_input:
-        if np.abs(1.0/y_pred) > self.discr_pt_cut_high:  # >14 GeV
-          trigger = (y_discr > 0.8557) # 97.0% coverage
-        elif np.abs(1.0/y_pred) > self.discr_pt_cut:  # 8-14 GeV
-          trigger = (y_discr > 0.6640) # 97.0% coverage
-        else:
-          trigger = (y_discr >= 0.) and strg_ok
-      else:
-        if np.abs(1.0/y_pred) > self.discr_pt_cut_high:  # >14 GeV
-          trigger = (y_discr > 0.9286) # 98.5% coverage
-        elif np.abs(1.0/y_pred) > self.discr_pt_cut:  # 8-14 GeV
-          trigger = (y_discr > 0.7767) # 98.5% coverage
-        else:
-          trigger = (y_discr >= 0.) and strg_ok
+    # Apply cuts
+    trigger = (y_discr < 0.)  # default: False
+    if self.omtf_input:
+      if xml_pt > self.discr_pt_cut_high:  # >14 GeV
+        trigger = (y_discr > 0.6043) # 98.0% coverage
+      elif xml_pt > self.discr_pt_cut:  # 8-14 GeV
+        trigger = (y_discr > 0.2905) # 98.0% coverage
+      else:  # < 8 GeV
+        trigger = (y_discr >= 0.) and strg_ok
+    elif self.run2_input:
+      if xml_pt > self.discr_pt_cut_high:  # >14 GeV
+        trigger = (y_discr > 0.8557) # 97.0% coverage
+      elif xml_pt > self.discr_pt_cut:  # 8-14 GeV
+        trigger = (y_discr > 0.6640) # 97.0% coverage
+      else:  # < 8 GeV
+        trigger = (y_discr >= 0.) and strg_ok
+    else:
+      if xml_pt > self.discr_pt_cut_high:  # >14 GeV
+        trigger = (y_discr > 0.9286) # 98.5% coverage
+      elif xml_pt > self.discr_pt_cut:  # 8-14 GeV
+        trigger = (y_discr > 0.7767) # 98.5% coverage
+      else:  # < 8 GeV
+        trigger = (y_discr >= 0.) and strg_ok
     return trigger
 
   def run(self, slim_roads, variables, predictions, x_mask_vars, x_road_vars):
@@ -1525,14 +1539,13 @@ class TrackProducer(object):
       strg, zone, phi_median, theta_median = x_road
 
       passed = self.pass_trigger(ndof, mode, strg, zone, theta_median, y_pred, y_discr)
-      xml_pt = np.abs(1.0/y_pred)
-      pt = self.get_trigger_pt(x, y_pred)
 
       if passed:
+        xml_pt = np.abs(1.0/y_pred)
+        pt = self.get_trigger_pt(y_pred)
+
         trk_q = np.sign(y_pred)
-        trk_emtf_phi = myroad.id[4]
-        trk_emtf_theta = theta_median
-        trk = Track(myroad.id, myroad.hits, mode, myroad.quality, zone, xml_pt, pt, trk_q, trk_emtf_phi, trk_emtf_theta, ndof, y_discr)
+        trk = Track(myroad.id, myroad.hits, mode, myroad.quality, zone, xml_pt, pt, trk_q, ndof, y_discr, phi_median, theta_median)
         tracks.append(trk)
     return tracks
 
@@ -1545,25 +1558,30 @@ class GhostBusting(object):
   def run(self, tracks):
     tracks_after_gb = []
 
-    #FIXME
     # Sort by (zone, chi2)
     # zone is reordered such that zone 6 has the lowest priority.
     tracks.sort(key=lambda track: ((track.zone+1) % 7, track.chi2), reverse=True)
 
-    # Iterate over tracks and remove duplicates (ghosts)
-    for i, track in enumerate(tracks):
+    # Loop over the sorted tracks and remove duplicates (ghosts)
+    for i in xrange(len(tracks)):
       keep = True
 
       # Do not share ME1/1, ME1/2, ME0, MB1, MB2
-      for j, track_to_check in enumerate(tracks[:i]):
-        hits_i = [(hit.emtf_layer, hit.emtf_phi) for hit in track.hits if hit.emtf_layer in (0,1,11,12,13)]
-        hits_j = [(hit.emtf_layer, hit.emtf_phi) for hit in track_to_check.hits if hit.emtf_layer in (0,1,11,12,13)]
-        if set(hits_i).intersection(hits_j):
-          keep = False
-          break
+      #CUIDADO: not checking for neighbor hits
+      if keep:
+        track_i = tracks[i]
+        hits_i = [(hit.endsec*100 + hit.emtf_layer, hit.emtf_phi) for hit in track_i.hits if hit.emtf_layer in (0,1,11,12,13)]
+
+        for j in xrange(i):
+          track_j = tracks[j]
+          hits_j = [(hit.endsec*100 + hit.emtf_layer, hit.emtf_phi) for hit in track_j.hits if hit.emtf_layer in (0,1,11,12,13)]
+          if set(hits_i).intersection(hits_j):  # has sharing
+            keep = False
+            break
 
       if keep:
-        tracks_after_gb.append(track)
+        track_i = tracks[i]
+        tracks_after_gb.append(track_i)
     return tracks_after_gb
 
 
@@ -1811,7 +1829,7 @@ class RatesAnalysis(object):
       # Ghost busting
       emtf2026_tracks = ghost.run(tracks + tracks2)
 
-      found_high_pt_tracks = any(map(lambda trk: trk.pt > 20., emtf2026_tracks))
+      found_high_pt_tracks = any(map(lambda trk: trk.pt > 14., emtf2026_tracks))
 
       if found_high_pt_tracks:
         print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2026_tracks)))
@@ -2355,7 +2373,7 @@ class CollusionAnalysis(object):
       # Match to genParticles
       for iroad, myroad in enumerate(slim_roads):
         for ihit, myhit in enumerate(myroad.hits):
-          if (myhit.get_bx() == 0) and (myhit.get_station() == 1):
+          if (myhit.bx == 0) and (myhit.station == 1):
             if (not myroad_0) and (myhit.sim_tp == myparticles_sim_tp[0]):
               myroad_0 = myroad
             elif (not myroad_1) and (myhit.sim_tp == myparticles_sim_tp[1]):
@@ -2365,7 +2383,7 @@ class CollusionAnalysis(object):
         for iroad, myroad in enumerate(slim_roads):
           myroad_sim_tp_set = set()
           for ihit, myhit in enumerate(myroad.hits):
-            if (myhit.get_bx() == 0):
+            if (myhit.bx == 0):
               if (myhit.sim_tp != -1):
                 myroad_sim_tp_set.add(myhit.sim_tp)
           if len(myroad_sim_tp_set) == 1:
