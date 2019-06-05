@@ -1461,8 +1461,8 @@ class TrackProducer(object):
   def pass_trigger(self, ndof, mode, strg, zone, theta_median, y_pred, y_discr):
     ipt1 = strg
     ipt2 = find_pt_bin(y_pred)
-    quality1 = find_emtf_road_quality(ipt1)
-    quality2 = find_emtf_road_quality(ipt2)
+    quality1 = find_emtf_road_quality((ipt1%9))  # using 18 patterns
+    quality2 = find_emtf_road_quality((ipt2%9))  # using 18 patterns
     strg_ok = quality2 <= (quality1+1)
 
     xml_pt = np.abs(1.0/y_pred)
@@ -2634,11 +2634,11 @@ if use_condor:
 
 
 # Input files
-bankfile = 'pattern_bank_18patt.26.npz'
+bankfile = 'pattern_bank_18patt.27.npz'
 
-kerasfile = ['model.26.json', 'model_weights.26.h5',
-             'model_run3.26.json', 'model_run3_weights.26.h5',
-             'model_omtf.26.json', 'model_omtf_weights.26.h5',]
+kerasfile = ['model.27.json', 'model_weights.27.h5',
+             'model_run3.27.json', 'model_run3_weights.27.h5',
+             'model_omtf.27.json', 'model_omtf_weights.27.h5',]
 
 infile_r = None  # input file handle
 
