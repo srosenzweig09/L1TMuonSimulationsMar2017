@@ -304,7 +304,7 @@ class EMTFBend(object):
         emtf_bend = np.round(emtf_bend.astype(np.float32) * 0.026331/0.014264).astype(np.int32)
         emtf_bend = np.clip(emtf_bend, -32, 31)
       emtf_bend *= hit.endcap
-      emtf_bend /= 2  # from 1/32-strip unit to 1/16-strip unit
+      emtf_bend = np.sign(emtf_bend) * (np.abs(emtf_bend)/2)  # from 1/32-strip unit to 1/16-strip unit
     #elif hit.type == kGEM:
     #  emtf_bend *= hit.endcap
     elif hit.type == kME0:
@@ -354,7 +354,8 @@ class EMTFPhi(object):
           bend_corr_lut = (-1.3774, 1.2447)  # ME1/2 (r,f)
         else:
           bend_corr_lut = (-0, 0)            # ME1/3 (r,f): no correction
-        bend_corr = bend_corr_lut[int(hit.fr)] * hit.bend
+        bend_corr = bend_corr_lut[int(hit.fr)]
+        bend_corr *= hit.bend
         bend_corr *= hit.endcap
         emtf_phi += int(round(bend_corr))
       else:
@@ -755,6 +756,10 @@ class Road(object):
     self.phi_median = phi_median
     self.theta_median = theta_median
 
+  @property
+  def zone(self):
+    return self.id[3]
+
   def to_variables(self):
     # Convert into an entry in a numpy array
     # At the moment, each entry carries (nlayers * (9+1)) + 4 values
@@ -780,7 +785,7 @@ class Road(object):
     return arr
 
 class Track(object):
-  def __init__(self, _id, hits, mode, quality, zone, xml_pt, pt, q, ndof, chi2, emtf_phi, emtf_theta):
+  def __init__(self, _id, hits, mode, quality, zone, xml_pt, pt, q, y_pred, y_discr, emtf_phi, emtf_theta):
     assert(pt > 0.)
     self.id = _id  # (endcap, sector, ipt, ieta, iphi)
     self.hits = hits
@@ -790,8 +795,8 @@ class Track(object):
     self.xml_pt = xml_pt
     self.pt = pt
     self.q = q
-    self.ndof = ndof
-    self.chi2 = chi2
+    self.y_pred = y_pred
+    self.y_discr = y_discr
     self.emtf_phi = emtf_phi
     self.emtf_theta = emtf_theta
     self.phi = calc_phi_glob_deg(calc_phi_loc_deg(emtf_phi), _id[1])
@@ -1032,10 +1037,7 @@ class PatternRecognition(object):
 
       # Loop over the zones that the hit is belong to
       for hit_zone in hit_zones:
-        if self.omtf_input:
-          if hit_zone != 6:  # only zone 6
-            continue
-        else:
+        if not self.omtf_input:
           if hit_zone == 6:  # ignore zone 6
             continue
 
@@ -1119,6 +1121,7 @@ class PatternRecognition(object):
 
         # Apply patterns to the sector hits
         sector_roads = self._apply_patterns(endcap, sector, sector_hits)
+        sector_roads.sort(key=lambda x: x.id)
         roads += sector_roads
     return roads
 
@@ -1305,9 +1308,9 @@ class RoadSlimming(object):
             neg_qual = -np.abs(hit.emtf_qual)
             sort_criteria.append((ihit, dphi, dtheta, neg_qual))
 
-        # Find the best hit, which is (max qual, min dtheta, min dphi)
+        # Find the best hit, which is (max qual, min dtheta, min dphi, min ihit)
         if sort_criteria:
-          best_ihit = min(sort_criteria, key=lambda x: (x[3], x[2], x[1]))[0]
+          best_ihit = min(sort_criteria, key=lambda x: (x[3], x[2], x[1], x[0]))[0]
           best_hit = road.hits[best_ihit]
           slim_road_hits.append(best_hit)
 
@@ -1442,21 +1445,21 @@ class TrackProducer(object):
 
     def digitize(x, bins=(self.s_nbins, self.s_min, self.s_max)):
       x = np.clip(x, bins[1], bins[2]-1e-5)
-      binx = (x - bins[1]) / (bins[2] - bins[1]) * bins[0]
-      return binx.astype(np.int32)
+      x = (x - bins[1]) / (bins[2] - bins[1]) * bins[0]
+      binx = x.astype(np.int32)
+      if binx == bins[0]-1:  # avoid boundary
+        binx -= 1
+      return binx
 
     def interpolate(x, x0, x1, y0, y1):
       y = (x - x0) / (x1 - x0) * (y1 - y0) + y0
       return y
 
     binx = digitize(xml_pt)
-    if binx == self.s_nbins-1:  # avoid boundary
-      binx -= 1
-
     x0, x1 = binx * self.s_step, (binx+1) * self.s_step
     y0, y1 = self.s_lut[binx], self.s_lut[binx+1]
-    pt = interpolate(xml_pt, x0, x1, y0, y1)
-    return pt
+    trg_pt = interpolate(xml_pt, x0, x1, y0, y1)
+    return trg_pt
 
   def pass_trigger(self, ndof, mode, strg, zone, theta_median, y_pred, y_discr):
     ipt1 = strg
@@ -1545,7 +1548,7 @@ class TrackProducer(object):
         pt = self.get_trigger_pt(y_pred)
 
         trk_q = np.sign(y_pred)
-        trk = Track(myroad.id, myroad.hits, mode, myroad.quality, zone, xml_pt, pt, trk_q, ndof, y_discr, phi_median, theta_median)
+        trk = Track(myroad.id, myroad.hits, mode, myroad.quality, zone, xml_pt, pt, trk_q, y_pred, y_discr, phi_median, theta_median)
         tracks.append(trk)
     return tracks
 
@@ -1558,30 +1561,51 @@ class GhostBusting(object):
   def run(self, tracks):
     tracks_after_gb = []
 
-    # Sort by (zone, chi2)
+    # Sort by (zone, y_discr)
     # zone is reordered such that zone 6 has the lowest priority.
-    tracks.sort(key=lambda track: ((track.zone+1) % 7, track.chi2), reverse=True)
+    tracks.sort(key=lambda track: ((track.zone+1) % 7, track.y_discr), reverse=True)
+
+    def get_gb_endsec(hit):
+      tmp_endsec = hit.endsec
+      if hit.emtf_phi < (22*60):
+        if (hit.endsec == 0) or (hit.endsec == 6):
+          tmp_endsec += 5
+        elif (1 <= hit.endsec <= 5) or (7 <= hit.endsec <= 11):
+          tmp_endsec -= 1
+      return tmp_endsec
+
+    def get_gb_emtf_phi(hit):
+      tmp_emtf_phi = hit.emtf_phi
+      if hit.emtf_phi < (22*60):
+        tmp_emtf_phi += (60*60)
+      return tmp_emtf_phi
+
+    def get_gb_track_endsec(trk):
+      return find_endsec(trk.id[0], trk.id[1])
 
     # Loop over the sorted tracks and remove duplicates (ghosts)
     for i in xrange(len(tracks)):
       keep = True
 
       # Do not share ME1/1, ME1/2, ME0, MB1, MB2
-      #CUIDADO: not checking for neighbor hits
+      # Need to check for neighbor sector hits
       if keep:
         track_i = tracks[i]
-        hits_i = [(hit.endsec*100 + hit.emtf_layer, hit.emtf_phi) for hit in track_i.hits if hit.emtf_layer in (0,1,11,12,13)]
+        hits_i = [(get_gb_endsec(hit)*100 + hit.emtf_layer, get_gb_emtf_phi(hit)) for hit in track_i.hits if hit.emtf_layer in (0,1,11,12,13)]
 
         for j in xrange(i):
           track_j = tracks[j]
-          hits_j = [(hit.endsec*100 + hit.emtf_layer, hit.emtf_phi) for hit in track_j.hits if hit.emtf_layer in (0,1,11,12,13)]
+          hits_j = [(get_gb_endsec(hit)*100 + hit.emtf_layer, get_gb_emtf_phi(hit)) for hit in track_j.hits if hit.emtf_layer in (0,1,11,12,13)]
           if set(hits_i).intersection(hits_j):  # has sharing
             keep = False
             break
 
       if keep:
         track_i = tracks[i]
-        tracks_after_gb.append(track_i)
+
+        # Output tracks following the order of sector processors
+        ind = np.searchsorted([get_gb_track_endsec(x) for x in tracks_after_gb], get_gb_track_endsec(track_i))
+        tracks_after_gb.insert(ind, track_i)
     return tracks_after_gb
 
 
@@ -1692,8 +1716,8 @@ class RoadsAnalysis(object):
       if ievt < 20 or (len(clean_roads) == 0 and is_important(part) and is_possible(evt.hits)):
         print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
         print(".. part invpt: {0} pt: {1} eta: {2} phi: {3}".format(part.invpt, part.pt, part.eta, part.phi))
-        part.ipt = find_pt_bin(part.invpt)
-        part.ieta = find_eta_bin(part.eta)
+        #part.ipt = find_pt_bin(part.invpt)
+        #part.ieta = find_eta_bin(part.eta)
         #part.exphi = emtf_extrapolation(part)
         #part.sector = find_sector(part.exphi)
         #part.endcap = find_endcap(part.eta)
@@ -1705,17 +1729,17 @@ class RoadsAnalysis(object):
         for ihit, hit in enumerate(evt.hits):
           hit_id = (hit.type, hit.station, hit.ring, find_endsec(hit.endcap, hit.sector), hit.fr, hit.bx)
           hit_sim_tp = hit.sim_tp1
-          print(".. .. hit {0} id: {1} lay: {2} ph: {3} ({4}) th: {5} bd: {6} qual: {7} tp: {8}".format(ihit, hit_id, find_emtf_layer(hit), hit.emtf_phi, find_pattern_x(hit.emtf_phi), hit.emtf_theta, find_emtf_bend(hit), find_emtf_qual(hit), hit_sim_tp))
-        for iroad, myroad in enumerate(sorted(roads, key=lambda x: x.id)):
+          print(".. hit {0} id: {1} lay: {2} ph: {3} ({4}) th: {5} bd: {6} ql: {7} tp: {8}".format(ihit, hit_id, find_emtf_layer(hit), hit.emtf_phi, find_pattern_x(hit.emtf_phi), hit.emtf_theta, find_emtf_bend(hit), find_emtf_qual(hit), hit_sim_tp))
+        for iroad, myroad in enumerate(roads):
           print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
         for iroad, myroad in enumerate(clean_roads):
           print(".. croad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
           for ihit, myhit in enumerate(myroad.hits):
-            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
+            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta))
         for iroad, myroad in enumerate(slim_roads):
           print(".. sroad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
           for ihit, myhit in enumerate(myroad.hits):
-            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
+            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta))
 
       # Quick efficiency
       if is_important(part):
@@ -1794,7 +1818,7 @@ class RatesAnalysis(object):
 
     # Workers
     bank = PatternBank(bankfile)
-    recog1, recog2 = PatternRecognition(bank, omtf_input=False, run2_input=run2_input), PatternRecognition(bank, omtf_input=True, run2_input=run2_input)
+    recog = PatternRecognition(bank, omtf_input=omtf_input, run2_input=run2_input)
     clean = RoadCleaning()
     slim = RoadSlimming(bank)
     ptassig1, ptassig2 = PtAssignment(kerasfile, omtf_input=False, run2_input=run2_input), PtAssignment(kerasfile, omtf_input=True, run2_input=run2_input)
@@ -1810,24 +1834,24 @@ class RatesAnalysis(object):
       if n != -1 and ievt == n:
         break
 
-      # EMTF mode
-      roads = recog1.run(evt.hits)
+      roads = recog.run(evt.hits)
       clean_roads = clean.run(roads)
       slim_roads = slim.run(clean_roads)
-      variables = roads_to_variables(slim_roads)
-      variables, predictions, x_mask_vars, x_road_vars = ptassig1.run(variables)
-      tracks = trkprod1.run(slim_roads, variables, predictions, x_mask_vars, x_road_vars)
+
+      # EMTF mode
+      slim_roads1 = [road for road in slim_roads if road.zone != 6]  # ignore zone 6
+      variables1 = roads_to_variables(slim_roads1)
+      variables1, predictions1, x_mask_vars1, x_road_vars1 = ptassig1.run(variables1)
+      tracks1 = trkprod1.run(slim_roads1, variables1, predictions1, x_mask_vars1, x_road_vars1)
 
       # OMTF mode
-      roads2 = recog2.run(evt.hits)
-      clean_roads2 = clean.run(roads2)
-      slim_roads2 = slim.run(clean_roads2)
+      slim_roads2 = [road for road in slim_roads if road.zone == 6]  # only zone 6
       variables2 = roads_to_variables(slim_roads2)
       variables2, predictions2, x_mask_vars2, x_road_vars2 = ptassig2.run(variables2)
       tracks2 = trkprod2.run(slim_roads2, variables2, predictions2, x_mask_vars2, x_road_vars2)
 
       # Ghost busting
-      emtf2026_tracks = ghost.run(tracks + tracks2)
+      emtf2026_tracks = ghost.run(tracks1 + tracks2)
 
       found_high_pt_tracks = any(map(lambda trk: trk.pt > 14., emtf2026_tracks))
 
@@ -1840,13 +1864,14 @@ class RatesAnalysis(object):
         for iroad, myroad in enumerate(clean_roads):
           print(".. croad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
           #for ihit, myhit in enumerate(myroad.hits):
-          #  print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
+          #  print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta))
         for itrk, mytrk in enumerate(emtf2026_tracks):
-          print(".. trk {0} id: {1} nhits: {2} mode: {3} pt: {4} ndof: {5} chi2: {6}".format(itrk, mytrk.id, len(mytrk.hits), mytrk.mode, mytrk.pt, mytrk.ndof, mytrk.chi2))
+          print(".. trk {0} id: {1} nhits: {2} mode: {3} pt: {4} y_pred: {5} y_discr: {6}".format(itrk, mytrk.id, len(mytrk.hits), mytrk.mode, mytrk.pt, mytrk.y_pred, mytrk.y_discr))
           for ihit, myhit in enumerate(mytrk.hits):
-            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
+            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta))
         for itrk, mytrk in enumerate(evt.tracks):
-          print(".. otrk {0} id: {1} mode: {2} pt: {3}".format(itrk, (mytrk.endcap, mytrk.sector), mytrk.mode, mytrk.pt))
+          nhits = sum([bool(mytrk.mode & (1<<3)), bool(mytrk.mode & (1<<2)), bool(mytrk.mode & (1<<1)), bool(mytrk.mode & (1<<0))])
+          print(".. otrk {0} id: {1} nhits: {2} mode: {3} pt: {4}".format(itrk, (mytrk.endcap, mytrk.sector), nhits, mytrk.mode, mytrk.pt))
 
       # ________________________________________________________________________
       # Fill histograms
@@ -1995,7 +2020,7 @@ class EffieAnalysis(object):
 
     # Workers
     bank = PatternBank(bankfile)
-    recog1, recog2 = PatternRecognition(bank, omtf_input=False, run2_input=run2_input), PatternRecognition(bank, omtf_input=True, run2_input=run2_input)
+    recog = PatternRecognition(bank, omtf_input=omtf_input, run2_input=run2_input)
     clean = RoadCleaning()
     slim = RoadSlimming(bank)
     ptassig1, ptassig2 = PtAssignment(kerasfile, omtf_input=False, run2_input=run2_input), PtAssignment(kerasfile, omtf_input=True, run2_input=run2_input)
@@ -2017,24 +2042,24 @@ class EffieAnalysis(object):
       part = evt.particles[0]  # particle gun
       part.invpt = np.true_divide(part.q, part.pt)
 
-      # EMTF mode
-      roads = recog1.run(evt.hits)
+      roads = recog.run(evt.hits)
       clean_roads = clean.run(roads)
       slim_roads = slim.run(clean_roads)
-      variables = roads_to_variables(slim_roads)
-      variables, predictions, x_mask_vars, x_road_vars = ptassig1.run(variables)
-      tracks = trkprod1.run(slim_roads, variables, predictions, x_mask_vars, x_road_vars)
+
+      # EMTF mode
+      slim_roads1 = [road for road in slim_roads if road.zone != 6]  # ignore zone 6
+      variables1 = roads_to_variables(slim_roads1)
+      variables1, predictions1, x_mask_vars1, x_road_vars1 = ptassig1.run(variables1)
+      tracks1 = trkprod1.run(slim_roads1, variables1, predictions1, x_mask_vars1, x_road_vars1)
 
       # OMTF mode
-      roads2 = recog2.run(evt.hits)
-      clean_roads2 = clean.run(roads2)
-      slim_roads2 = slim.run(clean_roads2)
+      slim_roads2 = [road for road in slim_roads if road.zone == 6]  # only zone 6
       variables2 = roads_to_variables(slim_roads2)
       variables2, predictions2, x_mask_vars2, x_road_vars2 = ptassig2.run(variables2)
       tracks2 = trkprod2.run(slim_roads2, variables2, predictions2, x_mask_vars2, x_road_vars2)
 
       # Ghost busting
-      emtf2026_tracks = ghost.run(tracks + tracks2)
+      emtf2026_tracks = ghost.run(tracks1 + tracks2)
 
       if ievt < 20 and False:
         print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2026_tracks)))
@@ -2294,12 +2319,10 @@ class MixingAnalysis(object):
 
         if ievt < 20 or ((ievt in debug_event_list) and not training_phase):
           print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), '?'))
-          #for iroad, myroad in enumerate(sorted(roads, key=lambda x: x.id)):
-          #  print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
           for iroad, myroad in enumerate(clean_roads):
             print(".. croad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
             for ihit, myhit in enumerate(myroad.hits):
-              print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
+              print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta))
 
     # End loop over events
     unload_tree()
@@ -2408,7 +2431,7 @@ class CollusionAnalysis(object):
         for iroad, myroad in enumerate(slim_roads):
           print(".. sroad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
           for ihit, myhit in enumerate(myroad.hits):
-            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
+            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta))
         if myroad_0 is not None and myroad_1 is not None:
           for iroad, myroad in enumerate([myroad_0, myroad_1]):
             print(".. sroad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
@@ -2721,6 +2744,21 @@ def load_pgun_batch_omtf(j):
   #tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
   return tree
 
+def load_pgun_test():
+  global infile_r
+  infile = 'ntuple_SingleMuon_Endcap.root'
+  infile_r = root_open(infile)
+  tree = infile_r.ntupler.tree
+  print('[INFO] Opening file: %s' % infile)
+
+  # Define collection
+  tree.define_collection(name='hits', prefix='vh_', size='vh_size')
+  tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
+  tree.define_collection(name='particles', prefix='vp_', size='vp_size')
+  #tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
+  return tree
+
+# ______________________________________________________________________________
 def load_minbias_batch(j, pileup=200):
   global infile_r
   if pileup == 140:
@@ -2783,6 +2821,20 @@ def load_minbias_batch_for_collusion(j):
   pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU200/SingleMu_FlatPt-2to100/CRAB3/190416_160951/0000/ntuple_SingleMuon_PU200_%i.root' % (i+1) for i in xrange(26)]
 
   infile = pufiles[j]
+  infile_r = root_open(infile)
+  tree = infile_r.ntupler.tree
+  print('[INFO] Opening file: %s' % infile)
+
+  # Define collection
+  tree.define_collection(name='hits', prefix='vh_', size='vh_size')
+  tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
+  tree.define_collection(name='particles', prefix='vp_', size='vp_size')
+  tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
+  return tree
+
+def load_minbias_test():
+  global infile_r
+  infile = 'ntuple_SingleNeutrino_PU200.root'
   infile_r = root_open(infile)
   tree = infile_r.ntupler.tree
   print('[INFO] Opening file: %s' % infile)
