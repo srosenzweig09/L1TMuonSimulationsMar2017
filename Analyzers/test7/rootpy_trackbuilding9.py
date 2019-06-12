@@ -1,7 +1,7 @@
 import numpy as np
 np.random.seed(2026)
 
-import os, sys
+import os, sys, datetime
 from six.moves import range, zip, map, filter
 
 from rootpy.plotting import Hist, Hist2D, Graph, Efficiency
@@ -50,10 +50,18 @@ def delta_theta(lhs, rhs):  # in radians
   return rad
 
 def range_phi_deg(deg):
-  while deg <  -180.:
+  while deg < -180.:
     deg += 360.
   while deg >= +180.:
     deg -= 360.
+  return deg
+
+def range_theta_deg(deg):
+  deg = np.abs(deg)
+  while deg >= 180.:
+    deg -= 180.
+  if deg >= 180./2:
+    deg = 180. - deg
   return deg
 
 def calc_phi_loc_deg_from_glob(glob, sector):
@@ -91,20 +99,27 @@ def calc_theta_int(theta, endcap):
   return theta_int
 
 def calc_theta_rad_from_eta(eta):
+  # returns theta in [0-pi] rad
   theta = np.arctan2(1.0, np.sinh(eta))
   return theta
 
 def calc_theta_deg_from_eta(eta):
+  # returns theta in [0-180] deg
   return np.rad2deg(calc_theta_rad_from_eta(eta))
 
 def calc_theta_deg_from_int(theta_int):
   theta_deg = float(theta_int) * (45.0-8.5)/128. + 8.5;
   return theta_deg
 
+def calc_eta_from_theta_rad(theta_rad):
+  eta = -1. * np.log(np.tan(theta_rad/2.))
+  return eta
+
 def calc_eta_from_theta_deg(theta_deg, endcap):
   # theta in deg, endcap [-1,+1]
+  theta_deg = range_theta_deg(theta_deg)
   theta_rad = np.deg2rad(theta_deg)
-  eta = -1. * np.log(np.tan(theta_rad/2.))
+  eta = calc_eta_from_theta_rad(theta_rad)
   if endcap == -1:
     eta = -eta
   return eta
@@ -203,13 +218,13 @@ class EMTFZone(object):
   def __init__(self):
     lut = np.zeros((5,5,5,7,2), dtype=np.int32) - 99  # (type, station, ring) -> [zone] x [min_theta,max_theta]
     lut[1,1,4][0] = 4,17    # ME1/1a
-    lut[1,1,4][1] = 16,25   # ME1/1a
-    lut[1,1,4][2] = 24,36   # ME1/1a
+    lut[1,1,4][1] = 16,26   # ME1/1a
+    lut[1,1,4][2] = 24,37   # ME1/1a
     lut[1,1,4][3] = 34,45   # ME1/1a
     lut[1,1,4][4] = 41,53   # ME1/1a
     lut[1,1,1][0] = 4,17    # ME1/1b
-    lut[1,1,1][1] = 16,25   # ME1/1b
-    lut[1,1,1][2] = 24,36   # ME1/1b
+    lut[1,1,1][1] = 16,26   # ME1/1b
+    lut[1,1,1][2] = 24,37   # ME1/1b
     lut[1,1,1][3] = 34,45   # ME1/1b
     lut[1,1,1][4] = 41,53   # ME1/1b
     lut[1,1,2][4] = 46,54   # ME1/2
@@ -687,7 +702,8 @@ class Particle(object):
   def to_parameters(self):
     # Convert into an entry in a numpy array
     # (q/pT, phi, eta, vx, vy, vz)
-    parameters = np.array((np.true_divide(self.q, self.pt), self.phi, self.eta, self.vx, self.vy, self.vz), dtype=np.float32)
+    parameters = np.array((np.true_divide(self.q, self.pt) if self.pt > 0. else 0.,
+                           self.phi, self.eta, self.vx, self.vy, self.vz), dtype=np.float32)
     return parameters
 
 class PatternBank(object):
@@ -786,7 +802,6 @@ class Road(object):
 
 class Track(object):
   def __init__(self, _id, hits, mode, quality, zone, xml_pt, pt, q, y_pred, y_discr, emtf_phi, emtf_theta):
-    assert(pt > 0.)
     self.id = _id  # (endcap, sector, ipt, ieta, iphi)
     self.hits = hits
     self.mode = mode
@@ -931,9 +946,9 @@ class PatternRecognition(object):
       if _type == kCSC or _type == kME0:
         road_mode_csc |= (1 << (4 - station))
 
-      if _type == kME0:
+      if _type == kME0 and bx == 0:
         road_mode_me0 |= (1 << 1)
-      elif _type == kCSC and station == 1 and (ring == 1 or ring == 4):
+      elif _type == kCSC and station == 1 and (ring == 1 or ring == 4) and bx == 0:
         road_mode_me0 |= (1 << 0)
 
       if _type == kCSC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
@@ -1135,17 +1150,17 @@ class RoadCleaning(object):
 
   def select_bx_zero(self, road):
     bx_counter1 = 0  # count hits with BX <= -1
-    bx_counter2 = 0  # count hits with BX <= 0
-    bx_counter3 = 0  # count hits with BX > 0
+    bx_counter2 = 0  # count hits with BX == 0
+    bx_counter3 = 0  # count hits with BX >= +1
     layer_has_been_used = set()
     for hit in road.hits:
       if hit.emtf_layer not in layer_has_been_used:
         layer_has_been_used.add(hit.emtf_layer)
         if hit.bx <= -1:
           bx_counter1 += 1
-        if hit.bx <= 0:
+        elif hit.bx == 0:
           bx_counter2 += 1
-        if hit.bx > 0:
+        elif hit.bx >= +1:
           bx_counter3 += 1
     #trk_bx_zero = (bx_counter1 < 2 and bx_counter2 >= 2)
     trk_bx_zero = (bx_counter1 <= 3 and bx_counter2 >= 2 and bx_counter3 <= 2)
@@ -1459,6 +1474,7 @@ class TrackProducer(object):
     x0, x1 = binx * self.s_step, (binx+1) * self.s_step
     y0, y1 = self.s_lut[binx], self.s_lut[binx+1]
     trg_pt = interpolate(xml_pt, x0, x1, y0, y1)
+    assert(trg_pt > 2.)
     return trg_pt
 
   def pass_trigger(self, ndof, mode, strg, zone, theta_median, y_pred, y_discr):
@@ -1563,7 +1579,7 @@ class GhostBusting(object):
 
     # Sort by (zone, y_discr)
     # zone is reordered such that zone 6 has the lowest priority.
-    tracks.sort(key=lambda track: ((track.zone+1) % 7, track.y_discr), reverse=True)
+    tracks.sort(key=lambda trk: ((trk.zone+1) % 7, trk.y_discr), reverse=True)
 
     def get_gb_endsec(hit):
       tmp_endsec = hit.endsec
@@ -1607,6 +1623,179 @@ class GhostBusting(object):
         ind = np.searchsorted([get_gb_track_endsec(x) for x in tracks_after_gb], get_gb_track_endsec(track_i))
         tracks_after_gb.insert(ind, track_i)
     return tracks_after_gb
+
+
+# Track-muon correlation module (stolen from Luca Cadamuro)
+#     https://github.com/cms-l1t-offline/cmssw/blob/phase2-l1t-integration-CMSSW_10_6_0_pre4/L1Trigger/L1TTrackMatch/interface/L1TkMuCorrDynamicWindows.h
+#     https://github.com/cms-l1t-offline/cmssw/blob/phase2-l1t-integration-CMSSW_10_6_0_pre4/L1Trigger/L1TTrackMatch/src/L1TkMuCorrDynamicWindows.cc
+class TrackMuonCorrelation(object):
+  def __init__(self):
+    self.nbins = 10
+    self.bounds = np.array([1.2, 1.32, 1.44, 1.56, 1.68, 1.80, 1.92, 2.04, 2.16, 2.28, 2.4])
+    assert(self.nbins == len(self.bounds) - 1)
+    self.wdws_theta_low = np.array([[ 4.79923815e-05,  1.11477748e+00, -4.36100776e+00],
+        [ 4.76547496e-05,  1.30626682e+00, -4.47946909e+00],
+        [ 3.88702599e-05,  1.07847842e-02, -2.08741238e+00],
+        [ 5.50922903e-05,  1.24764682e-02, -2.52101752e+00],
+        [ 4.29130452e-05,  5.31432059e-03, -2.47838073e+00],
+        [ 3.73882625e-05,  2.48981434e-02, -3.76262804e+00],
+        [ 3.94339036e-05,  2.25711663e-03, -2.09482927e+00],
+        [ 3.53218933e-05,  3.81800213e-03, -2.42685936e+00],
+        [ 3.32497695e-05,  1.48507367e-03, -1.96501655e+00],
+        [ 3.08852091e-05,  1.98481558e-04, -1.52815772e+00]])
+    self.wdws_theta_high = np.array([[ 0.01903233,  1.97695079, -2.36484047],
+        [ 0.01966801,  0.69875118, -2.00514994],
+        [ 0.01892556,  3.66943194, -3.64089329],
+        [ 0.0313301 ,  2.16616408, -3.71565459],
+        [ 0.01083814,  0.84843492, -2.57721512],
+        [ 0.00970201,  0.88381948, -2.7597685 ],
+        [ 0.00903627,  0.45407709, -2.3725132 ],
+        [ 0.00861844,  0.52564379, -2.78619319],
+        [ 0.00859521,  0.34854964, -2.73653931],
+        [ 0.00869175,  0.15249032, -2.48836499]])
+    self.wdws_phi_low = np.array([[-0.0075419 ,  1.74123017, -0.9323213 ],
+        [-0.00683917,  1.53584358, -0.92535413],
+        [-0.0068088 ,  1.34743112, -0.92021707],
+        [-0.00567192,  1.27380128, -0.96340742],
+        [-0.00495206,  1.07889352, -0.95354641],
+        [-0.00425003,  0.98413841, -0.97426287],
+        [-0.00351819,  0.81611635, -0.96910175],
+        [-0.00327811,  0.73326577, -0.98882135],
+        [-0.00207991,  0.70757257, -1.05785262],
+        [-0.00195751,  0.59613818, -1.05113618]])
+    self.wdws_phi_high = np.array([[ 0.00545662,  3.15822435, -1.07035832],
+        [ 0.00527892,  2.77517297, -1.06546035],
+        [ 0.00627204,  2.53025862, -1.08257935],
+        [ 0.01319276,  2.75629254, -1.17128402],
+        [ 0.00787062,  2.23080756, -1.11062574],
+        [ 0.01025787,  2.26098631, -1.17457624],
+        [ 0.00872535,  1.96370858, -1.15916893],
+        [ 0.01002838,  1.86365365, -1.19649265],
+        [ 0.00980687,  1.79091689, -1.23450375],
+        [ 0.01045059,  1.76763996, -1.28661338]])
+    self.safety_factor_l = 0.7  # default: 0.5
+    self.safety_factor_h = 0.7  # default: 0.5
+    self.initial_sf_l = 0.1  # default: 0.0
+    self.initial_sf_h = 0.1  # default: 0.0
+    self.pt_start = 2.0
+    self.pt_end = 8.0  # default: 6.0
+    self.do_relax_factor = True
+
+  def run(self, particles, tracks):
+    matched = np.zeros((len(particles), len(tracks)), dtype=np.bool)
+
+    def sf_progressive(x, xstart, xstop, ystart, ystop):
+      if (x < xstart):
+        return ystart
+      elif (x >= xstop):
+        return ystop
+      else:
+        return ystart + (x-xstart)*(ystop-ystart)/(xstop-xstart)
+
+    def get_ibin(eta):
+      ieta = np.digitize((abs(eta),), self.bounds[1:])[0]  # skip lowest edge
+      if ieta > self.nbins-1:
+        ieta = self.nbins-1
+      return ieta
+
+    def get_theta_bound_low(part_eta, part_pt):
+      # [Const]+[A]*TMath::Power(x,[B])
+      f = lambda x, a, b, c: a + b * np.power(np.clip(x, 2., 100.), c)
+      a, b, c = self.wdws_theta_low[get_ibin(part_eta)]
+      return f(part_pt, a, b, c)
+
+    def get_theta_bound_high(part_eta, part_pt):
+      # [Const]+[A]*TMath::Power(x,[B])
+      f = lambda x, a, b, c: a + b * np.power(np.clip(x, 2., 100.), c)
+      a, b, c = self.wdws_theta_high[get_ibin(part_eta)]
+      return f(part_pt, a, b, c)
+
+    def get_phi_bound_low(part_eta, part_pt):
+      # [Const]+[A]*TMath::Power(x,[B])
+      f = lambda x, a, b, c: a + b * np.power(np.clip(x, 2., 100.), c)
+      a, b, c = self.wdws_phi_low[get_ibin(part_eta)]
+      return f(part_pt, a, b, c)
+
+    def get_phi_bound_high(part_eta, part_pt):
+      # [Const]+[A]*TMath::Power(x,[B])
+      f = lambda x, a, b, c: a + b * np.power(np.clip(x, 2., 100.), c)
+      a, b, c = self.wdws_phi_high[get_ibin(part_eta)]
+      return f(part_pt, a, b, c)
+
+    # Loop over tracking particles
+    for ipart, part in enumerate(particles):
+      part.invpt = np.true_divide(part.q, part.pt)
+      part.d0 = calculate_d0(part.invpt, part.phi, part.vx, part.vy)
+
+      # Skip particles that are not (BX=0, |eta|>1, |d0|<10 cm, |z0|<100 cm)
+      if not ((part.bx == 0) and (np.abs(part.eta) > 1.) and (np.abs(part.d0) < 10.) and (np.abs(part.vz) < 100.)):
+        continue
+
+      # Get boundaries
+      if self.do_relax_factor:
+        sf_l = sf_progressive(part.pt, self.pt_start, self.pt_end, self.initial_sf_l, self.safety_factor_l)
+        sf_h = sf_progressive(part.pt, self.pt_start, self.pt_end, self.initial_sf_h, self.safety_factor_h)
+      else:
+        sf_l = self.safety_factor_l
+        sf_h = self.safety_factor_h
+
+      theta_bound_low = (1 - sf_l) * get_theta_bound_low(part.eta, part.pt)
+      theta_bound_high = (1 + sf_h) * get_theta_bound_high(part.eta, part.pt)
+      phi_bound_low = (1 - sf_l) * get_phi_bound_low(part.eta, part.pt)
+      phi_bound_high = (1 + sf_h) * get_phi_bound_high(part.eta, part.pt)
+
+      # Luca uses 0.004 rad in phi & theta
+      if theta_bound_low < 0.004:
+        theta_bound_low = -1.  # disable check
+      if phi_bound_low < 0.004:
+        phi_bound_low = -1.  # disable check
+      assert(theta_bound_high > 0.004 and phi_bound_high > 0.004)
+      assert(theta_bound_low < theta_bound_high and phi_bound_low < phi_bound_high)
+
+      # Loop over standalone muons
+      for itrk, trk in enumerate(tracks):
+        emtf_theta_glob = calc_theta_rad_from_eta(trk.eta)  # in radians
+        emtf_phi_glob = np.deg2rad(trk.phi)  # in radians
+
+        # Calculate deltas
+        dtheta = np.abs(delta_theta(emtf_theta_glob, part.theta))
+        tmp_dphi = delta_phi(emtf_phi_glob, part.phi)
+        dphi = np.abs(tmp_dphi)
+        dphi_sign = -1 if tmp_dphi < 0 else +1
+        if part.pt > 100.:
+          dphi_sign = -part.q  # disable check
+
+        matched[ipart, itrk] = (
+            (theta_bound_low < dtheta <= theta_bound_high) and \
+            (phi_bound_low < dphi <= phi_bound_high) and \
+            ((dphi_sign * part.q) < 0) and \
+            ((trk.eta * part.eta) > 0)
+        )
+
+    # Make sure the matching is unique
+    for ipart in xrange(matched.shape[0]):
+      if matched[ipart, :].any():
+        # find the first track match set to True, then set all the following track matches to False
+        for itrk in xrange(matched.shape[1]):
+          if matched[ipart, itrk]:
+            matched[ipart, itrk+1:] = False
+            break
+
+    for itrk in xrange(matched.shape[1]):
+      if matched[:, itrk].any():
+        # now find the highest-pT track match, then set the other track matches to False
+        highest_pt = -999999.
+        highest_pt_ipart = -999
+        for ipart in xrange(matched.shape[0]):
+          if matched[ipart, itrk]:
+            part = particles[ipart]
+            if highest_pt < part.pt:
+              highest_pt = part.pt
+              highest_pt_ipart = ipart
+        assert(highest_pt_ipart >= 0)
+        matched[:, itrk] = False
+        matched[highest_pt_ipart, itrk] = True
+    return matched
 
 
 # ______________________________________________________________________________
@@ -1715,7 +1904,7 @@ class RoadsAnalysis(object):
 
       if ievt < 20 or (len(clean_roads) == 0 and is_important(part) and is_possible(evt.hits)):
         print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
-        print(".. part invpt: {0} pt: {1} eta: {2} phi: {3}".format(part.invpt, part.pt, part.eta, part.phi))
+        print(".. part invpt: {0} pt: {1} phi: {2} eta: {3} theta: {4}".format(part.invpt, part.pt, part.phi, part.eta, part.theta))
         #part.ipt = find_pt_bin(part.invpt)
         #part.ieta = find_eta_bin(part.eta)
         #part.exphi = emtf_extrapolation(part)
@@ -1735,11 +1924,11 @@ class RoadsAnalysis(object):
         for iroad, myroad in enumerate(clean_roads):
           print(".. croad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
           for ihit, myhit in enumerate(myroad.hits):
-            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta))
+            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
         for iroad, myroad in enumerate(slim_roads):
           print(".. sroad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
           for ihit, myhit in enumerate(myroad.hits):
-            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta))
+            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
 
       # Quick efficiency
       if is_important(part):
@@ -1824,6 +2013,7 @@ class RatesAnalysis(object):
     ptassig1, ptassig2 = PtAssignment(kerasfile, omtf_input=False, run2_input=run2_input), PtAssignment(kerasfile, omtf_input=True, run2_input=run2_input)
     trkprod1, trkprod2 = TrackProducer(omtf_input=False, run2_input=run2_input), TrackProducer(omtf_input=True, run2_input=run2_input)
     ghost = GhostBusting()
+    mucorr = TrackMuonCorrelation()
 
     # Event range
     n = -1
@@ -1850,8 +2040,9 @@ class RatesAnalysis(object):
       variables2, predictions2, x_mask_vars2, x_road_vars2 = ptassig2.run(variables2)
       tracks2 = trkprod2.run(slim_roads2, variables2, predictions2, x_mask_vars2, x_road_vars2)
 
-      # Ghost busting
+      # Ghost busting & muon correlator
       emtf2026_tracks = ghost.run(tracks1 + tracks2)
+      emtf2026_matched = mucorr.run(evt.particles, emtf2026_tracks)
 
       found_high_pt_tracks = any(map(lambda trk: trk.pt > 14., emtf2026_tracks))
 
@@ -1860,15 +2051,15 @@ class RatesAnalysis(object):
         for ipart, part in enumerate(evt.particles):
           if part.pt > 5.:
             part.invpt = np.true_divide(part.q, part.pt)
-            print(".. part invpt: {0} pt: {1} eta: {2} phi: {3}".format(part.invpt, part.pt, part.eta, part.phi))
+            print(".. part invpt: {0} pt: {1} phi: {2} eta: {3} theta: {4}".format(part.invpt, part.pt, part.phi, part.eta, part.theta))
         for iroad, myroad in enumerate(clean_roads):
           print(".. croad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
           #for ihit, myhit in enumerate(myroad.hits):
-          #  print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta))
+          #  print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
         for itrk, mytrk in enumerate(emtf2026_tracks):
           print(".. trk {0} id: {1} nhits: {2} mode: {3} pt: {4} y_pred: {5} y_discr: {6}".format(itrk, mytrk.id, len(mytrk.hits), mytrk.mode, mytrk.pt, mytrk.y_pred, mytrk.y_discr))
           for ihit, myhit in enumerate(mytrk.hits):
-            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta))
+            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
         for itrk, mytrk in enumerate(evt.tracks):
           nhits = sum([bool(mytrk.mode & (1<<3)), bool(mytrk.mode & (1<<2)), bool(mytrk.mode & (1<<1)), bool(mytrk.mode & (1<<0))])
           print(".. otrk {0} id: {1} nhits: {2} mode: {3} pt: {4}".format(itrk, (mytrk.endcap, mytrk.sector), nhits, mytrk.mode, mytrk.pt))
@@ -1884,7 +2075,7 @@ class RatesAnalysis(object):
             if highest_pt < trk.pt:  # using scaled pT
               highest_pt = trk.pt
         if highest_pt > 0.:
-          highest_pt = min(100.-1e-3, highest_pt)
+          highest_pt = min(100.-1e-4, highest_pt)
           histograms[hname].fill(highest_pt)
 
       def fill_eta():
@@ -2004,8 +2195,10 @@ class EffieAnalysis(object):
           histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
           hname = "%s_eff_vs_geneta_allzones_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
-          #hname = "%s_eff_vs_geneta_genpt30_l1pt%i_%s" % (m,l,k)
-          #histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 30 GeV}", type='F')
+          hname = "%s_eff_vs_gend0_l1pt%i_%s" % (m,l,k)
+          histograms[hname] = Hist(80, 0, 120, name=hname, title="; gen |d_{0}| {gen p_{T} > 20 GeV}", type='F')
+          hname = "%s_eff_vs_gend0_allzones_l1pt%i_%s" % (m,l,k)
+          histograms[hname] = Hist(80, 0, 120, name=hname, title="; gen |d_{0}| {gen p_{T} > 20 GeV}", type='F')
 
       hname = "%s_l1pt_vs_genpt" % m
       histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -0.5, 0.5, name=hname, title="; gen q/p_{T} [1/GeV]; q/p_{T} [1/GeV]", type='F')
@@ -2026,6 +2219,7 @@ class EffieAnalysis(object):
     ptassig1, ptassig2 = PtAssignment(kerasfile, omtf_input=False, run2_input=run2_input), PtAssignment(kerasfile, omtf_input=True, run2_input=run2_input)
     trkprod1, trkprod2 = TrackProducer(omtf_input=False, run2_input=run2_input), TrackProducer(omtf_input=True, run2_input=run2_input)
     ghost = GhostBusting()
+    mucorr = TrackMuonCorrelation()
 
     # Event range
     n = -1
@@ -2041,6 +2235,7 @@ class EffieAnalysis(object):
 
       part = evt.particles[0]  # particle gun
       part.invpt = np.true_divide(part.q, part.pt)
+      part.d0 = calculate_d0(part.invpt, part.phi, part.vx, part.vy)
 
       roads = recog.run(evt.hits)
       clean_roads = clean.run(roads)
@@ -2058,15 +2253,18 @@ class EffieAnalysis(object):
       variables2, predictions2, x_mask_vars2, x_road_vars2 = ptassig2.run(variables2)
       tracks2 = trkprod2.run(slim_roads2, variables2, predictions2, x_mask_vars2, x_road_vars2)
 
-      # Ghost busting
+      # Ghost busting & muon correlator
       emtf2026_tracks = ghost.run(tracks1 + tracks2)
+      emtf2026_matched = mucorr.run(evt.particles, emtf2026_tracks)
 
       if ievt < 20 and False:
         print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2026_tracks)))
+        print(".. part invpt: {0} pt: {1} phi: {2} eta: {3} theta: {4}".format(part.invpt, part.pt, part.phi, part.eta, part.theta))
         for itrk, mytrk in enumerate(emtf2026_tracks):
-          y = np.true_divide(part.q, part.pt)
+          y_true = np.true_divide(part.q, part.pt)
           y_pred = np.true_divide(mytrk.q, mytrk.xml_pt)
-          print(".. {0} {1}".format(y, y_pred))
+          m = emtf2026_matched[:, itrk]
+          print(".. y_true: {0} y_pred: {1} m: {2}".format(y_true, y_pred, m.any()))
 
       # ________________________________________________________________________
       # Fill histograms
@@ -2085,7 +2283,6 @@ class EffieAnalysis(object):
           denom.fill(part.pt)
           if trigger_allzones:
             numer.fill(part.pt)
-
 
       def fill_efficiency_phi():
         if select_part(part):
@@ -2119,6 +2316,22 @@ class EffieAnalysis(object):
           if trigger_allzones:
             numer.fill(abs(part.eta))
 
+      def fill_efficiency_d0():
+        if (part.bx == 0):
+          trigger = any([select_track(trk) for trk in tracks])  # using scaled pT
+          denom = histograms[hname + "_denom"]
+          numer = histograms[hname + "_numer"]
+          denom.fill(abs(part.d0))
+          if trigger:
+            numer.fill(abs(part.d0))
+          #
+          trigger_allzones = any([select_track_allzones(trk) for trk in tracks])  # using scaled pT
+          denom = histograms[hname_allzones + "_denom"]
+          numer = histograms[hname_allzones + "_numer"]
+          denom.fill(abs(part.d0))
+          if trigger_allzones:
+            numer.fill(abs(part.d0))
+
       def fill_resolution():
         if (part.bx == 0):
           trigger = any([select_track(trk) for trk in tracks])  # using scaled pT
@@ -2144,6 +2357,9 @@ class EffieAnalysis(object):
           hname = "emtf_eff_vs_geneta_l1pt%i" % (l)
           hname_allzones = "emtf_eff_vs_geneta_allzones_l1pt%i" % (l)
           fill_efficiency_eta()
+          hname = "emtf_eff_vs_gend0_l1pt%i" % (l)
+          hname_allzones = "emtf_eff_vs_gend0_allzones_l1pt%i" % (l)
+          fill_efficiency_d0()
         if l == 0:
           hname1 = "emtf_l1pt_vs_genpt"
           hname2 = "emtf_l1ptres_vs_genpt"
@@ -2171,6 +2387,9 @@ class EffieAnalysis(object):
           hname = "emtf2026_eff_vs_geneta_l1pt%i" % (l)
           hname_allzones = "emtf2026_eff_vs_geneta_allzones_l1pt%i" % (l)
           fill_efficiency_eta()
+          hname = "emtf2026_eff_vs_gend0_l1pt%i" % (l)
+          hname_allzones = "emtf2026_eff_vs_gend0_allzones_l1pt%i" % (l)
+          fill_efficiency_d0()
         if l == 0:
           hname1 = "emtf2026_l1pt_vs_genpt"
           hname2 = "emtf2026_l1ptres_vs_genpt"
@@ -2214,6 +2433,10 @@ class EffieAnalysis(object):
             hnames.append(hname)
             hname = "%s_eff_vs_geneta_allzones_l1pt%i_%s" % (m,l,k)
             hnames.append(hname)
+            hname = "%s_eff_vs_gend0_l1pt%i_%s" % (m,l,k)
+            hnames.append(hname)
+            hname = "%s_eff_vs_gend0_allzones_l1pt%i_%s" % (m,l,k)
+            hnames.append(hname)
         hname = "%s_l1pt_vs_genpt" % m
         hnames.append(hname)
         hname = "%s_l1ptres_vs_genpt" % m
@@ -2235,13 +2458,15 @@ class MixingAnalysis(object):
     recog = PatternRecognition(bank, omtf_input=omtf_input, run2_input=run2_input)
     clean = RoadCleaning()
     slim = RoadSlimming(bank)
+    ghost = GhostBusting()
+    mucorr = TrackMuonCorrelation()
     out_particles = []
     out_roads = []
+    out_aux = []
 
     training_phase = (jobid < test_job)
     if training_phase:
-      #bx_shifts = [-2, -1, 0, +1, +2]  # makes the training worse. not sure why.
-      bx_shifts = [0]
+      bx_shifts = [+2, +1, 0, -1, -2]
     else:
       bx_shifts = [0]
 
@@ -2256,6 +2481,19 @@ class MixingAnalysis(object):
         hit.bx = hit.old_bx + bx_shift
       for part in particles:
         part.bx = part.old_bx + bx_shift
+
+    def make_tracks_without_pt(roads):
+      tracks = []
+      for myroad in roads:
+        mode = myroad.mode
+        zone = myroad.id[3]
+        phi_median = myroad.phi_median
+        theta_median = myroad.theta_median
+        xml_pt, pt, trk_q, y_pred, y_discr = 0, 0, 0, 0, 0
+        trk = Track(myroad.id, myroad.hits, mode, myroad.quality, zone, xml_pt, pt, trk_q, y_pred, y_discr, phi_median, theta_median)
+        trk.myroad = myroad
+        tracks.append(trk)
+      return tracks
 
     # Event range
     n = -1
@@ -2280,6 +2518,10 @@ class MixingAnalysis(object):
         slim_roads = slim.run(clean_roads)
         assert(len(clean_roads) == len(slim_roads))
 
+        tracks_without_pt = make_tracks_without_pt(slim_roads)
+        emtf2026_tracks = ghost.run(tracks_without_pt)
+        emtf2026_matched = mucorr.run(evt.particles, emtf2026_tracks)
+
         def find_highest_part_pt():
           highest_pt = -999999.
           for ipart, part in enumerate(evt.particles):
@@ -2287,8 +2529,8 @@ class MixingAnalysis(object):
               if highest_pt < part.pt:
                 highest_pt = part.pt
           if highest_pt > 0.:
-            highest_pt = min(100.-1e-3, highest_pt)
-            return highest_pt
+            highest_pt = min(100.-1e-4, highest_pt)
+          return highest_pt
 
         def find_highest_track_pt():
           highest_pt = -999999.
@@ -2297,8 +2539,8 @@ class MixingAnalysis(object):
               if highest_pt < trk.pt:  # using scaled pT
                 highest_pt = trk.pt
           if highest_pt > 0.:
-            highest_pt = min(100.-1e-3, highest_pt)
-            return highest_pt
+            highest_pt = min(100.-1e-4, highest_pt)
+          return highest_pt
 
         if omtf_input:
           select_part = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0)
@@ -2307,13 +2549,24 @@ class MixingAnalysis(object):
           select_part = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
           select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
 
-        highest_part_pt = find_highest_part_pt()
+        #highest_part_pt = find_highest_part_pt()
         highest_track_pt = find_highest_track_pt()
 
-        if len(slim_roads) > 0:
-          part = (jobid, ievt, highest_part_pt, highest_track_pt)
-          out_particles += [part for _ in xrange(len(slim_roads))]
-          out_roads += slim_roads
+        for itrk, mytrk in enumerate(emtf2026_tracks):
+          m = emtf2026_matched[:, itrk]
+          if m.any():
+            assert(np.squeeze(m.nonzero()).ndim == 0)
+            m_ipart = np.asscalar(np.squeeze(m.nonzero()))
+            m_part = evt.particles[m_ipart]
+            mypart = Particle(m_part.pt, m_part.eta, m_part.phi, m_part.q, m_part.vx, m_part.vy, m_part.vz)
+            highest_part_pt = m_part.pt
+          else:
+            mypart = Particle(0., 0., 0., -1, 0., 0., 0.)
+            highest_part_pt = -999999.
+          aux = (jobid, ievt, highest_part_pt, highest_track_pt)
+          out_particles.append(mypart)
+          out_roads.append(mytrk.myroad)
+          out_aux.append(aux)
 
         debug_event_list = set([2826, 2937, 3675, 4581, 4838, 5379, 7640])
 
@@ -2322,7 +2575,7 @@ class MixingAnalysis(object):
           for iroad, myroad in enumerate(clean_roads):
             print(".. croad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
             for ihit, myhit in enumerate(myroad.hits):
-              print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta))
+              print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
 
     # End loop over events
     unload_tree()
@@ -2335,9 +2588,11 @@ class MixingAnalysis(object):
     print('[INFO] Creating file: %s' % outfile)
     if True:
       assert(len(out_particles) == len(out_roads))
+      assert(len(out_particles) == len(out_aux))
+      parameters = particles_to_parameters(out_particles)
       variables = roads_to_variables(out_roads)
-      aux = np.array(out_particles, dtype=np.float32)
-      np.savez_compressed(outfile, variables=variables, aux=aux)
+      out_aux = np.array(out_aux, dtype=np.float32)
+      np.savez_compressed(outfile, parameters=parameters, variables=variables, aux=out_aux)
 
 
 # ______________________________________________________________________________
@@ -2345,6 +2600,7 @@ class MixingAnalysis(object):
 
 class CollusionAnalysis(object):
   def run(self, omtf_input=False, run2_input=False):
+    # Load tree
     tree = load_minbias_batch_for_collusion(jobid)
 
     # Workers
@@ -2371,7 +2627,7 @@ class CollusionAnalysis(object):
       myparticles_sim_tp = []
 
       # Select genParticles
-      select_part = lambda part: (part.status == 1)
+      select_part = lambda part: (part.status == 1) and (part.bx == 0) and (np.abs(part.eta) > 1.)
 
       for ipart, part in enumerate(evt.particles):
         if select_part(part):
@@ -2384,14 +2640,14 @@ class CollusionAnalysis(object):
 
       # Sanity check
       assert(len(myparticles) == 2)
+      assert(myparticles_sim_tp[0] == 0 and myparticles_sim_tp[1] == 1)
 
       roads = recog.run(evt.hits)
       clean_roads = clean.run(roads)
       slim_roads = slim.run(clean_roads)
       assert(len(clean_roads) == len(slim_roads))
 
-      myroad_0 = None
-      myroad_1 = None
+      myroad_0, myroad_1 = None, None
 
       # Match to genParticles
       for iroad, myroad in enumerate(slim_roads):
@@ -2416,7 +2672,7 @@ class CollusionAnalysis(object):
             elif (not myroad_1) and (myroad_sim_tp == myparticles_sim_tp[1]):
               myroad_1 = myroad
 
-      if not((myroad_0 is None) or (myroad_1 is None)):
+      if not ((myroad_0 is None) or (myroad_1 is None)):
         out_particles.append(myparticles[0])
         out_particles.append(myparticles[1])
         out_roads.append(myroad_0)
@@ -2427,14 +2683,14 @@ class CollusionAnalysis(object):
         for ipart, part in enumerate(evt.particles):
           if select_part(part):
             part.invpt = np.true_divide(part.q, part.pt)
-            print(".. part invpt: {0} pt: {1} eta: {2} phi: {3}".format(part.invpt, part.pt, part.eta, part.phi))
+            print(".. part invpt: {0} pt: {1} phi: {2} eta: {3} theta: {4}".format(part.invpt, part.pt, part.phi, part.eta, part.theta))
         for iroad, myroad in enumerate(slim_roads):
           print(".. sroad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
           for ihit, myhit in enumerate(myroad.hits):
-            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta))
-        if myroad_0 is not None and myroad_1 is not None:
+            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
+        if not ((myroad_0 is None) or (myroad_1 is None)):
           for iroad, myroad in enumerate([myroad_0, myroad_1]):
-            print(".. sroad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
+            print(".. sroad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format('+' if iroad==0 else '-', myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
 
     # End loop over events
     unload_tree()
@@ -2675,92 +2931,74 @@ def purge_bad_files(infiles):
       pass
   return good_files
 
-def load_pgun():
-  global infile_r
-  infile = 'ntuple_SingleMuon_Endcap_2GeV_add.5.root'
-  infile_r = root_open(infile)
-  tree = infile_r.ntupler.tree
-  print('[INFO] Opening file: %s' % infile)
-
-  # Define collection
+def define_collections(tree):
   tree.define_collection(name='hits', prefix='vh_', size='vh_size')
   tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
   tree.define_collection(name='particles', prefix='vp_', size='vp_size')
-  #tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
+  tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
+  return
+
+def load_tree_single(infile):
+  print('[INFO] Opening file: %s' % infile)
+  global infile_r
+  infile_r = root_open(infile)
+  tree = infile_r.ntupler.tree
+  define_collections(tree)
   return tree
 
-def load_pgun_batch(j):
-  #global infile_r
-  #infile_r = root_open('pippo.root', 'w')
+def load_tree_multiple(infiles):
+  print('[INFO] Opening file: %s' % ' '.join(infiles))
+  tree = TreeChain('ntupler/tree', infiles)
+  define_collections(tree)
+  return tree
 
-  jj = np.split(np.arange(100), 100)[j]
+def unload_tree():
+  global infile_r
+  try:
+    infile_r.close()
+  except:
+    pass
+
+# ______________________________________________________________________________
+def load_pgun():
+  infile = 'ntuple_SingleMuon_Endcap_2GeV_add.5.root'
+  return load_tree_single(infile)
+
+def load_pgun_batch(k):
+  jj = np.split(np.arange(100), 100)[k]
   infiles = []
   for j in jj:
     infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Endcap_2GeV/ParticleGuns/CRAB3/190416_194707/%04i/ntuple_SingleMuon_Endcap_%i.root' % ((j+1)/1000, (j+1)))
     infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Endcap2_2GeV/ParticleGuns/CRAB3/190416_194826/%04i/ntuple_SingleMuon_Endcap2_%i.root' % ((j+1)/1000, (j+1)))
-
-  tree = TreeChain('ntupler/tree', infiles)
-  print('[INFO] Opening file: %s' % ' '.join(infiles))
-
-  # Define collection
-  tree.define_collection(name='hits', prefix='vh_', size='vh_size')
-  tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
-  tree.define_collection(name='particles', prefix='vp_', size='vp_size')
-  #tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
-  return tree
+  return load_tree_multiple(infiles)
 
 def load_pgun_omtf():
-  global infile_r
   infile = 'ntuple_SingleMuon_Overlap_3GeV_add.5.root'
-  infile_r = root_open(infile)
-  tree = infile_r.ntupler.tree
-  print('[INFO] Opening file: %s' % infile)
+  return load_tree_single(infile)
 
-  # Define collection
-  tree.define_collection(name='hits', prefix='vh_', size='vh_size')
-  tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
-  tree.define_collection(name='particles', prefix='vp_', size='vp_size')
-  #tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
-  return tree
-
-def load_pgun_batch_omtf(j):
-  #global infile_r
-  #infile_r = root_open('pippo.root', 'w')
-
-  jj = np.split(np.arange(50), 50)[j]
+def load_pgun_batch_omtf(k):
+  jj = np.split(np.arange(50), 50)[k]
   infiles = []
   for j in jj:
     infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Overlap_3GeV/ParticleGuns/CRAB3/190416_194944/%04i/ntuple_SingleMuon_Overlap_%i.root' % ((j+1)/1000, (j+1)))
     infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Overlap2_3GeV/ParticleGuns/CRAB3/190416_195101/%04i/ntuple_SingleMuon_Overlap2_%i.root' % ((j+1)/1000, (j+1)))
-
   #infiles = purge_bad_files(infiles)
-  tree = TreeChain('ntupler/tree', infiles)
-  print('[INFO] Opening file: %s' % ' '.join(infiles))
+  return load_tree_multiple(infiles)
 
-  # Define collection
-  tree.define_collection(name='hits', prefix='vh_', size='vh_size')
-  tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
-  tree.define_collection(name='particles', prefix='vp_', size='vp_size')
-  #tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
-  return tree
+def load_pgun_batch_displ(k):
+  jj = np.split(np.arange(2000), 200)[k]
+  infiles = []
+  if j < 100:
+    for j in jj:
+      infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Displaced_2GeV/ParticleGuns/CRAB3/190405_195607/%04i/ntuple_SingleMuon_Displaced_%i.root' % ((j+1)/1000, (j+1)))
+      infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Displaced2_2GeV/ParticleGuns/CRAB3/190405_195725/%04i/ntuple_SingleMuon_Displaced2_%i.root' % ((j+1)/1000, (j+1)))
+  else:
+    for j in jj:
+      infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Displaced_FlatPhi_2GeV/ParticleGuns/CRAB3/190405_201844/%04i/ntuple_SingleMuon_Displaced_FlatPhi_%i.root' % ((j-1000+1)/1000, (j-1000+1)))
+      infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Displaced2_FlatPhi_2GeV/ParticleGuns/CRAB3/190405_202001/%04i/ntuple_SingleMuon_Displaced2_FlatPhi_%i.root' % ((j-1000+1)/1000, (j-1000+1)))
+  return load_tree_multiple(infiles)
 
-def load_pgun_test():
-  global infile_r
-  infile = 'ntuple_SingleMuon_Endcap.root'
-  infile_r = root_open(infile)
-  tree = infile_r.ntupler.tree
-  print('[INFO] Opening file: %s' % infile)
-
-  # Define collection
-  tree.define_collection(name='hits', prefix='vh_', size='vh_size')
-  tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
-  tree.define_collection(name='particles', prefix='vp_', size='vp_size')
-  #tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
-  return tree
-
-# ______________________________________________________________________________
-def load_minbias_batch(j, pileup=200):
-  global infile_r
+def load_minbias_batch(k, pileup=200):
   if pileup == 140:
     pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU140/SingleNeutrino/CRAB3/190416_160046/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(56)]
   elif pileup == 200:
@@ -2771,21 +3009,11 @@ def load_minbias_batch(j, pileup=200):
     pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU300/SingleNeutrino/CRAB3/190416_160441/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(53)]
   else:
     raise RunTimeError('Cannot recognize pileup: {0}'.format(pileup))
+  #
+  infile = pufiles[k]
+  return load_tree_single(infile)
 
-  infile = pufiles[j]
-  infile_r = root_open(infile)
-  tree = infile_r.ntupler.tree
-  print('[INFO] Opening file: %s' % infile)
-
-  # Define collection
-  tree.define_collection(name='hits', prefix='vh_', size='vh_size')
-  tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
-  tree.define_collection(name='particles', prefix='vp_', size='vp_size')
-  tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
-  return tree
-
-def load_minbias_batch_for_mixing(j):
-  global infile_r
+def load_minbias_batch_for_mixing(k):
   pufiles = []
   # For training purposes
   pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU140/SingleNeutrino/CRAB3/190416_160046/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(20)]  # up to 20/56
@@ -2798,66 +3026,26 @@ def load_minbias_batch_for_mixing(j):
   #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU200/SingleMu_FlatPt-2to100/CRAB3/190416_160951/0000/ntuple_SingleMuon_PU200_%i.root' % (i+1) for i in xrange(26)]
   pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU140/SinglePhoton_FlatPt-8to150/CRAB3/190416_161116/0000/ntuple_SinglePhoton_PU140_%i.root' % (i+1) for i in xrange(27)]
   pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU200/SinglePhoton_FlatPt-8to150/CRAB3/190416_161239/0000/ntuple_SinglePhoton_PU200_%i.root' % (i+1) for i in xrange(27)]
-
   # For testing purposes (SingleNeutrino, PU200)
   pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190416_160207/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30,63)]  # from 30/63
+  #
+  infile = pufiles[k]
+  return load_tree_single(infile)
 
-  infile = pufiles[j]
-  infile_r = root_open(infile)
-  tree = infile_r.ntupler.tree
-  print('[INFO] Opening file: %s' % infile)
-
-  # Define collection
-  tree.define_collection(name='hits', prefix='vh_', size='vh_size')
-  tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
-  tree.define_collection(name='particles', prefix='vp_', size='vp_size')
-  tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
-  return tree
-
-def load_minbias_batch_for_collusion(j):
-  global infile_r
+def load_minbias_batch_for_collusion(k):
   pufiles = []
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU140/SingleMu_FlatPt-2to100/CRAB3/190416_160834/0000/ntuple_SingleMuon_PU140_%i.root' % (i+1) for i in xrange(25)]
+  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU140/SingleMu_FlatPt-2to100/CRAB3/190416_160834/0000/ntuple_SingleMuon_PU140_%i.root' % (i+1) for i in xrange(25)]
   pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU200/SingleMu_FlatPt-2to100/CRAB3/190416_160951/0000/ntuple_SingleMuon_PU200_%i.root' % (i+1) for i in xrange(26)]
-
-  infile = pufiles[j]
-  infile_r = root_open(infile)
-  tree = infile_r.ntupler.tree
-  print('[INFO] Opening file: %s' % infile)
-
-  # Define collection
-  tree.define_collection(name='hits', prefix='vh_', size='vh_size')
-  tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
-  tree.define_collection(name='particles', prefix='vp_', size='vp_size')
-  tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
-  return tree
-
-def load_minbias_test():
-  global infile_r
-  infile = 'ntuple_SingleNeutrino_PU200.root'
-  infile_r = root_open(infile)
-  tree = infile_r.ntupler.tree
-  print('[INFO] Opening file: %s' % infile)
-
-  # Define collection
-  tree.define_collection(name='hits', prefix='vh_', size='vh_size')
-  tree.define_collection(name='tracks', prefix='vt_', size='vt_size')
-  tree.define_collection(name='particles', prefix='vp_', size='vp_size')
-  tree.define_collection(name='evt_info', prefix='ve_', size='ve_size')
-  return tree
-
-def unload_tree():
-  global infile_r
-  try:
-    infile_r.close()
-  except:
-    pass
+  #
+  infile = pufiles[k]
+  return load_tree_single(infile)
 
 
 # ______________________________________________________________________________
 # Main
 
 if __name__ == "__main__":
+  print('[INFO] Current time    : {0}'.format(datetime.datetime.now()))
   print('[INFO] Using cmssw     : {0}'.format(os.environ['CMSSW_VERSION']))
   print('[INFO] Using condor    : {0}'.format(use_condor))
   print('[INFO] Using max events: {0}'.format(maxEvents))
