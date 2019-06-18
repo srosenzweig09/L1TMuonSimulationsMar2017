@@ -6,22 +6,21 @@ logger = getLogger()
 
 #learning_rate = 0.00113
 #learning_rate = 0.0033
-#learning_rate = 0.0063
-learning_rate = 0.0091
+learning_rate = 0.0063
+#learning_rate = 0.0091
 
 gradient_clip_norm = 100.
 
 mask_value = 100.
 
-discr_pt_cut = 8.
-
+discr_pt_cut_low = 4.
+discr_pt_cut_med = 8.
 discr_pt_cut_high = 14.
 
 reg_pt_scale = 100.
-
 reg_dxy_scale = 0.4
 
-discr_loss_weight = 30.
+discr_loss_weight = 20.
 
 add_noise = True
 

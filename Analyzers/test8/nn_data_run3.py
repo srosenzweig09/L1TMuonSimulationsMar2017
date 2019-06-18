@@ -13,9 +13,9 @@ from nn_encode_run3 import Encoder
 def muon_data(filename, reg_pt_scale=1.0, reg_dxy_scale=1.0):
   try:
     logger.info('Loading muon data from {0} ...'.format(filename))
-    loaded = np.load(filename)
-    the_variables = loaded['variables']
-    the_parameters = loaded['parameters']
+    with np.load(filename) as loaded:
+      the_variables = loaded['variables']
+      the_parameters = loaded['parameters']
     logger.info('Loaded the variables with shape {0}'.format(the_variables.shape))
     logger.info('Loaded the parameters with shape {0}'.format(the_parameters.shape))
   except:
@@ -31,7 +31,7 @@ def muon_data(filename, reg_pt_scale=1.0, reg_dxy_scale=1.0):
   return x, y, dxy, dz, w, x_mask, x_road
 
 
-def muon_data_split(filename, reg_pt_scale=1.0, reg_dxy_scale=1.0, test_size=0.5):
+def muon_data_split(filename, reg_pt_scale=1.0, reg_dxy_scale=1.0, test_size=0.5, no_warn=False):
   x, y, dxy, dz, w, x_mask, x_road = muon_data(filename, reg_pt_scale=reg_pt_scale, reg_dxy_scale=reg_dxy_scale)
 
   # Split dataset in training and testing
@@ -39,19 +39,17 @@ def muon_data_split(filename, reg_pt_scale=1.0, reg_dxy_scale=1.0, test_size=0.5
   logger.info('Loaded # of training and testing events: {0}'.format((x_train.shape[0], x_test.shape[0])))
 
   # Check for cases where the number of events in the last batch could be too few
-  validation_split = 0.1
-  train_num_samples = int(x_train.shape[0] * (1.0-validation_split))
-  val_num_samples = x_train.shape[0] - train_num_samples
-  batch_size = 128
-  if (train_num_samples%batch_size) < 100:
-    logger.warning('The last batch for training could be too few! ({0}%{1})={2}. Please change test_size.'.format(train_num_samples, batch_size, train_num_samples%batch_size))
-    logger.warning('Try this formula: int(int({0}*{1})*{2}) % 128'.format(x.shape[0], 1.0-test_size, 1.0-validation_split))
-  train_num_samples = int(x_train.shape[0] * 2 * (1.0-validation_split))
-  val_num_samples = x_train.shape[0] - train_num_samples
-  batch_size = 128
-  if (train_num_samples%batch_size) < 100:
-    logger.warning('The last batch for training after mixing could be too few! ({0}%{1})={2}. Please change test_size.'.format(train_num_samples, batch_size, train_num_samples%batch_size))
-    logger.warning('Try this formula: int(int({0}*{1})*2*{2}) % 128'.format(x.shape[0], 1.0-test_size, 1.0-validation_split))
+  if not no_warn:
+    validation_split = 0.1
+    batch_size = 128
+    #train_num_samples = int(x_train.shape[0] * (1.0-validation_split))
+    #if (train_num_samples%batch_size) < 100:
+    #  logger.warning('The last batch for training could be too few! ({0}%{1})={2}. Please change test_size.'.format(train_num_samples, batch_size, train_num_samples%batch_size))
+    #  logger.warning('Try this formula: int(int({0}*{1})*{2}) % 128'.format(x.shape[0], 1.0-test_size, 1.0-validation_split))
+    train_num_samples = int(x_train.shape[0] * 2 * (1.0-validation_split))
+    if (train_num_samples%batch_size) < 100:
+      logger.warning('The last batch for training after mixing could be too few! ({0}%{1})={2}. Please change test_size.'.format(train_num_samples, batch_size, train_num_samples%batch_size))
+      logger.warning('Try this formula: int(int({0}*{1})*2*{2}) % 128'.format(x.shape[0], 1.0-test_size, 1.0-validation_split))
   return x_train, x_test, y_train, y_test, dxy_train, dxy_test, dz_train, dz_test, w_train, w_test, x_mask_train, x_mask_test, x_road_train, x_road_test
 
 
@@ -59,10 +57,10 @@ def muon_data_split(filename, reg_pt_scale=1.0, reg_dxy_scale=1.0, test_size=0.5
 def pileup_data(filename, reg_pt_scale=1.0, reg_dxy_scale=1.0):
   try:
     logger.info('Loading pileup data from {0} ...'.format(filename))
-    loaded = np.load(filename)
-    the_variables = loaded['variables']
-    the_parameters = np.zeros((the_variables.shape[0], 1), dtype=np.float32)
-    the_aux = loaded['aux']
+    with np.load(filename) as loaded:
+      the_variables = loaded['variables']
+      the_parameters = np.zeros((the_variables.shape[0], 1), dtype=np.float32)
+      the_aux = loaded['aux']
     logger.info('Loaded the variables with shape {0}'.format(the_variables.shape))
     logger.info('Loaded the auxiliary PU info with shape {0}'.format(the_aux.shape))
   except:
@@ -85,19 +83,12 @@ def pileup_data_split(filename, reg_pt_scale=1.0, reg_dxy_scale=1.0, test_job=50
   # Split dataset in training and testing
   split = aux[:,0].astype(np.int32) < test_job
   x_train, x_test, aux_train, aux_test, w_train, w_test, x_mask_train, x_mask_test, x_road_train, x_road_test = x[split], x[~split], aux[split], aux[~split], w[split], w[~split], x_mask[split], x_mask[~split], x_road[split], x_road[~split]
-  logger.info('Loaded # of training and testing events: {0}'.format((x_train.shape[0], x_test.shape[0])))
+  logger.info('Loaded # of training and testing events (PU): {0}'.format((x_train.shape[0], x_test.shape[0])))
   return x_train, x_test, aux_train, aux_test, w_train, w_test, x_mask_train, x_mask_test, x_road_train, x_road_test
 
 
 # ______________________________________________________________________________
-def mix_training_inputs(x_train, y_train, pu_x_train, pu_y_train, pu_aux_train, discr_pt_cut=14., tile=10):
-
-  # Apply veto on PU events with a muon with pT > 14 GeV
-  #pu_x_train_tmp = ~(pu_aux_train[:,2] > discr_pt_cut)
-  #pu_x_train = pu_x_train[pu_x_train_tmp]
-  #pu_y_train = [pu_y_train[0][pu_x_train_tmp], pu_y_train[1][pu_x_train_tmp]]
-
-  # Put together x_train & pu_x_train, y_train & pu_y_train
+def mix_training_inputs(x_train, y_train, pu_x_train, pu_y_train, tile=10):
   assert(len(pu_y_train) == 2)
   assert(pu_x_train.shape[0] == pu_y_train[0].shape[0])
   assert(pu_x_train.shape[0] == pu_y_train[1].shape[0])

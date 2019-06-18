@@ -176,7 +176,7 @@ def weighted_crossentropy(target, output, pos_weight, from_logits=False):
       output = tf.log(output / (1 - output))
     return tf.nn.weighted_cross_entropy_with_logits(targets=target, logits=output, pos_weight=pos_weight)
 
-def masked_binary_crossentropy(y_true, y_pred, mask_value=100., pos_weight=0.333333):
+def masked_binary_crossentropy(y_true, y_pred, mask_value=100., pos_weight=0.2):
   #xx = K.binary_crossentropy(y_true, y_pred)
   xx = weighted_crossentropy(y_true, y_pred, pos_weight=pos_weight) * 2/(1+pos_weight)
 
@@ -321,8 +321,8 @@ def create_model_bn2(nvariables, lr=0.001, clipnorm=10., nodes1=64, nodes2=32, n
   # Set loss and optimizers
   adam = optimizers.Adam(lr=lr, clipnorm=clipnorm)
   model.compile(optimizer=adam,
-    #loss={'regr': masked_huber_loss, 'discr': masked_binary_crossentropy},
-    loss={'regr': unmasked_huber_loss, 'discr': masked_binary_crossentropy},
+    loss={'regr': masked_huber_loss, 'discr': masked_binary_crossentropy},
+    #loss={'regr': unmasked_huber_loss, 'discr': masked_binary_crossentropy},
     loss_weights={'regr': 1.0, 'discr': discr_loss_weight},
     #metrics={'regr': ['acc', 'mse', 'mae'], 'discr': ['acc',]}
     )
