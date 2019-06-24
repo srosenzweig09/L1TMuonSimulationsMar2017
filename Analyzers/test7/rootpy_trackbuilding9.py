@@ -529,7 +529,7 @@ class EMTFTheta(object):
 class EMTFZee(object):
   def __init__(self):
     self.lut = np.array([599.0, 696.8, 827.1, 937.5, 1027, 708.7, 790.9, 968.8, 1060, 566.4, 794.8, 539.3, 0, 0, 0, 0], dtype=np.float32)
-    assert(self.lut.shape[0] == nlayers)
+    assert(self.lut.size == nlayers)
 
   def __call__(self, hit):
     return self.lut[hit.emtf_layer]
@@ -558,43 +558,39 @@ class EMTFTime(object):
     emtf_time = np.int32(hit.bx)
     return emtf_time
 
-# Decide EMTF hit layer partner (to make pairs and calculate deflection angles)
-class EMTFLayerPartner(object):
-  def __init__(self):
-    self.lut = np.array([2, 2, 0, 0, 0, 0, 2, 3, 4, 0, 2, 0, 0, 0, 0, 0], dtype=np.int32)
-    assert(self.lut.shape[0] == nlayers)
-
-  def __call__(self, emtf_layer, zone):
-    partner = self.lut[emtf_layer]
-    if zone >= 5:  # zones 5,6, use ME1/2
-      if partner == 0:
-        partner = 1
-    return partner
-
 # Decide EMTF road quality (by pattern straightness)
 class EMTFRoadQuality(object):
   def __init__(self):
-    self.best_ipt = find_pt_bin(0.)
+    # First 9 patterns for prompt muons  : -1/2 <= q/pT <= +1/2
+    # Next 9 patterns for displaced muons: -1/14 <= q/pT <= +1/14, -120 <= d0 <= 120
+    # Total is 18 patterns.
+    # ipt   0  1  2  3  4  5  6  7  8
+    # strg  1  3  5  7  9  7  5  3  1
+    # ipt   9 10 11 12 13 14 15 16 17
+    # strg  0  2  4  6  8  6  4  2  0
+    self.lut = np.array([1,3,5,7,9,7,5,3,1,0,2,4,6,8,6,4,2,0], dtype=np.int32)
+    assert(self.lut.size == 18)
 
   def __call__(self, ipt):
-    return self.best_ipt - np.abs(ipt - self.best_ipt)
+    return self.lut[ipt]
 
 # Decide EMTF road sort code (by hit composition)
 class EMTFRoadSortCode(object):
   def __init__(self):
-    # 9    8      7      6    5      4    3    2..0
+    # 10   9      8      7    6      5    4    3..0
     #      ME1/1  ME1/2  ME2         ME3  ME4  qual
     #                         RE1&2  RE3  RE4
     # ME0         GE1/1       GE2/1
     # MB1  MB2                MB3&4
-    self.lut = np.array([8,7,6,4,3,5,5,4,3,7,5,9,9,8,5,5], dtype=np.int32)
-    assert(self.lut.shape[0] == nlayers)
+    self.lut = np.array([9,8,7,5,4,6,6,5,4,8,6,10,10,9,6,6], dtype=np.int32)
+    assert(self.lut.size == nlayers)
 
   def __call__(self, road_quality, road_hits_layers):
     sort_code = np.int32(0)
     for hit_lay in road_hits_layers:
       mlayer = self.lut[hit_lay]
       sort_code |= (1 << mlayer)
+    assert((0 <= road_quality) and (road_quality < 16))
     sort_code |= road_quality
     return sort_code
 
@@ -608,7 +604,6 @@ find_emtf_theta = EMTFTheta()
 find_emtf_zee = EMTFZee()
 find_emtf_qual = EMTFQuality()
 find_emtf_time = EMTFTime()
-find_emtf_layer_partner = EMTFLayerPartner()
 find_emtf_road_quality = EMTFRoadQuality()
 find_emtf_road_sort_code = EMTFRoadSortCode()
 
@@ -1013,8 +1008,7 @@ class PatternRecognition(object):
         (ieta in (4,) and is_emtf_singlemu(road_mode_me12) and is_emtf_muopen(road_mode_csc_me12)) or \
         (ieta in (5,) and is_emtf_doublemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
         (ieta in (6,) and (road_mode_mb1 == 3 or road_mode_mb2 == 3 or road_mode_me13 == 3)) ):
-      #road_quality = find_emtf_road_quality(ipt)
-      road_quality = find_emtf_road_quality((ipt%9))  # using 18 patterns
+      road_quality = find_emtf_road_quality(ipt)
       road_sort_code = find_emtf_road_sort_code(road_quality, [hit.emtf_layer for hit in road_hits])
       road_phi_median = 0    # to be determined later
       road_theta_median = 0  # to be determined later
@@ -1427,28 +1421,29 @@ class TrackProducer(object):
     self.omtf_input = omtf_input
     self.run2_input = run2_input
 
-    self.discr_pt_cut = 8.
+    self.discr_pt_cut_low = 4.
+    self.discr_pt_cut_med = 8.
     self.discr_pt_cut_high = 14.
 
     self.s_min = 0.
     self.s_max = 60.
     self.s_nbins = 120
     self.s_step = (self.s_max - self.s_min)/self.s_nbins
-    self.s_lut =[ 1.8195,  1.5651,  1.6147,  1.8573,  2.2176,  2.6521,  3.1392,  3.6731,
-                  4.2603,  4.9059,  5.5810,  6.2768,  6.9787,  7.6670,  8.3289,  8.9703,
-                  9.6027, 10.2288, 10.8525, 11.4874, 12.1370, 12.8016, 13.4806, 14.1740,
-                 14.8822, 15.5927, 16.3161, 17.0803, 17.8854, 18.6790, 19.4369, 20.1713,
-                 20.9279, 21.6733, 22.3966, 23.0878, 23.7421, 24.3612, 24.9927, 25.6638,
-                 26.4131, 27.2467, 28.1087, 28.9682, 29.8129, 30.6270, 31.4258, 32.2671,
-                 33.1881, 34.2942, 35.4266, 36.4711, 37.5020, 38.4437, 39.2068, 39.8264,
-                 40.3814, 40.9442, 41.5449, 42.1736, 42.7892, 43.4046, 44.0388, 44.7361,
-                 45.5805, 46.6375, 47.7231, 48.6278, 49.3952, 50.1290, 50.8860, 51.6510,
-                 52.4043, 53.1551, 53.9053, 54.6554, 55.4054, 56.1554, 56.9053, 57.6552,
-                 58.4051, 59.1550, 59.9048, 60.6547, 61.4045, 62.1544, 62.9042, 63.6540,
-                 64.4039, 65.1537, 65.9036, 66.6534, 67.4032, 68.1531, 68.9029, 69.6527,
-                 70.4026, 71.1524, 71.9022, 72.6521, 73.4019, 74.1517, 74.9016, 75.6514,
-                 76.4012, 77.1511, 77.9009, 78.6507, 79.4006, 80.1504, 80.9002, 81.6501,
-                 82.3999, 83.1497, 83.8996, 84.6494, 85.3992, 86.1491, 86.8989, 87.6488]
+    self.s_lut =[ 2.4605,  2.0075,  1.9042,  2.0762,  2.4325,  2.9043,  3.4101,  3.9232,
+                  4.4403,  4.9856,  5.5775,  6.2036,  6.8515,  7.5126,  8.1807,  8.8570,
+                  9.5343, 10.2031, 10.8651, 11.5340, 12.2164, 12.9187, 13.6537, 14.4093,
+                 15.1559, 15.8731, 16.5513, 17.2402, 17.9719, 18.7379, 19.5292, 20.3469,
+                 21.1514, 21.9302, 22.6964, 23.4417, 24.1086, 24.7471, 25.4113, 26.1038,
+                 26.7868, 27.4820, 28.2311, 29.0478, 29.9305, 30.8285, 31.6537, 32.3950,
+                 33.1279, 33.8928, 34.6529, 35.4154, 36.2441, 37.1817, 38.2494, 39.2588,
+                 40.1019, 40.8765, 41.6557, 42.4564, 43.2505, 44.0659, 44.9429, 45.8573,
+                 46.7469, 47.6586, 48.6987, 49.6689, 50.3389, 50.9753, 51.7242, 52.4922,
+                 53.2630, 54.0344, 54.8061, 55.5778, 56.3496, 57.1213, 57.8931, 58.6648,
+                 59.4366, 60.2083, 60.9800, 61.7518, 62.5235, 63.2953, 64.0670, 64.8387,
+                 65.6104, 66.3822, 67.1539, 67.9256, 68.6974, 69.4691, 70.2408, 71.0125,
+                 71.7843, 72.5560, 73.3277, 74.0995, 74.8712, 75.6429, 76.4146, 77.1864,
+                 77.9581, 78.7298, 79.5015, 80.2733, 81.0450, 81.8167, 82.5884, 83.3602,
+                 84.1319, 84.9036, 85.6754, 86.4471, 87.2188, 87.9905, 88.7623, 89.5340]
     #self.s_lut = np.linspace(self.s_min, self.s_max, num=self.s_nbins+1)[:-1]
     self.s_step = np.asarray(self.s_step)
     self.s_lut = np.asarray(self.s_lut)
@@ -1478,36 +1473,42 @@ class TrackProducer(object):
     return trg_pt
 
   def pass_trigger(self, ndof, mode, strg, zone, theta_median, y_pred, y_discr):
-    ipt1 = strg
+    ipt1 = strg.astype(np.int32)
     ipt2 = find_pt_bin(y_pred)
-    quality1 = find_emtf_road_quality((ipt1%9))  # using 18 patterns
-    quality2 = find_emtf_road_quality((ipt2%9))  # using 18 patterns
-    strg_ok = quality2 <= (quality1+1)
+    quality1 = find_emtf_road_quality(ipt1)
+    quality2 = find_emtf_road_quality(ipt2)
+    strg_ok = (quality2 <= (quality1+1))
 
     xml_pt = np.abs(1.0/y_pred)
 
     # Apply cuts
     trigger = (y_discr < 0.)  # default: False
     if self.omtf_input:
-      if xml_pt > self.discr_pt_cut_high:  # >14 GeV
-        trigger = (y_discr > 0.6043) # 98.0% coverage
-      elif xml_pt > self.discr_pt_cut:  # 8-14 GeV
-        trigger = (y_discr > 0.2905) # 98.0% coverage
-      else:  # < 8 GeV
+      if xml_pt > self.discr_pt_cut_high:  # >14 GeV (98.0% coverage)
+        trigger = (y_discr > 0.6043)
+      elif xml_pt > self.discr_pt_cut_med: # 8-14 GeV (98.0% coverage)
+        trigger = (y_discr > 0.2905)
+      elif xml_pt > self.discr_pt_cut_low: # 4-8 GeV (98.0% coverage)
+        trigger = (y_discr > 0.2000)
+      else:
         trigger = (y_discr >= 0.) and strg_ok
     elif self.run2_input:
-      if xml_pt > self.discr_pt_cut_high:  # >14 GeV
-        trigger = (y_discr > 0.8557) # 97.0% coverage
-      elif xml_pt > self.discr_pt_cut:  # 8-14 GeV
-        trigger = (y_discr > 0.6640) # 97.0% coverage
-      else:  # < 8 GeV
+      if xml_pt > self.discr_pt_cut_high:  # >14 GeV (97.0% coverage)
+        trigger = (y_discr > 0.8557)
+      elif xml_pt > self.discr_pt_cut_med: # 8-14 GeV (97.0% coverage)
+        trigger = (y_discr > 0.6640)
+      elif xml_pt > self.discr_pt_cut_low: # 4-8 GeV (97.0% coverage)
+        trigger = (y_discr > 0.2000)
+      else:
         trigger = (y_discr >= 0.) and strg_ok
     else:
-      if xml_pt > self.discr_pt_cut_high:  # >14 GeV
-        trigger = (y_discr > 0.9286) # 98.5% coverage
-      elif xml_pt > self.discr_pt_cut:  # 8-14 GeV
-        trigger = (y_discr > 0.7767) # 98.5% coverage
-      else:  # < 8 GeV
+      if xml_pt > self.discr_pt_cut_high:  # >14 GeV (98.5% coverage)
+        trigger = (y_discr > 0.9600)
+      elif xml_pt > self.discr_pt_cut_med: # 8-14 GeV (98.5% coverage)
+        trigger = (y_discr > 0.8932)
+      elif xml_pt > self.discr_pt_cut_low: # 4-8 GeV (99.0% coverage)
+        trigger = (y_discr > 0.2000)
+      else:
         trigger = (y_discr >= 0.) and strg_ok
     return trigger
 
@@ -1563,7 +1564,7 @@ class TrackProducer(object):
         xml_pt = np.abs(1.0/y_pred)
         pt = self.get_trigger_pt(y_pred)
 
-        trk_q = np.sign(y_pred)
+        trk_q = np.sign(y_pred).astype(np.int32)
         trk = Track(myroad.id, myroad.hits, mode, myroad.quality, zone, xml_pt, pt, trk_q, y_pred, y_discr, phi_median, theta_median)
         tracks.append(trk)
     return tracks
@@ -1998,6 +1999,9 @@ class RatesAnalysis(object):
       hname = "highest_%s_absEtaMin2.15_absEtaMax2.4_qmin12_pt" % m
       histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
 
+      hname = "highest_%s_absEtaMin0.8_absEtaMax2.4_matched_qmin12_pt" % m
+      histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
+
       for l in xrange(14,22+1):
         hname = "%s_ptmin%i_qmin12_eta" % (m,l)
         histograms[hname] = Hist(18, 0.75, 2.55, name=hname, title="; |#eta|; entries", type='F')
@@ -2044,7 +2048,7 @@ class RatesAnalysis(object):
       emtf2026_tracks = ghost.run(tracks1 + tracks2)
       emtf2026_matched = mucorr.run(evt.particles, emtf2026_tracks)
 
-      found_high_pt_tracks = any(map(lambda trk: trk.pt > 14., emtf2026_tracks))
+      found_high_pt_tracks = any(map(lambda trk: trk.pt > 20., emtf2026_tracks))
 
       if found_high_pt_tracks:
         print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2026_tracks)))
@@ -2137,6 +2141,16 @@ class RatesAnalysis(object):
         hname = "emtf2026_ptmin%i_qmin12_eta" % (l)
         fill_eta()
 
+      # For fake rate plot
+      for itrk, mytrk in enumerate(emtf2026_tracks):
+        m = emtf2026_matched[:, itrk]
+        mytrk.matched = m.any()
+
+      tracks = emtf2026_tracks
+      select = lambda trk: trk and (0.8 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5,6) and trk.matched
+      hname = "highest_emtf2026_absEtaMin0.8_absEtaMax2.4_matched_qmin12_pt"
+      fill_highest_pt()
+
     # End loop over events
     unload_tree()
 
@@ -2163,6 +2177,8 @@ class RatesAnalysis(object):
         hnames.append(hname)
         hname = "highest_%s_absEtaMin2.15_absEtaMax2.4_qmin12_pt" % m
         hnames.append(hname)
+        hname = "highest_%s_absEtaMin0.8_absEtaMax2.4_matched_qmin12_pt" % m
+        hnames.append(hname)
         for l in xrange(14,22+1):
           hname = "%s_ptmin%i_qmin12_eta" % (m,l)
           hnames.append(hname)
@@ -2178,7 +2194,8 @@ class EffieAnalysis(object):
   def run(self, omtf_input=False, run2_input=False):
     # Book histograms
     histograms = {}
-    eff_pt_bins = (0., 0.5, 1., 1.5, 2., 3., 4., 5., 6., 7., 8., 10., 12., 14., 16., 18., 20., 22., 24., 27., 30., 34., 40., 48., 60., 80., 120.)
+    eff_pt_bins = (0., 0.5, 1., 1.5, 2., 3., 4., 5., 6., 7., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 34., 40., 48., 60., 80., 120.)
+    eff_highpt_bins = (2., 2.5, 3., 3.5, 4., 4.5, 5., 6., 7., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 34., 40., 48., 60., 80., 100., 120., 250., 500., 1000.)
 
     for m in ("emtf", "emtf2026"):
       for l in (0, 10, 15, 20, 30, 40, 50):
@@ -2187,6 +2204,10 @@ class EffieAnalysis(object):
           histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
           hname = "%s_eff_vs_genpt_allzones_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
+          hname = "%s_eff_vs_genpt_highpt_l1pt%i_%s" % (m,l,k)
+          histograms[hname] = Hist(eff_highpt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
+          hname = "%s_eff_vs_genpt_allzones_highpt_l1pt%i_%s" % (m,l,k)
+          histograms[hname] = Hist(eff_highpt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
           hname = "%s_eff_vs_genphi_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(76, -190, 190, name=hname, title="; gen #phi {gen p_{T} > 20 GeV}", type='F')
           hname = "%s_eff_vs_genphi_allzones_l1pt%i_%s" % (m,l,k)
@@ -2317,7 +2338,7 @@ class EffieAnalysis(object):
             numer.fill(abs(part.eta))
 
       def fill_efficiency_d0():
-        if (part.bx == 0):
+        if select_part(part):
           trigger = any([select_track(trk) for trk in tracks])  # using scaled pT
           denom = histograms[hname + "_denom"]
           numer = histograms[hname + "_numer"]
@@ -2339,7 +2360,7 @@ class EffieAnalysis(object):
             trk = tracks[0]
             trk.invpt = np.true_divide(trk.q, trk.xml_pt)  # using unscaled pT
             histograms[hname1].fill(part.invpt, trk.invpt)
-            histograms[hname2].fill(abs(part.invpt), (abs(1.0/trk.invpt) - abs(1.0/part.invpt))/abs(1.0/part.invpt))
+            histograms[hname2].fill(abs(part.invpt), abs(part.invpt/trk.invpt) - 1)
 
       for l in (0, 10, 15, 20, 30, 40, 50):
         tracks = evt.tracks
@@ -2349,6 +2370,9 @@ class EffieAnalysis(object):
         #
         hname = "emtf_eff_vs_genpt_l1pt%i" % (l)
         hname_allzones = "emtf_eff_vs_genpt_allzones_l1pt%i" % (l)
+        fill_efficiency_pt()
+        hname = "emtf_eff_vs_genpt_highpt_l1pt%i" % (l)
+        hname_allzones = "emtf_eff_vs_genpt_allzones_highpt_l1pt%i" % (l)
         fill_efficiency_pt()
         if part.pt > 20.:
           hname = "emtf_eff_vs_genphi_l1pt%i" % (l)
@@ -2379,6 +2403,9 @@ class EffieAnalysis(object):
         #
         hname = "emtf2026_eff_vs_genpt_l1pt%i" % (l)
         hname_allzones = "emtf2026_eff_vs_genpt_allzones_l1pt%i" % (l)
+        fill_efficiency_pt()
+        hname = "emtf2026_eff_vs_genpt_highpt_l1pt%i" % (l)
+        hname_allzones = "emtf2026_eff_vs_genpt_allzones_highpt_l1pt%i" % (l)
         fill_efficiency_pt()
         if part.pt > 20.:
           hname = "emtf2026_eff_vs_genphi_l1pt%i" % (l)
@@ -2425,6 +2452,10 @@ class EffieAnalysis(object):
             hnames.append(hname)
             hname = "%s_eff_vs_genpt_allzones_l1pt%i_%s" % (m,l,k)
             hnames.append(hname)
+            hname = "%s_eff_vs_genpt_highpt_l1pt%i_%s" % (m,l,k)
+            hnames.append(hname)
+            hname = "%s_eff_vs_genpt_allzones_highpt_l1pt%i_%s" % (m,l,k)
+            hnames.append(hname)
             hname = "%s_eff_vs_genphi_l1pt%i_%s" % (m,l,k)
             hnames.append(hname)
             hname = "%s_eff_vs_genphi_allzones_l1pt%i_%s" % (m,l,k)
@@ -2466,7 +2497,8 @@ class MixingAnalysis(object):
 
     training_phase = (jobid < test_job)
     if training_phase:
-      bx_shifts = [+2, +1, 0, -1, -2]
+      #bx_shifts = [+2, +1, 0, -1, -2]  # makes the training worse. not sure why.
+      bx_shifts = [0]
     else:
       bx_shifts = [0]
 
@@ -2887,6 +2919,8 @@ maxEvents = 2000000
 
 # Condor or not
 use_condor = ('CONDOR_EXEC' in os.environ)
+if use_condor:
+  os.environ['ROOTPY_GRIDMODE'] = 'true'
 
 # Algorithm (pick one)
 algo = 'default'  # phase 2
