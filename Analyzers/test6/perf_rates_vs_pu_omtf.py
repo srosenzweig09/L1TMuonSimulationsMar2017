@@ -4,10 +4,10 @@ hname2026_f = lambda hname: "highest_emtf2026_" + hname[13:]
 
 donotdelete = []
 
-infile = "histos_tbb_add.25.root"
-infile140 = "histos_tbb_140_add.25.root"
-infile250 = "histos_tbb_250_add.25.root"
-infile300 = "histos_tbb_300_add.25.root"
+infile = "histos_tbb_add.27.root"
+infile140 = "histos_tbb_140_add.27.root"
+infile250 = "histos_tbb_250_add.27.root"
+infile300 = "histos_tbb_300_add.27.root"
 
 from perf_rates import make_ptcut, make_rate
 
@@ -113,6 +113,21 @@ if __name__ == '__main__':
     gr_numer.SetPoint(i, pu, emtf2026_rate)
     gr_numer.SetPointError(i, 0, 0, emtf2026_rate_err, emtf2026_rate_err)
 
+  gr_extrapol = TGraphAsymmErrors(350)
+  for i in xrange(1,350):
+    # From Osvaldo's trigger xsec study
+    #p0 = -0.004091 +- 0.001251
+    #p1 = 0.02187 +- 6.462e-5
+    #p2 = 9.102e-5 +- 5.429e-7
+    p0, p0_err = 0.0203986, 0.000988856
+    p1, p1_err = 0.0155462, 5.1641e-05
+    p2, p2_err = 3.9105e-05, 4.40563e-07
+    pu = float(i)
+    extrapol_rate = p0 + p1 * pu + p2 * pu * pu
+    extrapol_rate *= 2808
+    extrapol_rate /= 1000
+    gr_extrapol.SetPoint(i, pu, extrapol_rate)
+
   gr_denom.SetMarkerStyle(20)
   gr_denom.SetMarkerSize(1.4)
   gr_denom.SetMarkerColor(632)  # kRed
@@ -125,6 +140,10 @@ if __name__ == '__main__':
   gr_numer.SetLineWidth(2)
   gr_numer.SetLineColor(600)  # kBlue
 
+  gr_extrapol.SetLineStyle(7)
+  gr_extrapol.SetLineWidth(1)
+  gr_extrapol.SetLineColor(920)  # kGray
+
   frame = TH1F("frame", "; PU; Trigger rate [kHz]", 100, 0, 350)
   frame.SetMinimum(0)
   frame.SetMaximum(25)
@@ -132,6 +151,7 @@ if __name__ == '__main__':
 
   #gr_denom.Draw("P")
   gr_numer.Draw("P")
+  gr_extrapol.Draw("C")
 
   for i, x in enumerate(rates):
     pu, emtf_rate, emtf_rate_err, emtf2026_rate, emtf2026_rate_err = x

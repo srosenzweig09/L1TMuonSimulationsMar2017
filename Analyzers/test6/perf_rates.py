@@ -4,7 +4,7 @@ hname2026_f = lambda hname: "highest_emtf2026_" + hname[13:]
 
 donotdelete = []
 
-infile = "histos_tbb_add.25.root"
+infile = "histos_tbb_add.27.root"
 
 # Functions
 from math import sqrt
@@ -24,8 +24,8 @@ def make_ptcut(h):
 
 def make_rate(h, nevents):
   orbitFreq = 11246.
-  nCollBunches = 2808  # for lumi=8e34, PU=200, xsec_pp=80mb
-  nZeroBiasEvents = nevents
+  nCollBunches = 2808  # assume lumi=8e34, PU=200, xsec_pp=80mb
+  nZeroBiasEvents = float(nevents)
   convFactorToHz = orbitFreq * nCollBunches / nZeroBiasEvents
   h.Scale(convFactorToHz / 1000.)
   return
