@@ -1,0 +1,9 @@
+#gfal-copy histos_tba.20.npz       srm://cmseos.fnal.gov:8443/srm/v2/server?SFN=/eos/uscms/store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/histos_tba.20.npz
+#gfal-copy histos_tbd.20.npz       srm://cmseos.fnal.gov:8443/srm/v2/server?SFN=/eos/uscms/store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/histos_tbd.20.npz
+#gfal-copy default_20181018.tgz    srm://cmseos.fnal.gov:8443/srm/v2/server?SFN=/eos/uscms/store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/default_20181018.tgz
+#gfal-copy default_nb_20181018.tgz srm://cmseos.fnal.gov:8443/srm/v2/server?SFN=/eos/uscms/store/group/l1upgrades/L1MuonTrigger/P2_10_1_5/SingleMuon_Toy_2GeV/default_nb_20181018.tgz
+
+#gfal-copy pattern_bank_18patt.26.npz gsiftp://cmseos-gridftp.fnal.gov//eos/uscms/store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Endcap_2GeV/pattern_bank_18patt.26.npz
+#gfal-copy histos_tba.26.npz gsiftp://cmseos-gridftp.fnal.gov//eos/uscms/store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Endcap_2GeV/histos_tba.26.npz
+#gfal-copy histos_tbd.26.npz gsiftp://cmseos-gridftp.fnal.gov//eos/uscms/store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Endcap_2GeV/histos_tbd.26.npz
+#gfal-copy histos_tbe.26.npz gsiftp://cmseos-gridftp.fnal.gov//eos/uscms/store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Endcap_2GeV/histos_tbe.26.npz
