@@ -1,6 +1,6 @@
 # L1TMuonSimulationsMar2017
 
-Package to do the Phase 2 studies for Endcap Muon Track Finder (EMTF).
+Software package to do the Phase 2 studies for Endcap Muon Track Finder (EMTF).
 
 [![Build Status](https://travis-ci.org/jiafulow/L1TMuonSimulationsMar2017.svg)](https://travis-ci.org/jiafulow/L1TMuonSimulationsMar2017)
 [![CMSSW version](https://img.shields.io/badge/cmssw-CMSSW__10__4__0-002963.svg)](https://github.com/cms-sw/cmssw)
@@ -23,7 +23,11 @@ git clone git@github.com:jiafulow/L1TMuonSimulationsMar2017 L1TMuonSimulations
 scram b -j 10
 ```
 
+Please do not develop on the 'master' branch. The 'master' branch is frequently changed/rebased. Create a new branch and do any development there.
+
 ## Version
+
+- v2.0.0 (2019-06-27): Codes are re-organized/re-factored so that they can be ported to CMSSW.
 
 - v1.5.0 (2019-05-06): Add displaced muon patterns. NN development incomplete.
 
