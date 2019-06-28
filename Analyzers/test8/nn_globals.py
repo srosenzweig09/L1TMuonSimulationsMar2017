@@ -4,35 +4,25 @@ logger = getLogger()
 # ______________________________________________________________________________
 # Globals
 
-#learning_rate = 0.00113
-#learning_rate = 0.0033
-learning_rate = 0.0063
-#learning_rate = 0.0091
-
-gradient_clip_norm = 100.
-
 mask_value = 100.
+
+reg_pt_scale = 100.
+reg_dxy_scale = 0.4
 
 discr_pt_cut_low = 4.
 discr_pt_cut_med = 8.
 discr_pt_cut_high = 14.
 
-reg_pt_scale = 100.
-reg_dxy_scale = 0.4
-
 discr_loss_weight = 20.
 
-add_noise = True
-
-mixture = 6
-
 l1_reg = 0.0
-
 l2_reg = 0.0
 
 infile_muon = '../test7/histos_tba.27.npz'
 infile_pileup = '../test7/histos_tbd.27.npz'
 infile_highpt = '../test7/histos_tbe.27.npz'
+infile_displ1 = '../test7/histos_tba_displ1.27.npz'
+infile_displ2 = '../test7/histos_tba_displ2.27.npz'
 
 infile_muon_run3 = '../test7/histos_tba_run3.27.npz'
 infile_pileup_run3 = '../test7/histos_tbd_run3.27.npz'
@@ -67,6 +57,7 @@ logger.info('Using keras {0}'.format(keras.__version__))
 logger.info('.. list devices: {0}'.format(K.get_session().list_devices()))
 
 import scipy
+import scipy.special
 logger.info('Using scipy {0}'.format(scipy.__version__))
 
 import sklearn
