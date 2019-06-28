@@ -1336,51 +1336,29 @@ class PtAssignment(object):
     self.run2_input = run2_input
 
     self.reg_pt_scale = 100.
+    self.reg_dxy_scale = 0.4
 
     # Get encoders
-    from nn_encode import Encoder
-    from nn_encode_run3 import Encoder as EncoderRun3
-    from nn_encode_omtf import Encoder as EncoderOmtf
+    from nn_encode import create_encoder
+    from nn_encode_run3 import create_encoder as create_encoder_run3
+    from nn_encode_omtf import create_encoder as create_encoder_omtf
+    from functools import partial
+    self.create_encoder = partial(create_encoder, reg_pt_scale=self.reg_pt_scale, reg_dxy_scale=self.reg_dxy_scale)
+    self.create_encoder_run3 = partial(create_encoder_run3, reg_pt_scale=self.reg_pt_scale, reg_dxy_scale=self.reg_dxy_scale)
+    self.create_encoder_omtf = partial(create_encoder_omtf, reg_pt_scale=self.reg_pt_scale, reg_dxy_scale=self.reg_dxy_scale)
 
     # Load Keras models
     from nn_models import load_my_model, update_keras_custom_objects
     update_keras_custom_objects()
-
-    # First model (EMTF mode)
     self.loaded_model = load_my_model(name=model_file, weights_name=model_weights_file)
-    self.loaded_model.trainable = False
-    assert not self.loaded_model.updates
-
-    def create_encoder(x):
-      nentries = x.shape[0]
-      y = np.zeros((nentries, 1), dtype=np.float32)  # dummy
-      encoder = Encoder(x, y, reg_pt_scale=self.reg_pt_scale)
-      return encoder
-    self.create_encoder = create_encoder
-
-    # Second model (Run3 mode)
     self.loaded_model_run3 = load_my_model(name=model_run3_file, weights_name=model_run3_weights_file)
-    self.loaded_model_run3.trainable = False
-    assert not self.loaded_model_run3.updates
-
-    def create_encoder_run3(x):
-      nentries = x.shape[0]
-      y = np.zeros((nentries, 1), dtype=np.float32)  # dummy
-      encoder = EncoderRun3(x, y, reg_pt_scale=self.reg_pt_scale)
-      return encoder
-    self.create_encoder_run3 = create_encoder_run3
-
-    # Third model (OMTF mode)
     self.loaded_model_omtf = load_my_model(name=model_omtf_file, weights_name=model_omtf_weights_file)
+    self.loaded_model.trainable = False
+    self.loaded_model_run3.trainable = False
     self.loaded_model_omtf.trainable = False
-    assert not self.loaded_model_omtf.updates
-
-    def create_encoder_omtf(x):
-      nentries = x.shape[0]
-      y = np.zeros((nentries, 1), dtype=np.float32)  # dummy
-      encoder = EncoderOmtf(x, y, reg_pt_scale=self.reg_pt_scale)
-      return encoder
-    self.create_encoder_omtf = create_encoder_omtf
+    assert(not self.loaded_model.updates)
+    assert(not self.loaded_model_run3.updates)
+    assert(not self.loaded_model_omtf.updates)
 
   def predict(self, x):
     if self.omtf_input:
@@ -1961,7 +1939,7 @@ class RoadsAnalysis(object):
     # End loop over events
     unload_tree()
 
-    print('[INFO] npassed/ntotal: %i/%i = %f' % (npassed, ntotal, float(npassed)/ntotal))
+    print('[INFO] npassed/ntotal: %i/%i = %f' % (npassed, ntotal, float(npassed)/ntotal if ntotal > 0 else 0.))
 
     # __________________________________________________________________________
     # Save objects
@@ -2198,7 +2176,7 @@ class EffieAnalysis(object):
     eff_highpt_bins = (2., 2.5, 3., 3.5, 4., 4.5, 5., 6., 7., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 34., 40., 48., 60., 80., 100., 120., 250., 500., 1000.)
 
     for m in ("emtf", "emtf2026"):
-      for l in (0, 10, 15, 20, 30, 40, 50):
+      for l in (0, 10, 20, 30, 40, 50, 60):
         for k in ("denom", "numer"):
           hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
@@ -2362,7 +2340,7 @@ class EffieAnalysis(object):
             histograms[hname1].fill(part.invpt, trk.invpt)
             histograms[hname2].fill(abs(part.invpt), abs(part.invpt/trk.invpt) - 1)
 
-      for l in (0, 10, 15, 20, 30, 40, 50):
+      for l in (0, 10, 20, 30, 40, 50, 60):
         tracks = evt.tracks
         select_part = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
         select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l))
@@ -2426,7 +2404,7 @@ class EffieAnalysis(object):
     unload_tree()
 
     # Quick efficiency
-    for l in (20, 30, 40, 50):
+    for l in (0, 10, 20, 30, 40, 50, 60):
       for k in ("denom", "numer"):
         m = 'emtf2026'
         hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
@@ -2435,7 +2413,7 @@ class EffieAnalysis(object):
           npassed = h.GetBinContent(h.FindBin(l))
         else:
           ntotal = h.GetBinContent(h.FindBin(l))
-      print('[INFO] @%i GeV npassed/ntotal: %i/%i = %f' % (l, npassed, ntotal, float(npassed)/ntotal))
+      print('[INFO] @%i GeV npassed/ntotal: %i/%i = %f' % (l, npassed, ntotal, float(npassed)/ntotal if ntotal > 0 else 0.))
 
     # __________________________________________________________________________
     # Save histograms
@@ -2446,7 +2424,7 @@ class EffieAnalysis(object):
     with root_open(outfile, 'recreate') as f:
       hnames = []
       for m in ("emtf", "emtf2026"):
-        for l in (0, 10, 15, 20, 30, 40, 50):
+        for l in (0, 10, 20, 30, 40, 50, 60):
           for k in ("denom", "numer"):
             hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
             hnames.append(hname)
@@ -3068,7 +3046,7 @@ def load_minbias_batch_for_mixing(k):
 
 def load_minbias_batch_for_collusion(k):
   pufiles = []
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU140/SingleMu_FlatPt-2to100/CRAB3/190416_160834/0000/ntuple_SingleMuon_PU140_%i.root' % (i+1) for i in xrange(25)]
+  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU140/SingleMu_FlatPt-2to100/CRAB3/190416_160834/0000/ntuple_SingleMuon_PU140_%i.root' % (i+1) for i in xrange(25)]
   pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU200/SingleMu_FlatPt-2to100/CRAB3/190416_160951/0000/ntuple_SingleMuon_PU200_%i.root' % (i+1) for i in xrange(26)]
   #
   infile = pufiles[k]
@@ -3079,7 +3057,8 @@ def load_minbias_batch_for_collusion(k):
 # Main
 
 if __name__ == "__main__":
-  print('[INFO] Current time    : {0}'.format(datetime.datetime.now()))
+  start_time = datetime.datetime.now()
+  print('[INFO] Current time    : {0}'.format(start_time))
   print('[INFO] Using cmssw     : {0}'.format(os.environ['CMSSW_VERSION']))
   print('[INFO] Using condor    : {0}'.format(use_condor))
   print('[INFO] Using max events: {0}'.format(maxEvents))
@@ -3136,3 +3115,7 @@ if __name__ == "__main__":
 
   else:
     raise RunTimeError('Cannot recognize analysis: {0}'.format(analysis))
+
+  stop_time = datetime.datetime.now()
+  print('[INFO] Elapsed time    : {0}'.format(stop_time - start_time))
+  # DONE!
