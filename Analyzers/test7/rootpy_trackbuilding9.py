@@ -1075,7 +1075,7 @@ class PatternRecognition(object):
         roads.append(myroad)
     return roads
 
-  def run(self, hits):
+  def run(self, hits, sectors=list(xrange(12))):
     roads = []
 
     legit_hits = filter(is_emtf_legit_hit, hits)
@@ -1105,33 +1105,33 @@ class PatternRecognition(object):
       sector_hits_array[hit.endsec].append(hit)
 
     # Loop over sector processors
-    for endcap in (-1, +1):
-      for sector in (1, 2, 3, 4, 5, 6):
-        endsec = find_endsec(endcap, sector)
-        sector_mode = sector_mode_array[endsec]
-        sector_hits = sector_hits_array[endsec]
+    for endsec in sectors:
+      endcap = 1 if (endsec / 6) == 0 else -1
+      sector = (endsec % 6) + 1
+      sector_mode = sector_mode_array[endsec]
+      sector_hits = sector_hits_array[endsec]
 
-        # Provide early exit if no hit in stations 1&2 (check CSC, ME0, DT)
-        if not is_emtf_singlehit(sector_mode) and not is_emtf_singlehit_me2(sector_mode):
-          continue
+      # Provide early exit if no hit in stations 1&2 (check CSC, ME0, DT)
+      if not is_emtf_singlehit(sector_mode) and not is_emtf_singlehit_me2(sector_mode):
+        continue
 
-        # Remove all RPC hits
-        #sector_hits = [hit for hit in sector_hits if hit.type != kRPC]
+      # Remove all RPC hits
+      #sector_hits = [hit for hit in sector_hits if hit.type != kRPC]
 
-        # Remove all non-Run 2 hits
-        if self.run2_input:
-          sector_hits = list(filter(is_valid_for_run2, sector_hits))
+      # Remove all non-Run 2 hits
+      if self.run2_input:
+        sector_hits = list(filter(is_valid_for_run2, sector_hits))
 
-        # Loop over sector hits
-        for ihit, hit in enumerate(sector_hits):
-          hit.emtf_phi = find_emtf_phi(hit)
-          hit.emtf_theta = find_emtf_theta(hit)
-          hit.zones = find_emtf_zones(hit)
+      # Loop over sector hits
+      for ihit, hit in enumerate(sector_hits):
+        hit.emtf_phi = find_emtf_phi(hit)
+        hit.emtf_theta = find_emtf_theta(hit)
+        hit.zones = find_emtf_zones(hit)
 
-        # Apply patterns to the sector hits
-        sector_roads = self._apply_patterns(endcap, sector, sector_hits)
-        sector_roads.sort(key=lambda x: x.id)
-        roads += sector_roads
+      # Apply patterns to the sector hits
+      sector_roads = self._apply_patterns(endcap, sector, sector_hits)
+      sector_roads.sort(key=lambda x: x.id)
+      roads += sector_roads
     return roads
 
 
@@ -1816,7 +1816,7 @@ class RoadsAnalysis(object):
   def run(self, omtf_input=False, run2_input=False):
     # Book histograms
     histograms = {}
-    eff_pt_bins = (0., 0.5, 1., 1.5, 2., 3., 4., 5., 6., 7., 8., 10., 12., 14., 16., 18., 20., 22., 24., 27., 30., 34., 40., 48., 60., 80., 120.)
+    eff_pt_bins = (0., 0.5, 1., 1.5, 2., 3., 4., 5., 6., 7., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 34., 40., 48., 60., 80., 120.)
 
     for k in ("denom", "numer"):
       hname = "eff_vs_genpt_%s" % k
@@ -2169,7 +2169,7 @@ class RatesAnalysis(object):
 # Analysis: effie
 
 class EffieAnalysis(object):
-  def run(self, omtf_input=False, run2_input=False):
+  def run(self, omtf_input=False, run2_input=False, pileup=0):
     # Book histograms
     histograms = {}
     eff_pt_bins = (0., 0.5, 1., 1.5, 2., 3., 4., 5., 6., 7., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 34., 40., 48., 60., 80., 120.)
@@ -2205,10 +2205,13 @@ class EffieAnalysis(object):
       histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -1, 2, name=hname, title="; gen q/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
 
     # Load tree
-    if omtf_input:
-      tree = load_pgun_batch_omtf(jobid)
+    if pileup == 0:
+      if omtf_input:
+        tree = load_pgun_batch_omtf(jobid)
+      else:
+        tree = load_pgun_batch(jobid)
     else:
-      tree = load_pgun_batch(jobid)
+      tree = load_minbias_batch_for_effie(jobid, pileup=pileup)
 
     # Workers
     bank = PatternBank(bankfile)
@@ -2233,10 +2236,16 @@ class EffieAnalysis(object):
         continue
 
       part = evt.particles[0]  # particle gun
+      if len(evt.particles) == 2:
+        part = evt.particles[(ievt % 2)]  # centrally produced samples contain 2 muons, here I pick only one
       part.invpt = np.true_divide(part.q, part.pt)
       part.d0 = calculate_d0(part.invpt, part.phi, part.vx, part.vy)
+      if part.eta >= 0.:
+        sectors = [0, 1, 2, 3, 4, 5]
+      else:
+        sectors = [6, 7, 8, 9, 10, 11]
 
-      roads = recog.run(evt.hits)
+      roads = recog.run(evt.hits, sectors=sectors)
       clean_roads = clean.run(roads)
       slim_roads = slim.run(clean_roads)
 
@@ -3025,6 +3034,15 @@ def load_minbias_batch(k, pileup=200):
   infile = pufiles[k]
   return load_tree_single(infile)
 
+def load_minbias_batch_for_effie(k, pileup=200):
+  if pileup == 200:
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU200/SingleMu_FlatPt-2to100/CRAB3/190416_160951/0000/ntuple_SingleMuon_PU200_%i.root' % (i+1) for i in xrange(26)]
+  else:
+    raise RunTimeError('Cannot recognize pileup: {0}'.format(pileup))
+  #
+  infile = pufiles[k]
+  return load_tree_single(infile)
+
 def load_minbias_batch_for_mixing(k):
   pufiles = []
   # For training purposes
@@ -3084,12 +3102,15 @@ if __name__ == "__main__":
     analysis = RoadsAnalysis()
     analysis.run(omtf_input=omtf_input, run2_input=run2_input)
 
-  elif analysis == 'rates':
+  elif analysis == 'rates':  # default to pileup=200
     analysis = RatesAnalysis()
-    analysis.run(omtf_input=omtf_input, run2_input=run2_input, pileup=200)
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input)
   elif analysis == 'rates140':
     analysis = RatesAnalysis()
     analysis.run(omtf_input=omtf_input, run2_input=run2_input, pileup=140)
+  elif analysis == 'rates200':
+    analysis = RatesAnalysis()
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input, pileup=200)
   elif analysis == 'rates250':
     analysis = RatesAnalysis()
     analysis.run(omtf_input=omtf_input, run2_input=run2_input, pileup=250)
@@ -3097,9 +3118,15 @@ if __name__ == "__main__":
     analysis = RatesAnalysis()
     analysis.run(omtf_input=omtf_input, run2_input=run2_input, pileup=300)
 
-  elif analysis == 'effie':
+  elif analysis == 'effie':  # default to pileup=0
     analysis = EffieAnalysis()
     analysis.run(omtf_input=omtf_input, run2_input=run2_input)
+  elif analysis == 'effie0':
+    analysis = EffieAnalysis()
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input, pileup=0)
+  elif analysis == 'effie200':
+    analysis = EffieAnalysis()
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input, pileup=200)
 
   elif analysis == 'mixing':
     analysis = MixingAnalysis()
