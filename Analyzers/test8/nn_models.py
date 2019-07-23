@@ -13,6 +13,7 @@ from keras.callbacks import LearningRateScheduler, ModelCheckpoint, EarlyStoppin
 
 import h5py
 import json
+import pickle
 import functools
 
 
@@ -534,6 +535,17 @@ def load_my_model(name='model.json', weights_name='model_weights.h5'):
   model.load_weights(weights_name)
   return model
 
+# ______________________________________________________________________________
+# Save/Load training history
+def save_my_history(history, name='model'):
+  with open(name+'_history.pkl', 'wb') as f:
+    pickle.dump(history, f)
+  return
+
+def load_my_history(name='model'):
+  with open(name+'_history.pkl', 'rb') as f:
+    history = pickle.load(f)
+  return history
 
 # ______________________________________________________________________________
 # Scoring for cross-validation

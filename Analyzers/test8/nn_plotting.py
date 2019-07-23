@@ -25,6 +25,10 @@ def find_sumw2_errors(y, w):
 def find_efficiency_errors(total_array, passed_array, level=0.682689492137):
   """Copied from ROOT TEfficiency::ClopperPearson()
   """
+  if isinstance(total_array, list):
+    total_array = np.array(total_array)
+  if isinstance(passed_array, list):
+    passed_array = np.array(passed_array)
   assert(total_array.ndim == 1)
   assert(passed_array.ndim == 1)
 
