@@ -35,6 +35,6 @@ Please do not develop on the 'master' branch. The 'master' branch is frequently 
 
 - v1.3.0 (2019-03-12): Results using CMSSW_10_4_0 including overlap region.
 
-- v1.2.0 (2019-02-19): Move to CMSSW_10_4_0. Extend to overlap region.
+- v1.2.0 (2019-02-19): Move to CMSSW_10_4_0. Extend to overlap region. The NN has been modified to use 36 features and 30/25/20 nodes in the 3 hidden layers.
 
 - v1.1.0 (2018-11-06): First results. Using CMSSW_10_1_5. Include GEM, ME0, iRPC. Add CSC bend info.
