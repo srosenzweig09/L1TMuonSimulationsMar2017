@@ -217,12 +217,12 @@ class EMTFLayer(object):
 class EMTFZone(object):
   def __init__(self):
     lut = np.zeros((5,5,5,7,2), dtype=np.int32) - 99  # (type, station, ring) -> [zone] x [min_theta,max_theta]
-    lut[1,1,4][0] = 4,17    # ME1/1a
+    lut[1,1,4][0] = 1,17    # ME1/1a
     lut[1,1,4][1] = 16,26   # ME1/1a
     lut[1,1,4][2] = 24,37   # ME1/1a
     lut[1,1,4][3] = 34,45   # ME1/1a
     lut[1,1,4][4] = 41,53   # ME1/1a
-    lut[1,1,1][0] = 4,17    # ME1/1b
+    lut[1,1,1][0] = 1,17    # ME1/1b
     lut[1,1,1][1] = 16,26   # ME1/1b
     lut[1,1,1][2] = 24,37   # ME1/1b
     lut[1,1,1][3] = 34,45   # ME1/1b
@@ -232,7 +232,7 @@ class EMTFZone(object):
     lut[1,1,2][6] = 78,88   # ME1/2
     lut[1,1,3][6] = 98,125  # ME1/3
     #
-    lut[1,2,1][0] = 4,17    # ME2/1
+    lut[1,2,1][0] = 1,17    # ME2/1
     lut[1,2,1][1] = 16,25   # ME2/1
     lut[1,2,1][2] = 24,36   # ME2/1
     lut[1,2,1][3] = 34,44   # ME2/1
@@ -240,7 +240,7 @@ class EMTFZone(object):
     lut[1,2,2][5] = 53,90   # ME2/2
     lut[1,2,2][6] = 77,111  # ME2/2
     #
-    lut[1,3,1][0] = 4,17    # ME3/1
+    lut[1,3,1][0] = 1,17    # ME3/1
     lut[1,3,1][1] = 16,25   # ME3/1
     lut[1,3,1][2] = 24,36   # ME3/1
     lut[1,3,1][3] = 34,40   # ME3/1
@@ -248,7 +248,7 @@ class EMTFZone(object):
     lut[1,3,2][5] = 52,90   # ME3/2
     lut[1,3,2][6] = 76,96   # ME3/2
     #
-    lut[1,4,1][0] = 4,17    # ME4/1
+    lut[1,4,1][0] = 1,17    # ME4/1
     lut[1,4,1][1] = 16,25   # ME4/1
     lut[1,4,1][2] = 24,35   # ME4/1
     lut[1,4,2][3] = 38,44   # ME4/2
@@ -262,7 +262,7 @@ class EMTFZone(object):
     lut[2,2,2][5] = 56,88   # RE2/2
     lut[2,2,2][6] = 76,112  # RE2/2
     lut[2,2,3][6] = 76,112  # RE2/3
-    lut[2,3,1][0] = 4,17    # RE3/1
+    lut[2,3,1][0] = 1,17    # RE3/1
     lut[2,3,1][1] = 16,25   # RE3/1
     lut[2,3,1][2] = 24,36   # RE3/1
     lut[2,3,2][3] = 40,40   # RE3/2
@@ -272,7 +272,7 @@ class EMTFZone(object):
     lut[2,3,3][4] = 40,52   # RE3/3
     lut[2,3,3][5] = 48,84   # RE3/3
     lut[2,3,3][6] = 80,92   # RE3/3
-    lut[2,4,1][0] = 4,17    # RE4/1
+    lut[2,4,1][0] = 1,17    # RE4/1
     lut[2,4,1][1] = 16,25   # RE4/1
     lut[2,4,1][2] = 24,31   # RE4/1
     lut[2,4,2][3] = 36,44   # RE4/2
@@ -286,12 +286,12 @@ class EMTFZone(object):
     lut[3,1,1][2] = 24,37   # GE1/1
     lut[3,1,1][3] = 35,45   # GE1/1
     lut[3,1,1][4] = 40,52   # GE1/1
-    lut[3,2,1][0] = 7,19    # GE2/1
+    lut[3,2,1][0] = 4,19    # GE2/1
     lut[3,2,1][1] = 18,24   # GE2/1
     lut[3,2,1][2] = 23,36   # GE2/1
     lut[3,2,1][3] = 34,46   # GE2/1
     #
-    lut[4,1,1][0] = 4,17    # ME0
+    lut[4,1,1][0] = 1,17    # ME0
     lut[4,1,1][1] = 16,23   # ME0
     #
     lut[0,1,1][6] = 92,130  # MB1
@@ -508,6 +508,7 @@ class EMTFOldPhi(object):
 # Decide EMTF hit theta (integer unit)
 class EMTFTheta(object):
   def __call__(self, hit):
+    assert(hit.emtf_theta > 0)
     emtf_theta = np.int32(hit.emtf_theta)
     if hit.type == kDT:
       # wire -1 means no theta SL
@@ -893,6 +894,23 @@ def create_ragged_array(pylist):
     row_splits = np.asarray(row_splits, dtype=np.int64)
     values = RaggedTensorValue(values, row_splits)
   return values
+
+# This class only exists in numpy v1.16.0 or newer
+#from numpy.compat import contextlib_nullcontext
+class contextlib_nullcontext(object):
+  """Context manager that does no additional processing.
+  Used as a stand-in for a normal context manager, when a particular
+  block of code is only sometimes used with a normal context manager:
+  cm = optional_cm if condition else nullcontext()
+  with cm:
+      # Perform operation, using optional_cm if condition is True
+  """
+  def __init__(self, enter_result=None):
+    self.enter_result = enter_result
+  def __enter__(self):
+    return self.enter_result
+  def __exit__(self, *excinfo):
+    pass
 
 
 # ______________________________________________________________________________
@@ -1778,7 +1796,7 @@ class TrackMuonCorrelation(object):
 
 
 # ______________________________________________________________________________
-# Analysis: dummy
+# Analysis: dummy (can be used as a skeleton)
 
 class DummyAnalysis(object):
   def run(self, omtf_input=False, run2_input=False):
@@ -1788,6 +1806,10 @@ class DummyAnalysis(object):
     else:
       tree = load_pgun()
 
+    # Event range
+    maxEvents = 1000
+
+    # __________________________________________________________________________
     # Loop over events
     for ievt, evt in enumerate(tree):
       if maxEvents != -1 and ievt == maxEvents:
@@ -1812,7 +1834,7 @@ class DummyAnalysis(object):
 # ______________________________________________________________________________
 # Analysis: roads
 
-class RoadsAnalysis(object):
+class RoadsAnalysis(DummyAnalysis):
   def run(self, omtf_input=False, run2_input=False):
     # Book histograms
     histograms = {}
@@ -1847,12 +1869,12 @@ class RoadsAnalysis(object):
     npassed, ntotal = 0, 0
 
     # Event range
-    n = -1
+    maxEvents = -1
 
     # __________________________________________________________________________
     # Loop over events
     for ievt, evt in enumerate(tree):
-      if n != -1 and ievt == n:
+      if maxEvents != -1 and ievt == maxEvents:
         break
 
       if len(evt.particles) == 0:
@@ -1871,6 +1893,7 @@ class RoadsAnalysis(object):
         out_particles.append(mypart)
         out_roads.append(slim_roads[0])
 
+      # Quick efficiency
       if omtf_input:
         is_important = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0) and (part.pt > 5.)
         is_possible = lambda hits: (any([(hit.type == kDT and hit.station == 1) for hit in hits]) and any([(hit.type == kDT and 2 <= hit.station <= 3) for hit in hits])) or \
@@ -1915,8 +1938,6 @@ class RoadsAnalysis(object):
         ntotal += 1
         if trigger:
           npassed += 1
-        #else:
-        #  print("evt {0} FAIL".format(ievt))
 
         hname = "eff_vs_genpt_denom"
         histograms[hname].fill(part.pt)
@@ -1945,19 +1966,19 @@ class RoadsAnalysis(object):
     # Save objects
     outfile = 'histos_tba.npz'
     if use_condor:
-      outfile = 'histos_tba_%i.npz' % jobid
+      outfile = outfile[:-4] + ('_%i.npz' % jobid)
     print('[INFO] Creating file: %s' % outfile)
-    if True:
+    with contextlib_nullcontext(outfile) as f:
       assert(len(out_particles) == len(out_roads))
       parameters = particles_to_parameters(out_particles)
       variables = roads_to_variables(out_roads)
-      np.savez_compressed(outfile, parameters=parameters, variables=variables)
+      np.savez_compressed(f, parameters=parameters, variables=variables)
 
 
 # ______________________________________________________________________________
 # Analysis: rates
 
-class RatesAnalysis(object):
+class RatesAnalysis(DummyAnalysis):
   def run(self, omtf_input=False, run2_input=False, pileup=200):
     # Book histograms
     histograms = {}
@@ -1998,12 +2019,12 @@ class RatesAnalysis(object):
     mucorr = TrackMuonCorrelation()
 
     # Event range
-    n = -1
+    maxEvents = -1
 
     # __________________________________________________________________________
     # Loop over events
     for ievt, evt in enumerate(tree):
-      if n != -1 and ievt == n:
+      if maxEvents != -1 and ievt == maxEvents:
         break
 
       roads = recog.run(evt.hits)
@@ -2136,7 +2157,7 @@ class RatesAnalysis(object):
     # Save histograms
     outfile = 'histos_tbb.root'
     if use_condor:
-      outfile = 'histos_tbb_%i.root' % jobid
+      outfile = outfile[:-5] + ('_%i.root' % jobid)
     print('[INFO] Creating file: %s' % outfile)
     with root_open(outfile, 'recreate') as f:
       hnames = []
@@ -2168,7 +2189,7 @@ class RatesAnalysis(object):
 # ______________________________________________________________________________
 # Analysis: effie
 
-class EffieAnalysis(object):
+class EffieAnalysis(DummyAnalysis):
   def run(self, omtf_input=False, run2_input=False, pileup=0):
     # Book histograms
     histograms = {}
@@ -2224,12 +2245,12 @@ class EffieAnalysis(object):
     mucorr = TrackMuonCorrelation()
 
     # Event range
-    n = -1
+    maxEvents = -1
 
     # __________________________________________________________________________
     # Loop over events
     for ievt, evt in enumerate(tree):
-      if n != -1 and ievt == n:
+      if maxEvents != -1 and ievt == maxEvents:
         break
 
       if len(evt.particles) == 0:
@@ -2428,7 +2449,7 @@ class EffieAnalysis(object):
     # Save histograms
     outfile = 'histos_tbc.root'
     if use_condor:
-      outfile = 'histos_tbc_%i.root' % jobid
+      outfile = outfile[:-5] + ('_%i.root' % jobid)
     print('[INFO] Creating file: %s' % outfile)
     with root_open(outfile, 'recreate') as f:
       hnames = []
@@ -2467,8 +2488,9 @@ class EffieAnalysis(object):
 # ______________________________________________________________________________
 # Analysis: mixing
 
-class MixingAnalysis(object):
+class MixingAnalysis(DummyAnalysis):
   def run(self, omtf_input=False, run2_input=False, test_job=159):
+    # Load tree
     tree = load_minbias_batch_for_mixing(jobid)
 
     # Workers
@@ -2515,12 +2537,12 @@ class MixingAnalysis(object):
       return tracks
 
     # Event range
-    n = -1
+    maxEvents = -1
 
     # __________________________________________________________________________
     # Loop over events
     for ievt, evt in enumerate(tree):
-      if n != -1 and ievt == n:
+      if maxEvents != -1 and ievt == maxEvents:
         break
 
       # Remember the BX
@@ -2603,21 +2625,21 @@ class MixingAnalysis(object):
     # Save objects
     outfile = 'histos_tbd.npz'
     if use_condor:
-      outfile = 'histos_tbd_%i.npz' % jobid
+      outfile = outfile[:-4] + ('_%i.npz' % jobid)
     print('[INFO] Creating file: %s' % outfile)
-    if True:
+    with contextlib_nullcontext(outfile) as f:
       assert(len(out_particles) == len(out_roads))
       assert(len(out_particles) == len(out_aux))
       parameters = particles_to_parameters(out_particles)
       variables = roads_to_variables(out_roads)
       out_aux = np.array(out_aux, dtype=np.float32)
-      np.savez_compressed(outfile, parameters=parameters, variables=variables, aux=out_aux)
+      np.savez_compressed(f, parameters=parameters, variables=variables, aux=out_aux)
 
 
 # ______________________________________________________________________________
 # Analysis: collusion
 
-class CollusionAnalysis(object):
+class CollusionAnalysis(DummyAnalysis):
   def run(self, omtf_input=False, run2_input=False):
     # Load tree
     tree = load_minbias_batch_for_collusion(jobid)
@@ -2631,12 +2653,12 @@ class CollusionAnalysis(object):
     out_roads = []
 
     # Event range
-    n = -1
+    maxEvents = -1
 
     # __________________________________________________________________________
     # Loop over events
     for ievt, evt in enumerate(tree):
-      if n != -1 and ievt == n:
+      if maxEvents != -1 and ievt == maxEvents:
         break
 
       if len(evt.particles) == 0:
@@ -2718,19 +2740,123 @@ class CollusionAnalysis(object):
     # Save objects
     outfile = 'histos_tbe.npz'
     if use_condor:
-      outfile = 'histos_tbe_%i.npz' % jobid
+      outfile = outfile[:-4] + ('_%i.npz' % jobid)
     print('[INFO] Creating file: %s' % outfile)
-    if True:
+    with contextlib_nullcontext(outfile) as f:
       assert(len(out_particles) == len(out_roads))
       parameters = particles_to_parameters(out_particles)
       variables = roads_to_variables(out_roads)
-      np.savez_compressed(outfile, parameters=parameters, variables=variables)
+      np.savez_compressed(f, parameters=parameters, variables=variables)
+
+
+# ______________________________________________________________________________
+# Analysis: augmentation
+
+class AugmentationAnalysis(DummyAnalysis):
+  def run(self, omtf_input=False, run2_input=False):
+    # Load tree
+    if omtf_input:
+      tree = load_pgun_batch_omtf(jobid)
+    else:
+      tree = load_pgun_batch(jobid)
+
+    # Workers
+    bank = PatternBank(bankfile)
+    recog = PatternRecognition(bank, omtf_input=omtf_input, run2_input=run2_input)
+    clean = RoadCleaning()
+    slim = RoadSlimming(bank)
+    out_particles = []
+    out_roads = []
+    npassed, ntotal = 0, 0
+
+    def augment(hits):
+      augmnt_hits = []
+      drop_station = np.random.randint(5) + 1
+      if drop_station in (2,3,4):
+        for hit in hits:
+          if not (hit.station == drop_station):
+            augmnt_hits.append(hit)
+      elif drop_station == 1:
+        for hit in hits:
+          if ((hit.type == kCSC or hit.type == kME0) or not (hit.station == drop_station)):
+            augmnt_hits.append(hit)
+      elif drop_station == 5:
+        for hit in hits:
+          if not (hit.type == kME0):
+            augmnt_hits.append(hit)
+      return augmnt_hits
+
+    # Event range
+    maxEvents = -1
+
+    # __________________________________________________________________________
+    # Loop over events
+    for ievt, evt in enumerate(tree):
+      if maxEvents != -1 and ievt == maxEvents:
+        break
+
+      if len(evt.particles) == 0:
+        continue
+
+      part = evt.particles[0]  # particle gun
+      part.invpt = np.true_divide(part.q, part.pt)
+
+      if not (part.pt > 20.):  # only applies augmentation to high pT
+        continue
+
+      # Augment input hit collection
+      augmnt_hits = augment(evt.hits)
+
+      roads = recog.run(augmnt_hits)
+      clean_roads = clean.run(roads)
+      slim_roads = slim.run(clean_roads)
+      assert(len(clean_roads) == len(slim_roads))
+
+      if len(slim_roads) > 0:
+        mypart = Particle(part.pt, part.eta, part.phi, part.q, part.vx, part.vy, part.vz)
+        out_particles.append(mypart)
+        out_roads.append(slim_roads[0])
+
+      # Quick efficiency
+      if omtf_input:
+        is_important = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0) and (part.pt > 5.)
+        is_possible = lambda hits: (any([(hit.type == kDT and hit.station == 1) for hit in hits]) and any([(hit.type == kDT and 2 <= hit.station <= 3) for hit in hits])) or \
+            (any([(hit.type == kCSC and hit.station == 1) for hit in hits]) and any([(hit.type == kDT and 1 <= hit.station <= 2) for hit in hits])) or \
+            (any([(hit.type == kCSC and hit.station == 1) for hit in hits]) and any([(hit.type == kCSC and 2 <= hit.station <= 3) for hit in hits]))
+      else:
+        is_important = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0) and (part.pt > 4.)
+        is_possible = lambda hits: any([((hit.type == kCSC or hit.type == kME0) and hit.station == 1) for hit in hits]) and \
+            any([(hit.type == kCSC and hit.station >= 2) for hit in hits])
+
+      # Quick efficiency
+      if is_important(part):
+        trigger = len(clean_roads) > 0
+        ntotal += 1
+        if trigger:
+          npassed += 1
+
+    # End loop over events
+    unload_tree()
+
+    print('[INFO] npassed/ntotal: %i/%i = %f' % (npassed, ntotal, float(npassed)/ntotal if ntotal > 0 else 0.))
+
+    # __________________________________________________________________________
+    # Save objects
+    outfile = 'histos_tbf.npz'
+    if use_condor:
+      outfile = outfile[:-4] + ('_%i.npz' % jobid)
+    print('[INFO] Creating file: %s' % outfile)
+    with contextlib_nullcontext(outfile) as f:
+      assert(len(out_particles) == len(out_roads))
+      parameters = particles_to_parameters(out_particles)
+      variables = roads_to_variables(out_roads)
+      np.savez_compressed(f, parameters=parameters, variables=variables)
 
 
 # ______________________________________________________________________________
 # Analysis: images
 
-class ImagesAnalysis(object):
+class ImagesAnalysis(DummyAnalysis):
   def run(self, omtf_input=False, run2_input=False):
     # Load tree
     if omtf_input:
@@ -2740,6 +2866,9 @@ class ImagesAnalysis(object):
 
     out_part = []
     out_hits = []
+
+    # Event range
+    maxEvents = 2000000
 
     # __________________________________________________________________________
     # Loop over events
@@ -2883,26 +3012,20 @@ class ImagesAnalysis(object):
 
     # __________________________________________________________________________
     # Save objects
-    outfile = 'histos_tbf.npz'
+    outfile = 'histos_tbi.npz'
     if use_condor:
-      outfile = 'histos_tbf_%i.npz' % jobid
+      outfile = outfile[:-4] + ('_%i.npz' % jobid)
     print('[INFO] Creating file: %s' % outfile)
-    if True:
+    with contextlib_nullcontext(outfile) as f:
       assert(len(out_part) == len(out_hits))
       out_part = np.asarray(out_part, dtype=np.float32)
       out_hits = create_ragged_array(out_hits)
       print out_part.shape, out_hits.shape
-      np.savez_compressed(outfile, out_part=out_part, out_hits_values=out_hits.values, out_hits_row_splits=out_hits.row_splits)
+      np.savez_compressed(f, out_part=out_part, out_hits_values=out_hits.values, out_hits_row_splits=out_hits.row_splits)
 
 
 # ______________________________________________________________________________
 # Settings
-
-# Get number of events
-#maxEvents = -1
-#maxEvents = 4000000
-maxEvents = 2000000
-#maxEvents = 1000
 
 # Condor or not
 use_condor = ('CONDOR_EXEC' in os.environ)
@@ -2920,9 +3043,10 @@ if use_condor:
 #analysis = 'dummy'
 #analysis = 'roads'
 #analysis = 'rates'
-analysis = 'effie'
+#analysis = 'effie'
 #analysis = 'mixing'
 #analysis = 'collusion'
+analysis = 'augmentation'
 #analysis = 'images'
 if use_condor:
   analysis = sys.argv[2]
@@ -3079,7 +3203,6 @@ if __name__ == "__main__":
   print('[INFO] Current time    : {0}'.format(start_time))
   print('[INFO] Using cmssw     : {0}'.format(os.environ['CMSSW_VERSION']))
   print('[INFO] Using condor    : {0}'.format(use_condor))
-  print('[INFO] Using max events: {0}'.format(maxEvents))
   print('[INFO] Using algo      : {0}'.format(algo))
   print('[INFO] Using analysis  : {0}'.format(analysis))
   print('[INFO] Using job id    : {0}'.format(jobid))
@@ -3134,6 +3257,10 @@ if __name__ == "__main__":
 
   elif analysis == 'collusion':
     analysis = CollusionAnalysis()
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input)
+
+  elif analysis == 'augmentation':
+    analysis = AugmentationAnalysis()
     analysis.run(omtf_input=omtf_input, run2_input=run2_input)
 
   elif analysis == 'images':
