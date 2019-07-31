@@ -87,6 +87,8 @@ axes.labelweight : 500
 #lines.markersize : 10
 
 ### TICKS
+xtick.direction: in
+ytick.direction: in
 xtick.labelsize : small
 ytick.labelsize : small
 xtick.major.size : 6.0
