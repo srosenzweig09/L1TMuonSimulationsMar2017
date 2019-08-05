@@ -19,7 +19,8 @@ l1_reg = 0.0
 l2_reg = 0.0
 
 infile_muon = '../test7/histos_tba.27.npz'
-infile_pileup = '../test7/histos_tbd.27.npz'
+#infile_pileup = '../test7/histos_tbd.27.npz'
+infile_pileup = '../test7/histos_tbd_alt.27.npz'
 infile_highpt = '../test7/histos_tbe.27.npz'
 infile_augmnt = '../test7/histos_tbf.27.npz'
 infile_displ1 = '../test7/histos_tba_displ1.27.npz'
