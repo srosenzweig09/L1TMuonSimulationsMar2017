@@ -156,11 +156,19 @@ def find_eta_bin(eta):
   ieta = np.clip(ieta, 0, len(eta_bins)-2)
   return ieta
 
+# A coarse-graining operation
+# divide by 'quadstrip' unit (4 * 8), and adjust for rounding
 def find_pattern_x(emtf_phi):
-  return (emtf_phi+16)//32  # divide by 'quadstrip' unit (4 * 8)
+  return (emtf_phi+16)//32
 
+# Undo the coarse-graining operation
+# multiply by 'quadstrip' unit (4 * 8)
 def find_pattern_x_inverse(x):
-  return (x*32)  # multiply by 'quadstrip' unit (4 * 8)
+  return (x*32)
+
+def pick_the_median(lst):  # assume sorted list
+  middle = 0 if len(lst) == 0 else (len(lst)-1)//2
+  return lst[middle]
 
 def calculate_d0(invPt, phi, xv, yv, B=3.811):
   _invPt = np.asarray(invPt, dtype=np.float64)   # needs double precision
@@ -569,8 +577,12 @@ class EMTFRoadQuality(object):
     # strg  1  3  5  7  9  7  5  3  1
     # ipt   9 10 11 12 13 14 15 16 17
     # strg  0  2  4  6  8  6  4  2  0
-    self.lut = np.array([1,3,5,7,9,7,5,3,1,0,2,4,6,8,6,4,2,0], dtype=np.int32)
-    assert(self.lut.size == 18)
+    lut = [1,3,5,7,9,7,5,3,1,
+           0,2,4,6,8,6,4,2,0]
+    self.lut = np.array(lut, dtype=np.int32)
+    assert(self.lut.size == 9*2)
+    assert(self.lut.min() == 0)
+    assert(self.lut.max() < 16)
 
   def __call__(self, ipt):
     return self.lut[ipt]
@@ -578,13 +590,15 @@ class EMTFRoadQuality(object):
 # Decide EMTF road sort code (by hit composition)
 class EMTFRoadSortCode(object):
   def __init__(self):
-    # 10   9      8      7    6      5    4    3..0
-    #      ME1/1  ME1/2  ME2         ME3  ME4  qual
-    #                         RE1&2  RE3  RE4
-    # ME0         GE1/1       GE2/1
-    # MB1  MB2                MB3&4
-    self.lut = np.array([9,8,7,5,4,6,6,5,4,8,6,10,10,9,6,6], dtype=np.int32)
+    # 12   11     10     9      8      7      6      5      4      3..0
+    #      ME1/1  ME1/2  ME2    ME3    ME4                         qual
+    #                                         RE1    RE2    RE3&4
+    # ME0                                     GE1/1  GE2/1
+    # MB1  MB2                                MB3&4
+    self.lut = np.array([11,10,9,8,7,6,5,4,4,6,5,12,12,11,6,6], dtype=np.int32)
     assert(self.lut.size == nlayers)
+    assert(self.lut.min() == 4)
+    assert(self.lut.max() == 12)
 
   def __call__(self, road_quality, road_hits_layers):
     sort_code = np.int32(0)
@@ -594,6 +608,100 @@ class EMTFRoadSortCode(object):
     assert((0 <= road_quality) and (road_quality < 16))
     sort_code |= road_quality
     return sort_code
+
+# Decide EMTF road mode
+class EMTFRoadMode(object):
+  def __call__(self, road_hits):
+    road_mode = 0
+    for hit in road_hits:
+      (_type, station, ring, endsec, fr, bx) = hit.id
+      road_mode |= (1 << (4 - station))
+    return road_mode
+
+# Decide EMTF road accept
+class EMTFRoadAccept(object):
+  def __call__(self, road_zone, road_hits):
+    road_mode = 0
+    road_mode_csc = 0
+    road_mode_me0 = 0  # zones 0,1
+    road_mode_me12 = 0 # zone 4
+    road_mode_csc_me12 = 0 # zone 4
+    road_mode_mb1 = 0  # zone 6
+    road_mode_mb2 = 0  # zone 6
+    road_mode_me13 = 0 # zone 6
+    #road_mode_me22 = 0 # zone 6
+
+    for hit in road_hits:
+      (_type, station, ring, endsec, fr, bx) = hit.id
+      road_mode |= (1 << (4 - station))
+
+      if _type == kCSC or _type == kME0:
+        road_mode_csc |= (1 << (4 - station))
+
+      if _type == kME0 and bx == 0:
+        road_mode_me0 |= (1 << 1)
+      elif _type == kCSC and station == 1 and (ring == 1 or ring == 4) and bx == 0:
+        road_mode_me0 |= (1 << 0)
+
+      if _type == kCSC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
+        road_mode_me12 |= (1 << (4 - 2))
+      elif _type == kRPC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
+        road_mode_me12 |= (1 << (4 - 2))
+      else:
+        road_mode_me12 |= (1 << (4 - station))
+
+      if _type == kCSC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
+        road_mode_csc_me12 |= (1 << (4 - 2))
+      elif _type == kCSC:
+        road_mode_csc_me12 |= (1 << (4 - station))
+
+      if _type == kDT and station == 1:
+        road_mode_mb1 |= (1 << 1)
+      elif _type == kDT and station >= 2:
+        road_mode_mb1 |= (1 << 0)
+      elif _type == kCSC and station >= 1 and (ring == 2 or ring == 3):
+        road_mode_mb1 |= (1 << 0)
+      elif _type == kRPC and station >= 1 and (ring == 2 or ring == 3):
+        road_mode_mb1 |= (1 << 0)
+
+      if _type == kDT and station == 2:
+        road_mode_mb2 |= (1 << 1)
+      elif _type == kDT and station >= 3:
+        road_mode_mb2 |= (1 << 0)
+      elif _type == kCSC and station >= 1 and (ring == 2 or ring == 3):
+        road_mode_mb2 |= (1 << 0)
+      elif _type == kRPC and station >= 1 and (ring == 2 or ring == 3):
+        road_mode_mb2 |= (1 << 0)
+
+      if _type == kCSC and station == 1 and (ring == 2 or ring == 3):
+        road_mode_me13 |= (1 << 1)
+      elif _type == kCSC and station >= 2 and (ring == 2 or ring == 3):
+        road_mode_me13 |= (1 << 0)
+      elif _type == kRPC and station == 1 and (ring == 2 or ring == 3):
+        road_mode_me13 |= (1 << 1)
+      elif _type == kRPC and station >= 2 and (ring == 2 or ring == 3):
+        road_mode_me13 |= (1 << 0)
+
+      #if _type == kCSC and station == 2 and (ring == 2 or ring == 3):
+      #  road_mode_me22 |= (1 << 1)
+      #elif _type == kCSC and station >= 3 and (ring == 2 or ring == 3):
+      #  road_mode_me22 |= (1 << 0)
+      #elif _type == kRPC and station == 2 and (ring == 2 or ring == 3):
+      #  road_mode_me22 |= (1 << 1)
+      #elif _type == kRPC and station >= 3 and (ring == 2 or ring == 3):
+      #  road_mode_me22 |= (1 << 0)
+
+    # Apply zone-specific requirements
+    # + (zones 0,1) any road with ME0 and ME1
+    # + (zone 4) any road with ME1/1, ME1/2 + one more station
+    # + (zone 5) any road with 2 stations
+    # + (zone 6) any road with MB1+MB2, MB1+MB3, MB1+ME1/3, MB1+ME2/2, MB2+MB3, MB2+ME1/3, MB2+ME2/2, ME1/3+ME2/2
+    accept = ((is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
+              (road_zone in (0,1) and road_mode_me0 == 3) or \
+              (road_zone in (4,) and is_emtf_singlemu(road_mode_me12) and is_emtf_muopen(road_mode_csc_me12)) or \
+              (road_zone in (5,) and is_emtf_doublemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
+              (road_zone in (6,) and (road_mode_mb1 == 3 or road_mode_mb2 == 3 or road_mode_me13 == 3)) )
+    return accept
 
 find_emtf_layer = EMTFLayer()
 find_emtf_zones = EMTFZone()
@@ -607,6 +715,8 @@ find_emtf_qual = EMTFQuality()
 find_emtf_time = EMTFTime()
 find_emtf_road_quality = EMTFRoadQuality()
 find_emtf_road_sort_code = EMTFRoadSortCode()
+find_emtf_road_mode = EMTFRoadMode()
+find_emtf_road_accept = EMTFRoadAccept()
 
 def is_emtf_singlemu(mode):
   return mode in (11,13,14,15)
@@ -616,7 +726,8 @@ def is_emtf_doublemu(mode):
   return mode in (9,10,12) + (11,13,14,15)  # replace 2-3-4 with 1-4
 
 def is_emtf_muopen(mode):
-  return mode in (3,5,6,9) + (7,10,12) + (11,13,14,15)
+  #return mode in (3,5,6,9) + (7,10,12) + (11,13,14,15)
+  return mode in (5,6,9) + (7,10,12) + (11,13,14,15)  # remove 3-4
 
 def is_emtf_singlehit(mode):
   return bool(mode & (1 << 3))
@@ -797,12 +908,13 @@ class Road(object):
     return arr
 
 class Track(object):
-  def __init__(self, _id, hits, mode, quality, zone, xml_pt, pt, q, y_pred, y_discr, emtf_phi, emtf_theta):
+  def __init__(self, _id, hits, mode, quality, sort_code,
+               xml_pt, pt, q, y_pred, y_discr, emtf_phi, emtf_theta):
     self.id = _id  # (endcap, sector, ipt, ieta, iphi)
     self.hits = hits
     self.mode = mode
     self.quality = quality
-    self.zone = zone
+    self.sort_code = sort_code
     self.xml_pt = xml_pt
     self.pt = pt
     self.q = q
@@ -812,6 +924,10 @@ class Track(object):
     self.emtf_theta = emtf_theta
     self.phi = calc_phi_glob_deg(calc_phi_loc_deg(emtf_phi), _id[1])
     self.eta = calc_eta_from_theta_deg(calc_theta_deg_from_int(emtf_theta), _id[0])
+
+  @property
+  def zone(self):
+    return self.id[3]
 
 # Save particle list as a numpy array
 def particles_to_parameters(particles):
@@ -918,8 +1034,8 @@ class contextlib_nullcontext(object):
 
 PATTERN_X_CENTRAL = 31  # pattern bin number 31 is the central
 PATTERN_X_SEARCH_MIN = 33
-#PATTERN_X_SEARCH_MAX = 154-10
-PATTERN_X_SEARCH_MAX = 154-10+12  # account for DT
+PATTERN_X_SEARCH_MAX = 154-10
+#PATTERN_X_SEARCH_MAX = 154-10+12  # account for DT
 
 # Pattern recognition module
 class PatternRecognition(object):
@@ -941,91 +1057,13 @@ class PatternRecognition(object):
     return myhit
 
   def _create_road(self, road_id, road_hits):
-    # Find road modes
-    road_mode = 0
-    road_mode_csc = 0
-    road_mode_me0 = 0  # zones 0,1
-    road_mode_me12 = 0 # zone 4
-    road_mode_csc_me12 = 0 # zone 4
-    road_mode_mb1 = 0  # zone 6
-    road_mode_mb2 = 0  # zone 6
-    road_mode_me13 = 0 # zone 6
-    #road_mode_me22 = 0 # zone 6
-
-    for hit in road_hits:
-      (_type, station, ring, endsec, fr, bx) = hit.id
-      road_mode |= (1 << (4 - station))
-
-      if _type == kCSC or _type == kME0:
-        road_mode_csc |= (1 << (4 - station))
-
-      if _type == kME0 and bx == 0:
-        road_mode_me0 |= (1 << 1)
-      elif _type == kCSC and station == 1 and (ring == 1 or ring == 4) and bx == 0:
-        road_mode_me0 |= (1 << 0)
-
-      if _type == kCSC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
-        road_mode_me12 |= (1 << (4 - 2))
-      elif _type == kRPC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
-        road_mode_me12 |= (1 << (4 - 2))
-      else:
-        road_mode_me12 |= (1 << (4 - station))
-
-      if _type == kCSC and station == 1 and (ring == 2 or ring == 3):  # pretend as station 2
-        road_mode_csc_me12 |= (1 << (4 - 2))
-      elif _type == kCSC:
-        road_mode_csc_me12 |= (1 << (4 - station))
-
-      if _type == kDT and station == 1:
-        road_mode_mb1 |= (1 << 1)
-      elif _type == kDT and station >= 2:
-        road_mode_mb1 |= (1 << 0)
-      elif _type == kCSC and station >= 1 and (ring == 2 or ring == 3):
-        road_mode_mb1 |= (1 << 0)
-      elif _type == kRPC and station >= 1 and (ring == 2 or ring == 3):
-        road_mode_mb1 |= (1 << 0)
-
-      if _type == kDT and station == 2:
-        road_mode_mb2 |= (1 << 1)
-      elif _type == kDT and station >= 3:
-        road_mode_mb2 |= (1 << 0)
-      elif _type == kCSC and station >= 1 and (ring == 2 or ring == 3):
-        road_mode_mb2 |= (1 << 0)
-      elif _type == kRPC and station >= 1 and (ring == 2 or ring == 3):
-        road_mode_mb2 |= (1 << 0)
-
-      if _type == kCSC and station == 1 and (ring == 2 or ring == 3):
-        road_mode_me13 |= (1 << 1)
-      elif _type == kCSC and station >= 2 and (ring == 2 or ring == 3):
-        road_mode_me13 |= (1 << 0)
-      elif _type == kRPC and station == 1 and (ring == 2 or ring == 3):
-        road_mode_me13 |= (1 << 1)
-      elif _type == kRPC and station >= 2 and (ring == 2 or ring == 3):
-        road_mode_me13 |= (1 << 0)
-
-      #if _type == kCSC and station == 2 and (ring == 2 or ring == 3):
-      #  road_mode_me22 |= (1 << 1)
-      #elif _type == kCSC and station >= 3 and (ring == 2 or ring == 3):
-      #  road_mode_me22 |= (1 << 0)
-      #elif _type == kRPC and station == 2 and (ring == 2 or ring == 3):
-      #  road_mode_me22 |= (1 << 1)
-      #elif _type == kRPC and station >= 3 and (ring == 2 or ring == 3):
-      #  road_mode_me22 |= (1 << 0)
-
-    # Create road
     myroad = None
     (endcap, sector, ipt, ieta, iphi) = road_id
 
-    # Apply SingleMu requirement
-    # + (zones 0,1) any road with ME0 and ME1
-    # + (zone 4) any road with ME1/1, ME1/2 + one more station
-    # + (zone 5) any road with 2 stations
-    # + (zone 6) any road with MB1+MB2, MB1+MB3, MB1+ME1/3, MB1+ME2/2, MB2+MB3, MB2+ME1/3, MB2+ME2/2, ME1/3+ME2/2
-    if ((is_emtf_singlemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
-        (ieta in (0,1) and road_mode_me0 == 3) or \
-        (ieta in (4,) and is_emtf_singlemu(road_mode_me12) and is_emtf_muopen(road_mode_csc_me12)) or \
-        (ieta in (5,) and is_emtf_doublemu(road_mode) and is_emtf_muopen(road_mode_csc)) or \
-        (ieta in (6,) and (road_mode_mb1 == 3 or road_mode_mb2 == 3 or road_mode_me13 == 3)) ):
+    # Check whether the road is OK
+    accept = find_emtf_road_accept(ieta, road_hits)
+    if accept:
+      road_mode = find_emtf_road_mode(road_hits)
       road_quality = find_emtf_road_quality(ipt)
       road_sort_code = find_emtf_road_sort_code(road_quality, [hit.emtf_layer for hit in road_hits])
       road_phi_median = 0    # to be determined later
@@ -1077,7 +1115,7 @@ class PatternRecognition(object):
           iphi = hit_x - iphi
           ieta = hit_zone
 
-          # Full range is 0 <= iphi <= 154. but a reduced range is sufficient (27% saving on patterns)
+          # Full range is 0 <= iphi <= 160. but a reduced range is sufficient (27% saving on patterns)
           if PATTERN_X_SEARCH_MIN <= iphi <= PATTERN_X_SEARCH_MAX:
             # Create and associate 'myhit' to road ids
             if myhit is None:
@@ -1175,8 +1213,44 @@ class RoadCleaning(object):
         elif hit.bx >= +1:
           bx_counter3 += 1
     #trk_bx_zero = (bx_counter1 < 2 and bx_counter2 >= 2)
-    trk_bx_zero = (bx_counter1 <= 3 and bx_counter2 >= 2 and bx_counter3 <= 2)
+    trk_bx_zero = (bx_counter1 <= 2 and bx_counter2 >= 2 and bx_counter3 <= 2)
     return trk_bx_zero
+
+  def select_theta_aligned(self, road):
+    road_theta_median = np.sort(np.array([hit.emtf_theta for hit in road.hits]))
+    road_theta_median = pick_the_median(road_theta_median)
+
+    tmp_road_hits = []
+    for hit in road.hits:
+      (_type, station, ring, endsec, fr, bx) = hit.id
+
+      dtheta = np.abs(hit.emtf_theta - road_theta_median)
+      if _type == kCSC:
+        if station == 1:
+          cut = 4
+        else:
+          cut = 2
+      elif _type == kRPC:
+        if ring == 1:
+          cut = 2
+        else:
+          cut = 8
+      elif _type == kGEM:
+        cut = 6
+      elif _type == kME0:
+        cut = 4
+      else:
+        cut = 12
+      if dtheta <= cut:
+        tmp_road_hits.append(hit)
+
+    # Overwrite road hits
+    road.hits = tmp_road_hits
+
+    # Check whether the road is OK, after road hits are overwritten
+    (endcap, sector, ipt, ieta, iphi) = road.id
+    accept = find_emtf_road_accept(ieta, road.hits)
+    return accept
 
   def run(self, roads):
     # Skip if no roads
@@ -1208,10 +1282,6 @@ class RoadCleaning(object):
         prev = curr
       row_splits.append(len(lst))
       return row_splits
-
-    def pick_the_median(lst):
-      middle = 0 if len(lst) == 0 else (len(lst)-1)//2
-      return lst[middle]
 
     # Make road clusters (groups)
     splits = make_row_splits(road_ids)
@@ -1270,19 +1340,20 @@ class RoadCleaning(object):
         # No intersect between two ranges (x1, x2), (y1, y2): (x2 < y1) || (x1 > y2)
         # Intersect: !((x2 < y1) || (x1 > y2)) = (x2 >= y1) and (x1 <= y2)
         # Allow +/-2 due to extrapolation-to-EMTF error
-        _get_endsec = lambda x: x[:2]
-        if (_get_endsec(road_i.id) == _get_endsec(road_j.id)) and (group_i[1]+2 >= group_j[0]) and (group_i[0]-2 <= group_j[1]):
+        _get_endsec = lambda x: x[0:2]
+        _get_zone = lambda x: x[3:4]
+        if (_get_endsec(road_i.id) == _get_endsec(road_j.id)) and (_get_zone(road_i.id) == _get_zone(road_j.id)) and (group_i[1]+2 >= group_j[0]) and (group_i[0]-2 <= group_j[1]):
           keep = False
           break
 
-      # Do not share ME1/1, ME1/2, ME0, MB1, MB2
+      # Do not share ME1/1, ME1/2, RE1/2, GE1/1, ME0, MB1, MB2
       if keep:
         road_i = tmp_clean_roads[i]
-        hits_i = [(hit.endsec*100 + hit.emtf_layer, hit.emtf_phi) for hit in road_i.hits if hit.emtf_layer in (0,1,11,12,13)]
+        hits_i = [(hit.endsec*100 + hit.emtf_layer, hit.emtf_phi) for hit in road_i.hits if hit.emtf_layer in (0,1,5,9,11,12,13)]
 
         for j in xrange(i):
           road_j = tmp_clean_roads[j]
-          hits_j = [(hit.endsec*100 + hit.emtf_layer, hit.emtf_phi) for hit in road_j.hits if hit.emtf_layer in (0,1,11,12,13)]
+          hits_j = [(hit.endsec*100 + hit.emtf_layer, hit.emtf_phi) for hit in road_j.hits if hit.emtf_layer in (0,1,5,9,11,12,13)]
           if set(hits_i).intersection(hits_j):  # has sharing
             keep = False
             break
@@ -1290,7 +1361,7 @@ class RoadCleaning(object):
       # Finally, check consistency with BX=0
       if keep:
         road_i = tmp_clean_roads[i]
-        if self.select_bx_zero(road_i):
+        if self.select_bx_zero(road_i) and self.select_theta_aligned(road_i):
           clean_roads.append(road_i)
     return clean_roads
 
@@ -1301,10 +1372,6 @@ class RoadSlimming(object):
     self.bank = bank
 
   def run(self, roads):
-    def pick_the_median(lst):
-      middle = 0 if len(lst) == 0 else (len(lst)-1)//2
-      return lst[middle]
-
     slim_roads = []
 
     # Loop over roads
@@ -1315,7 +1382,8 @@ class RoadSlimming(object):
       patterns_xc = self.bank.x_array[ipt, ieta, :, 1]
       patterns_xc = find_pattern_x_inverse(patterns_xc)
 
-      # Find median phi and theta
+      # Find the median phi and theta
+      # Note: they do not have to be exact. An approximation is good enough, provided that it is stable against outliers.
       road_phi_median = np.sort(np.array([hit.emtf_phi - patterns_xc[hit.emtf_layer] for hit in road.hits]))
       road_phi_median = pick_the_median(road_phi_median)
 
@@ -1667,7 +1735,8 @@ class TrackProducer(object):
           pt = self.get_trigger_pt_wp50(y_pred)
 
         trk_q = np.sign(y_pred).astype(np.int32)
-        trk = Track(myroad.id, myroad.hits, mode, myroad.quality, zone, xml_pt, pt, trk_q, y_pred, y_discr, phi_median, theta_median)
+        trk = Track(myroad.id, myroad.hits, mode, myroad.quality, myroad.sort_code,
+                    xml_pt, pt, trk_q, y_pred, y_discr, phi_median, theta_median)
         tracks.append(trk)
     return tracks
 
@@ -1680,9 +1749,12 @@ class GhostBusting(object):
   def run(self, tracks):
     tracks_after_gb = []
 
-    # Sort by (zone, y_discr)
-    # zone is reordered such that zone 6 has the lowest priority.
-    tracks.sort(key=lambda trk: ((trk.zone+1) % 7, trk.y_discr), reverse=True)
+    ## Sort by (zone, y_discr)
+    ## zone is reordered such that zone 6 has the lowest priority.
+    #tracks.sort(key=lambda trk: ((trk.zone+1) % 7, trk.y_discr), reverse=True)
+
+    # Sort by sort_code
+    tracks.sort(key=lambda trk: trk.sort_code, reverse=True)
 
     def get_gb_endsec(hit):
       tmp_endsec = hit.endsec
@@ -1706,15 +1778,15 @@ class GhostBusting(object):
     for i in xrange(len(tracks)):
       keep = True
 
-      # Do not share ME1/1, ME1/2, ME0, MB1, MB2
+      # Do not share ME1/1, ME1/2, RE1/2, GE1/1, ME0, MB1, MB2
       # Need to check for neighbor sector hits
       if keep:
         track_i = tracks[i]
-        hits_i = [(get_gb_endsec(hit)*100 + hit.emtf_layer, get_gb_emtf_phi(hit)) for hit in track_i.hits if hit.emtf_layer in (0,1,11,12,13)]
+        hits_i = [(get_gb_endsec(hit)*100 + hit.emtf_layer, get_gb_emtf_phi(hit)) for hit in track_i.hits if hit.emtf_layer in (0,1,5,9,11,12,13)]
 
         for j in xrange(i):
           track_j = tracks[j]
-          hits_j = [(get_gb_endsec(hit)*100 + hit.emtf_layer, get_gb_emtf_phi(hit)) for hit in track_j.hits if hit.emtf_layer in (0,1,11,12,13)]
+          hits_j = [(get_gb_endsec(hit)*100 + hit.emtf_layer, get_gb_emtf_phi(hit)) for hit in track_j.hits if hit.emtf_layer in (0,1,5,9,11,12,13)]
           if set(hits_i).intersection(hits_j):  # has sharing
             keep = False
             break
@@ -2363,7 +2435,7 @@ class EffieAnalysis(DummyAnalysis):
         continue
 
       part = evt.particles[0]  # particle gun
-      if len(evt.particles) == 2:
+      if sum([(part.status == 1) for part in evt.particles]) == 2:
         part = evt.particles[(ievt % 2)]  # centrally produced samples contain 2 muons, here I pick only one
       part.invpt = np.true_divide(part.q, part.pt)
       part.d0 = calculate_d0(part.invpt, part.phi, part.vx, part.vy)
@@ -2612,8 +2684,8 @@ class MixingAnalysis(DummyAnalysis):
 
     training_phase = (jobid < test_job)
     if training_phase:
-      #bx_shifts = [+2, +1, 0, -1, -2]  # makes the training worse. not sure why.
-      bx_shifts = [0]
+      bx_shifts = [+2, +1, 0, -1, -2]  # include BX != 0 events
+      #bx_shifts = [0]
     else:
       bx_shifts = [0]
 
