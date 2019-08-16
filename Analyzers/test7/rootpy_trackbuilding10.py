@@ -5,12 +5,10 @@ import os, sys, datetime
 from six.moves import range, zip, map, filter
 
 from rootpy.plotting import Hist, Hist2D, Graph, Efficiency
-from rootpy.tree import Tree, TreeChain, TreeModel, FloatCol, IntCol, ShortCol
+from rootpy.tree import Tree, TreeChain
 from rootpy.io import root_open
-#from rootpy.memory.keepalive import keepalive
-from ROOT import gROOT, TH1
+from ROOT import gROOT
 gROOT.SetBatch(True)
-TH1.AddDirectory(False)
 
 import logging
 mpl_logger = logging.getLogger('matplotlib')
@@ -592,10 +590,10 @@ class EMTFRoadSortCode(object):
   def __init__(self):
     # 12   11     10     9      8      7      6      5      4      3..0
     #      ME1/1  ME1/2  ME2    ME3    ME4                         qual
-    #                                         RE1    RE2    RE3&4
+    #                                                RE1&2  RE3&4
     # ME0                                     GE1/1  GE2/1
     # MB1  MB2                                MB3&4
-    self.lut = np.array([11,10,9,8,7,6,5,4,4,6,5,12,12,11,6,6], dtype=np.int32)
+    self.lut = np.array([11,10,9,8,7,5,5,4,4,6,5,12,12,11,6,6], dtype=np.int32)
     assert(self.lut.size == nlayers)
     assert(self.lut.min() == 4)
     assert(self.lut.max() == 12)
@@ -1050,10 +1048,12 @@ class PatternRecognition(object):
     emtf_bend = find_emtf_bend(hit)
     emtf_qual = find_emtf_qual(hit)
     emtf_time = find_emtf_time(hit)
-    sim_tp = hit.sim_tp1
+    hit_sim_tp = hit.sim_tp1
+    if (hit.type == kCSC) and (hit_sim_tp != hit.sim_tp2):
+      hit_sim_tp = -1
     myhit = Hit(hit_id, hit.lay, hit.emtf_phi, hit.emtf_theta, emtf_bend,
                 emtf_qual, emtf_time, hit.old_emtf_phi, hit.old_emtf_bend,
-                sim_tp)
+                hit_sim_tp)
     return myhit
 
   def _create_road(self, road_id, road_hits):
@@ -1458,7 +1458,7 @@ class PtAssignment(object):
       loaded_model = self.loaded_model
 
     def np_relu(x):
-      # ReLu(x) = max(0, x)
+      # ReLU(x) = max(0, x)
       return x * (x >= 0.)
     def np_softplus(x):
       # Softplus f(x) = log(1+exp(x))
@@ -1531,36 +1531,36 @@ class TrackProducer(object):
     self.s_max = 60.
     self.s_nbins = 120
     self.s_step = (self.s_max - self.s_min)/self.s_nbins
-    self.s_lut =[ 1.8201,  1.5822,  1.6354,  1.8775,  2.2374,  2.6738,  3.1694,  3.7061,
-                  4.2670,  4.8451,  5.4373,  6.0411,  6.6558,  7.2776,  7.9043,  8.5347,
-                  9.1657,  9.7907, 10.4075, 11.0212, 11.6507, 12.2942, 12.9448, 13.6042,
-                 14.2774, 14.9509, 15.6029, 16.2277, 16.8393, 17.4516, 18.0821, 18.7362,
-                 19.4153, 20.1253, 20.8251, 21.4927, 22.1193, 22.7158, 23.2819, 23.8393,
-                 24.4044, 24.9975, 25.6355, 26.2876, 26.9103, 27.5158, 28.1244, 28.7804,
-                 29.5075, 30.2965, 31.0818, 31.8197, 32.5375, 33.3001, 34.1572, 35.0448,
-                 35.9259, 36.8393, 37.7994, 38.7723, 39.5898, 40.3147, 41.0618, 41.9047,
-                 42.8462, 43.7896, 44.6747, 45.5319, 46.3777, 47.2356, 48.0448, 48.7735,
-                 49.4748, 50.1987, 50.9390, 51.6717, 52.3861, 53.0975, 53.8082, 54.5187,
-                 55.2290, 55.9393, 56.6496, 57.3598, 58.0700, 58.7802, 59.4903, 60.2005,
-                 60.9106, 61.6208, 62.3309, 63.0410, 63.7512, 64.4613, 65.1714, 65.8816,
-                 66.5917, 67.3018, 68.0119, 68.7220, 69.4322, 70.1423, 70.8524, 71.5625,
-                 72.2726, 72.9827, 73.6929, 74.4030, 75.1131, 75.8232, 76.5333, 77.2434,
-                 77.9535, 78.6637, 79.3738, 80.0839, 80.7940, 81.5041, 82.2142, 82.9243]
-    self.s_lut_wp50=[ 1.8112,  1.6411,  1.6696,  1.8332,  2.0735,  2.3495,  2.6445,  2.9696,
-                  3.3411,  3.7507,  4.1873,  4.6430,  5.1120,  5.5902,  6.0758,  6.5673,
-                  7.0637,  7.5621,  8.0603,  8.5570,  9.0515,  9.5428, 10.0314, 10.5177,
-                 11.0033, 11.4905, 11.9813, 12.4740, 12.9670, 13.4605, 13.9564, 14.4546,
-                 14.9518, 15.4448, 15.9306, 16.4103, 16.8840, 17.3539, 17.8293, 18.3197,
-                 18.8290, 19.3552, 19.8948, 20.4385, 20.9785, 21.4966, 21.9906, 22.4646,
-                 22.9140, 23.3382, 23.7413, 24.1315, 24.5191, 24.9227, 25.3512, 25.7951,
-                 26.2522, 26.7280, 27.2212, 27.7265, 28.2476, 28.7884, 29.3373, 29.8824,
-                 30.4175, 30.9337, 31.4219, 31.8700, 32.2906, 32.7101, 33.1422, 33.5918,
-                 34.0524, 34.5103, 34.9611, 35.4081, 35.8630, 36.3330, 36.8168, 37.3182,
-                 37.8489, 38.4164, 39.0156, 39.5987, 40.1426, 40.6805, 41.2519, 41.8741,
-                 42.5333, 43.2149, 43.8891, 44.5157, 45.0767, 45.5828, 46.0556, 46.5146,
-                 46.9799, 47.4624, 47.9647, 48.4781, 48.9965, 49.5237, 50.0701, 50.6262,
-                 51.1636, 51.6831, 52.1941, 52.7027, 53.2105, 53.7180, 54.2253, 54.7325,
-                 55.2397, 55.7469, 56.2540, 56.7611, 57.2682, 57.7753, 58.2824, 58.7895]
+    self.s_lut =[ 1.8219,  1.5725,  1.6237,  1.8672,  2.2298,  2.6692,  3.1724,  3.7226,
+                  4.3005,  4.8945,  5.4972,  6.1065,  6.7217,  7.3443,  7.9797,  8.6255,
+                  9.2779,  9.9339, 10.5868, 11.2340, 11.8745, 12.5056, 13.1352, 13.7707,
+                 14.3985, 15.0216, 15.6519, 16.2946, 16.9297, 17.5598, 18.1981, 18.8567,
+                 19.5345, 20.2317, 20.9849, 21.7932, 22.5650, 23.2764, 23.9233, 24.5326,
+                 25.1879, 25.9589, 26.8144, 27.6406, 28.3182, 28.9110, 29.4817, 30.0894,
+                 30.8001, 31.5674, 32.3055, 33.0457, 33.8479, 34.6975, 35.4941, 36.2179,
+                 36.9157, 37.6592, 38.5602, 39.6237, 40.7733, 41.9798, 43.2775, 44.6862,
+                 45.9872, 46.8917, 47.5905, 48.2057, 48.8099, 49.4649, 50.1705, 50.8610,
+                 51.5614, 52.2918, 53.0282, 53.7657, 54.5035, 55.2414, 55.9793, 56.7173,
+                 57.4553, 58.1933, 58.9314, 59.6694, 60.4074, 61.1454, 61.8834, 62.6214,
+                 63.3594, 64.0973, 64.8353, 65.5733, 66.3113, 67.0493, 67.7873, 68.5253,
+                 69.2633, 70.0012, 70.7392, 71.4772, 72.2152, 72.9532, 73.6912, 74.4292,
+                 75.1671, 75.9051, 76.6431, 77.3811, 78.1191, 78.8571, 79.5950, 80.3330,
+                 81.0710, 81.8090, 82.5470, 83.2849, 84.0229, 84.7609, 85.4989, 86.2369]
+    self.s_lut_wp50=[ 1.8124,  1.6471,  1.6755,  1.8367,  2.0737,  2.3461,  2.6370,  2.9560,
+                  3.3248,  3.7365,  4.1760,  4.6336,  5.1040,  5.5834,  6.0695,  6.5604,
+                  7.0554,  7.5540,  8.0544,  8.5545,  9.0529,  9.5514, 10.0488, 10.5407,
+                 11.0263, 11.5075, 11.9870, 12.4668, 12.9474, 13.4297, 13.9161, 14.4090,
+                 14.9068, 15.4037, 15.8966, 16.3903, 16.8852, 17.3796, 17.8709, 18.3599,
+                 18.8473, 19.3375, 19.8375, 20.3540, 20.8927, 21.4490, 21.9967, 22.5160,
+                 23.0021, 23.4527, 23.8652, 24.2528, 24.6402, 25.0503, 25.4903, 25.9606,
+                 26.4660, 27.0031, 27.5589, 28.1126, 28.6454, 29.1493, 29.6322, 30.1029,
+                 30.5670, 31.0276, 31.4843, 31.9233, 32.3456, 32.7724, 33.2167, 33.6778,
+                 34.1510, 34.6287, 35.1127, 35.6217, 36.1572, 36.7039, 37.2606, 37.8230,
+                 38.3763, 38.9074, 39.4167, 39.9213, 40.4378, 40.9845, 41.5990, 42.2614,
+                 42.9157, 43.5348, 44.1085, 44.6446, 45.1498, 45.6289, 46.0819, 46.5207,
+                 46.9573, 47.3828, 47.7878, 48.1767, 48.5567, 48.9351, 49.3208, 49.7180,
+                 50.1278, 50.5593, 51.0135, 51.4887, 51.9777, 52.4705, 52.9646, 53.4593,
+                 53.9542, 54.4493, 54.9446, 55.4399, 55.9353, 56.4307, 56.9261, 57.4215]
     #self.s_lut = np.linspace(self.s_min, self.s_max, num=self.s_nbins+1)[:-1]
     self.s_step = np.asarray(self.s_step)
     self.s_lut = np.asarray(self.s_lut)
@@ -1720,7 +1720,7 @@ class TrackProducer(object):
       assert(x_road.shape == (4,))
 
       y_pred = np.asscalar(y[..., 0])
-      y_discr = (np.asscalar(y[..., 0]) * 0) + 1  #FIXME
+      y_discr = np.ones_like(y[..., 0], dtype=np.float32)  # OBSOLETE since v3
       ndof = get_ndof_from_x_mask(x_mask)
       mode = get_mode_from_x_mask(x_mask)
       strg, zone, phi_median, theta_median = x_road
@@ -1749,11 +1749,12 @@ class GhostBusting(object):
   def run(self, tracks):
     tracks_after_gb = []
 
+    ## OBSOLETE since v3
     ## Sort by (zone, y_discr)
     ## zone is reordered such that zone 6 has the lowest priority.
     #tracks.sort(key=lambda trk: ((trk.zone+1) % 7, trk.y_discr), reverse=True)
 
-    # Sort by sort_code
+    # Sort by 'sort code'
     tracks.sort(key=lambda trk: trk.sort_code, reverse=True)
 
     def get_gb_endsec(hit):
@@ -2001,7 +2002,7 @@ class DummyAnalysis(object):
       # Tracks
       for itrk, trk in enumerate(evt.tracks):
         print(".. trk  {0} {1} {2} {3} {4} {5} {6} {7}".format(itrk, trk.sector, trk.mode, trk.pt, trk.phi, trk.eta, trk.theta, trk.q))
-      # Gen particles
+      # Particles
       for ipart, part in enumerate(evt.particles):
         print(".. part {0} {1} {2} {3} {4} {5}".format(ipart, part.pt, part.phi, part.eta, part.theta, part.q))
 
@@ -2098,6 +2099,8 @@ class RoadsAnalysis(DummyAnalysis):
         for ihit, hit in enumerate(evt.hits):
           hit_id = (hit.type, hit.station, hit.ring, find_endsec(hit.endcap, hit.sector), hit.fr, hit.bx)
           hit_sim_tp = hit.sim_tp1
+          if (hit.type == kCSC) and (hit_sim_tp != hit.sim_tp2):
+            hit_sim_tp = -1
           print(".. hit {0} id: {1} lay: {2} ph: {3} ({4}) th: {5} bd: {6} ql: {7} tp: {8}".format(ihit, hit_id, find_emtf_layer(hit), hit.emtf_phi, find_pattern_x(hit.emtf_phi), hit.emtf_theta, find_emtf_bend(hit), find_emtf_qual(hit), hit_sim_tp))
         for iroad, myroad in enumerate(roads):
           print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
@@ -2242,8 +2245,7 @@ class RatesAnalysis(DummyAnalysis):
           for ihit, myhit in enumerate(mytrk.hits):
             print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
         for itrk, mytrk in enumerate(evt.tracks):
-          nhits = sum([bool(mytrk.mode & (1<<3)), bool(mytrk.mode & (1<<2)), bool(mytrk.mode & (1<<1)), bool(mytrk.mode & (1<<0))])
-          print(".. otrk {0} id: {1} nhits: {2} mode: {3} pt: {4}".format(itrk, (mytrk.endcap, mytrk.sector), nhits, mytrk.mode, mytrk.pt))
+          print(".. otrk {0} id: {1} pt: {2} eta: {3} mode: {4}".format(itrk, (mytrk.endcap, mytrk.sector, -1, -1, -1), mytrk.pt, mytrk.eta, mytrk.mode))
 
       # ________________________________________________________________________
       # Fill histograms
@@ -2270,6 +2272,7 @@ class RatesAnalysis(DummyAnalysis):
           if eta_bins[b]:
             h.fill(h.GetBinCenter(b))
 
+      # EMTF tracks
       tracks = evt.tracks
       select = lambda trk: trk and (0.8 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
       hname = "highest_emtf_absEtaMin0.8_absEtaMax2.4_qmin12_pt"
@@ -2294,6 +2297,7 @@ class RatesAnalysis(DummyAnalysis):
         hname = "emtf_ptmin%i_qmin12_eta" % (l)
         fill_eta()
 
+      # EMTF++ tracks
       tracks = emtf2026_tracks
       select = lambda trk: trk and (0.8 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5,6)
       hname = "highest_emtf2026_absEtaMin0.8_absEtaMax2.4_qmin12_pt"
@@ -2318,7 +2322,7 @@ class RatesAnalysis(DummyAnalysis):
         hname = "emtf2026_ptmin%i_qmin12_eta" % (l)
         fill_eta()
 
-      # For fake rate plot
+      # For fake rate plot (EMTF++ tracks only)
       for itrk, mytrk in enumerate(emtf2026_tracks):
         m = emtf2026_matched[:, itrk]
         mytrk.matched = m.any()
@@ -2338,30 +2342,8 @@ class RatesAnalysis(DummyAnalysis):
       outfile = outfile[:-5] + ('_%i.root' % jobid)
     print('[INFO] Creating file: %s' % outfile)
     with root_open(outfile, 'recreate') as f:
-      hnames = []
-      hname = "nevents"
-      hnames.append("nevents")
-      for m in ("emtf", "emtf2026"):
-        hname = "highest_%s_absEtaMin0.8_absEtaMax2.4_qmin12_pt" % m
-        hnames.append(hname)
-        hname = "highest_%s_absEtaMin1.24_absEtaMax2.4_qmin12_pt" % m
-        hnames.append(hname)
-        hname = "highest_%s_absEtaMin0.8_absEtaMax1.24_qmin12_pt" % m
-        hnames.append(hname)
-        hname = "highest_%s_absEtaMin1.24_absEtaMax1.65_qmin12_pt" % m
-        hnames.append(hname)
-        hname = "highest_%s_absEtaMin1.65_absEtaMax2.15_qmin12_pt" % m
-        hnames.append(hname)
-        hname = "highest_%s_absEtaMin2.15_absEtaMax2.4_qmin12_pt" % m
-        hnames.append(hname)
-        hname = "highest_%s_absEtaMin0.8_absEtaMax2.4_matched_qmin12_pt" % m
-        hnames.append(hname)
-        for l in xrange(14,22+1):
-          hname = "%s_ptmin%i_qmin12_eta" % (m,l)
-          hnames.append(hname)
-      for hname in hnames:
-        h = histograms[hname]
-        h.Write()
+      for (k, v) in histograms.iteritems():
+        v.Write()
 
 
 # ______________________________________________________________________________
@@ -2379,24 +2361,33 @@ class EffieAnalysis(DummyAnalysis):
         for k in ("denom", "numer"):
           hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
-          hname = "%s_eff_vs_genpt_allzones_l1pt%i_%s" % (m,l,k)
-          histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
           hname = "%s_eff_vs_genpt_highpt_l1pt%i_%s" % (m,l,k)
-          histograms[hname] = Hist(eff_highpt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
-          hname = "%s_eff_vs_genpt_allzones_highpt_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(eff_highpt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
           hname = "%s_eff_vs_genphi_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(76, -190, 190, name=hname, title="; gen #phi {gen p_{T} > 20 GeV}", type='F')
-          hname = "%s_eff_vs_genphi_allzones_l1pt%i_%s" % (m,l,k)
-          histograms[hname] = Hist(76, -190, 190, name=hname, title="; gen #phi {gen p_{T} > 20 GeV}", type='F')
           hname = "%s_eff_vs_geneta_l1pt%i_%s" % (m,l,k)
-          histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
-          hname = "%s_eff_vs_geneta_allzones_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
           hname = "%s_eff_vs_gend0_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(80, 0, 120, name=hname, title="; gen |d_{0}| {gen p_{T} > 20 GeV}", type='F')
-          hname = "%s_eff_vs_gend0_allzones_l1pt%i_%s" % (m,l,k)
-          histograms[hname] = Hist(80, 0, 120, name=hname, title="; gen |d_{0}| {gen p_{T} > 20 GeV}", type='F')
+          hname = "%s_eff_vs_gendz_l1pt%i_%s" % (m,l,k)
+          histograms[hname] = Hist(80, 0, 40, name=hname, title="; gen |d_{z}| {gen p_{T} > 20 GeV}", type='F')
+          if l == 0:
+            hname = "%s_eff_vs_genpt_roads_%s" % (m,k)
+            histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
+            hname = "%s_eff_vs_genpt_croads_%s" % (m,k)
+            histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
+            hname = "%s_eff_vs_geneta_roads_%s" % (m,k)
+            histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
+            hname = "%s_eff_vs_geneta_croads_%s" % (m,k)
+            histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
+            hname = "%s_eff_vs_gend0_roads_%s" % (m,k)
+            histograms[hname] = Hist(80, 0, 120, name=hname, title="; gen |d_{0}| {gen p_{T} > 20 GeV}", type='F')
+            hname = "%s_eff_vs_gend0_croads_%s" % (m,k)
+            histograms[hname] = Hist(80, 0, 120, name=hname, title="; gen |d_{0}| {gen p_{T} > 20 GeV}", type='F')
+            hname = "%s_eff_vs_gendz_roads_%s" % (m,k)
+            histograms[hname] = Hist(80, 0, 40, name=hname, title="; gen |d_{z}| {gen p_{T} > 20 GeV}", type='F')
+            hname = "%s_eff_vs_gendz_croads_%s" % (m,k)
+            histograms[hname] = Hist(80, 0, 40, name=hname, title="; gen |d_{z}| {gen p_{T} > 20 GeV}", type='F')
 
       hname = "%s_l1pt_vs_genpt" % m
       histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -0.5, 0.5, name=hname, title="; gen q/p_{T} [1/GeV]; q/p_{T} [1/GeV]", type='F')
@@ -2467,77 +2458,111 @@ class EffieAnalysis(DummyAnalysis):
       if ievt < 20 and False:
         print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), len(emtf2026_tracks)))
         print(".. part invpt: {0} pt: {1} phi: {2} eta: {3} theta: {4}".format(part.invpt, part.pt, part.phi, part.eta, part.theta))
+        mc_nhits_0 = 0
+        for ihit, hit in enumerate(evt.hits):
+          hit_id = (hit.type, hit.station, hit.ring, find_endsec(hit.endcap, hit.sector), hit.fr, hit.bx)
+          hit_sim_tp = hit.sim_tp1
+          if (hit.type == kCSC) and (hit_sim_tp != hit.sim_tp2):
+            hit_sim_tp = -1
+          print(".. hit {0} id: {1} lay: {2} ph: {3} ({4}) th: {5} bd: {6} ql: {7} tp: {8}".format(ihit, hit_id, find_emtf_layer(hit), hit.emtf_phi, find_pattern_x(hit.emtf_phi), hit.emtf_theta, find_emtf_bend(hit), find_emtf_qual(hit), hit_sim_tp))
+          the_sim_tp = (ievt % 2)
+          if hit_sim_tp == the_sim_tp:
+            mc_nhits_0 += 1
+        for iroad, myroad in enumerate(roads):
+          print(".. road {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
+        for iroad, myroad in enumerate(clean_roads):
+          print(".. croad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
+          for ihit, myhit in enumerate(myroad.hits):
+            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
+        for iroad, myroad in enumerate(slim_roads):
+          print(".. sroad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
+          mc_nhits_1 = 0
+          for ihit, myhit in enumerate(myroad.hits):
+            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
+            hit_sim_tp = myhit.sim_tp
+            the_sim_tp = (ievt % 2)
+            if hit_sim_tp == the_sim_tp:
+              mc_nhits_1 += 1
+          print(".. .. MC_nhits: {2}/{3}".format(iroad, myroad.id, mc_nhits_1, mc_nhits_0))
         for itrk, mytrk in enumerate(emtf2026_tracks):
           y_true = np.true_divide(part.q, part.pt)
           y_pred = np.true_divide(mytrk.q, mytrk.xml_pt)
           m = emtf2026_matched[:, itrk]
-          print(".. y_true: {0} y_pred: {1} m: {2}".format(y_true, y_pred, m.any()))
+          print(".. trk {0} id: {1} pt: {2} eta: {3} y_true: {4} y_pred: {5} delta: {6} m: {7}".format(itrk, mytrk.id, mytrk.pt, mytrk.eta, y_true, y_pred, (y_pred - y_true), m.any()))
+        if True:
+          select_track = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.6) and trk.zone in (0,1,2,3,4,5) and (trk.pt > float(l))
+          tracks = emtf2026_tracks
+          triggers = [any([select_track(trk) for trk in tracks]) for l in (0,10,20,30,40,50,60)]
+          warning = (part.pt > 60) and (triggers[2] == False)
+          print(".. {0}{1}".format(triggers, " WARNING" if warning else ""))
+        for itrk, mytrk in enumerate(evt.tracks):
+          print(".. otrk {0} id: {1} pt: {2} eta: {3} mode: {4}".format(itrk, (mytrk.endcap, mytrk.sector, -1, -1, -1), mytrk.pt, mytrk.eta, mytrk.mode))
 
       # ________________________________________________________________________
       # Fill histograms
-      def fill_efficiency_pt():
+
+      def _fill_efficiency(harvest_f, select_part, select_track):
         if select_part(part):
           trigger = any([select_track(trk) for trk in tracks])  # using scaled pT
           denom = histograms[hname + "_denom"]
           numer = histograms[hname + "_numer"]
-          denom.fill(part.pt)
+          denom.fill(harvest_f(part))
           if trigger:
-            numer.fill(part.pt)
-          #
-          trigger_allzones = any([select_track_allzones(trk) for trk in tracks])  # using scaled pT
-          denom = histograms[hname_allzones + "_denom"]
-          numer = histograms[hname_allzones + "_numer"]
-          denom.fill(part.pt)
-          if trigger_allzones:
-            numer.fill(part.pt)
+            numer.fill(harvest_f(part))
+
+      def fill_efficiency_pt():
+        harvest_f = lambda part: part.pt
+        _fill_efficiency(harvest_f, select_part, select_track)
 
       def fill_efficiency_phi():
-        if select_part(part):
-          trigger = any([select_track(trk) for trk in tracks])  # using scaled pT
-          denom = histograms[hname + "_denom"]
-          numer = histograms[hname + "_numer"]
-          denom.fill(np.rad2deg(part.phi))
-          if trigger:
-            numer.fill(np.rad2deg(part.phi))
-          #
-          trigger_allzones = any([select_track_allzones(trk) for trk in tracks])  # using scaled pT
-          denom = histograms[hname_allzones + "_denom"]
-          numer = histograms[hname_allzones + "_numer"]
-          denom.fill(np.rad2deg(part.phi))
-          if trigger_allzones:
-            numer.fill(np.rad2deg(part.phi))
+        harvest_f = lambda part: np.rad2deg(part.phi)
+        _fill_efficiency(harvest_f, select_part, select_track)
 
       def fill_efficiency_eta():
-        if (part.bx == 0):
-          trigger = any([select_track(trk) for trk in tracks])  # using scaled pT
-          denom = histograms[hname + "_denom"]
-          numer = histograms[hname + "_numer"]
-          denom.fill(abs(part.eta))
-          if trigger:
-            numer.fill(abs(part.eta))
-          #
-          trigger_allzones = any([select_track_allzones(trk) for trk in tracks])  # using scaled pT
-          denom = histograms[hname_allzones + "_denom"]
-          numer = histograms[hname_allzones + "_numer"]
-          denom.fill(abs(part.eta))
-          if trigger_allzones:
-            numer.fill(abs(part.eta))
+        harvest_f = lambda part: abs(part.eta)
+        select_part_eta = lambda part: (part.bx == 0)
+        _fill_efficiency(harvest_f, select_part_eta, select_track)
 
       def fill_efficiency_d0():
+        harvest_f = lambda part: abs(part.d0)
+        _fill_efficiency(harvest_f, select_part, select_track)
+
+      def fill_efficiency_dz():
+        harvest_f = lambda part: abs(part.vz)
+        _fill_efficiency(harvest_f, select_part, select_track)
+
+      def _fill_efficiency_for_roads(harvest_f, select_part, select_track):
         if select_part(part):
-          trigger = any([select_track(trk) for trk in tracks])  # using scaled pT
-          denom = histograms[hname + "_denom"]
-          numer = histograms[hname + "_numer"]
-          denom.fill(abs(part.d0))
-          if trigger:
-            numer.fill(abs(part.d0))
+          trigger_roads = len(roads) > 0
+          denom = histograms[hname_roads + "_denom"]
+          numer = histograms[hname_roads + "_numer"]
+          denom.fill(harvest_f(part))
+          if trigger_roads:
+            numer.fill(harvest_f(part))
           #
-          trigger_allzones = any([select_track_allzones(trk) for trk in tracks])  # using scaled pT
-          denom = histograms[hname_allzones + "_denom"]
-          numer = histograms[hname_allzones + "_numer"]
-          denom.fill(abs(part.d0))
-          if trigger_allzones:
-            numer.fill(abs(part.d0))
+          trigger_croads = len(clean_roads) > 0
+          denom = histograms[hname_croads + "_denom"]
+          numer = histograms[hname_croads + "_numer"]
+          denom.fill(harvest_f(part))
+          if trigger_croads:
+            numer.fill(harvest_f(part))
+
+      def fill_efficiency_pt_for_roads():
+        harvest_f = lambda part: part.pt
+        _fill_efficiency_for_roads(harvest_f, select_part, select_track)
+
+      def fill_efficiency_eta_for_roads():
+        harvest_f = lambda part: abs(part.eta)
+        select_part_eta = lambda part: (part.bx == 0)
+        _fill_efficiency_for_roads(harvest_f, select_part_eta, select_track)
+
+      def fill_efficiency_d0_for_roads():
+        harvest_f = lambda part: abs(part.d0)
+        _fill_efficiency_for_roads(harvest_f, select_part, select_track)
+
+      def fill_efficiency_dz_for_roads():
+        harvest_f = lambda part: abs(part.vz)
+        _fill_efficiency_for_roads(harvest_f, select_part, select_track)
 
       def fill_resolution():
         if (part.bx == 0):
@@ -2548,62 +2573,72 @@ class EffieAnalysis(DummyAnalysis):
             histograms[hname1].fill(part.invpt, trk.invpt)
             histograms[hname2].fill(abs(part.invpt), abs(part.invpt/trk.invpt) - 1)
 
+      # Check various L1 pT thresholds
       for l in (0, 10, 20, 30, 40, 50, 60):
+        # EMTF tracks
         tracks = evt.tracks
         select_part = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
-        select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l))
-        select_track_allzones = select_track
-        #
+        select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l)) and (trk.eta * part.eta > 0)
+
         hname = "emtf_eff_vs_genpt_l1pt%i" % (l)
-        hname_allzones = "emtf_eff_vs_genpt_allzones_l1pt%i" % (l)
         fill_efficiency_pt()
         hname = "emtf_eff_vs_genpt_highpt_l1pt%i" % (l)
-        hname_allzones = "emtf_eff_vs_genpt_allzones_highpt_l1pt%i" % (l)
         fill_efficiency_pt()
         if part.pt > 20.:
           hname = "emtf_eff_vs_genphi_l1pt%i" % (l)
-          hname_allzones = "emtf_eff_vs_genphi_allzones_l1pt%i" % (l)
           fill_efficiency_phi()
           hname = "emtf_eff_vs_geneta_l1pt%i" % (l)
-          hname_allzones = "emtf_eff_vs_geneta_allzones_l1pt%i" % (l)
           fill_efficiency_eta()
           hname = "emtf_eff_vs_gend0_l1pt%i" % (l)
-          hname_allzones = "emtf_eff_vs_gend0_allzones_l1pt%i" % (l)
           fill_efficiency_d0()
+          hname = "emtf_eff_vs_gendz_l1pt%i" % (l)
+          fill_efficiency_dz()
         if l == 0:
+          # Resolution
           hname1 = "emtf_l1pt_vs_genpt"
           hname2 = "emtf_l1ptres_vs_genpt"
           fill_resolution()
 
+        # EMTF++ tracks
         tracks = emtf2026_tracks
         if omtf_input:
           select_part = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0)
           #select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and trk.zone in (6,) and (trk.pt > float(l))
           select_track = lambda trk: trk and (0.75 <= abs(trk.eta) <= 1.4) and trk.zone in (6,) and (trk.pt > float(l))
-          select_track_allzones = lambda trk: trk and (0.75 <= abs(trk.eta) <= 1.4) and (trk.pt > float(l))
         else:
           select_part = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
           #select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5) and (trk.pt > float(l))
-          select_track = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5) and (trk.pt > float(l))
-          select_track_allzones = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.4) and (trk.pt > float(l))
-        #
+          select_track = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.6) and trk.zone in (0,1,2,3,4,5) and (trk.pt > float(l))
+
         hname = "emtf2026_eff_vs_genpt_l1pt%i" % (l)
-        hname_allzones = "emtf2026_eff_vs_genpt_allzones_l1pt%i" % (l)
         fill_efficiency_pt()
         hname = "emtf2026_eff_vs_genpt_highpt_l1pt%i" % (l)
-        hname_allzones = "emtf2026_eff_vs_genpt_allzones_highpt_l1pt%i" % (l)
         fill_efficiency_pt()
         if part.pt > 20.:
           hname = "emtf2026_eff_vs_genphi_l1pt%i" % (l)
-          hname_allzones = "emtf2026_eff_vs_genphi_allzones_l1pt%i" % (l)
           fill_efficiency_phi()
           hname = "emtf2026_eff_vs_geneta_l1pt%i" % (l)
-          hname_allzones = "emtf2026_eff_vs_geneta_allzones_l1pt%i" % (l)
           fill_efficiency_eta()
           hname = "emtf2026_eff_vs_gend0_l1pt%i" % (l)
-          hname_allzones = "emtf2026_eff_vs_gend0_allzones_l1pt%i" % (l)
           fill_efficiency_d0()
+          hname = "emtf2026_eff_vs_gendz_l1pt%i" % (l)
+          fill_efficiency_dz()
         if l == 0:
+          # Pattern recognition & road cleaning (EMTF++ tracks only)
+          hname_roads = "emtf2026_eff_vs_genpt_roads"
+          hname_croads = "emtf2026_eff_vs_genpt_croads"
+          fill_efficiency_pt_for_roads()
+          if part.pt > 20.:
+            hname_roads = "emtf2026_eff_vs_geneta_roads"
+            hname_croads = "emtf2026_eff_vs_geneta_croads"
+            fill_efficiency_eta_for_roads()
+            hname_roads = "emtf2026_eff_vs_gend0_roads"
+            hname_croads = "emtf2026_eff_vs_gend0_croads"
+            fill_efficiency_d0_for_roads()
+            hname_roads = "emtf2026_eff_vs_gendz_roads"
+            hname_croads = "emtf2026_eff_vs_gendz_croads"
+            fill_efficiency_dz_for_roads()
+          # Resolution
           hname1 = "emtf2026_l1pt_vs_genpt"
           hname2 = "emtf2026_l1ptres_vs_genpt"
           fill_resolution()
@@ -2611,6 +2646,7 @@ class EffieAnalysis(DummyAnalysis):
     # End loop over events
     unload_tree()
 
+    # __________________________________________________________________________
     # Quick efficiency
     for l in (0, 10, 20, 30, 40, 50, 60):
       for k in ("denom", "numer"):
@@ -2630,37 +2666,8 @@ class EffieAnalysis(DummyAnalysis):
       outfile = outfile[:-5] + ('_%i.root' % jobid)
     print('[INFO] Creating file: %s' % outfile)
     with root_open(outfile, 'recreate') as f:
-      hnames = []
-      for m in ("emtf", "emtf2026"):
-        for l in (0, 10, 20, 30, 40, 50, 60):
-          for k in ("denom", "numer"):
-            hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
-            hnames.append(hname)
-            hname = "%s_eff_vs_genpt_allzones_l1pt%i_%s" % (m,l,k)
-            hnames.append(hname)
-            hname = "%s_eff_vs_genpt_highpt_l1pt%i_%s" % (m,l,k)
-            hnames.append(hname)
-            hname = "%s_eff_vs_genpt_allzones_highpt_l1pt%i_%s" % (m,l,k)
-            hnames.append(hname)
-            hname = "%s_eff_vs_genphi_l1pt%i_%s" % (m,l,k)
-            hnames.append(hname)
-            hname = "%s_eff_vs_genphi_allzones_l1pt%i_%s" % (m,l,k)
-            hnames.append(hname)
-            hname = "%s_eff_vs_geneta_l1pt%i_%s" % (m,l,k)
-            hnames.append(hname)
-            hname = "%s_eff_vs_geneta_allzones_l1pt%i_%s" % (m,l,k)
-            hnames.append(hname)
-            hname = "%s_eff_vs_gend0_l1pt%i_%s" % (m,l,k)
-            hnames.append(hname)
-            hname = "%s_eff_vs_gend0_allzones_l1pt%i_%s" % (m,l,k)
-            hnames.append(hname)
-        hname = "%s_l1pt_vs_genpt" % m
-        hnames.append(hname)
-        hname = "%s_l1ptres_vs_genpt" % m
-        hnames.append(hname)
-      for hname in hnames:
-        h = histograms[hname]
-        h.Write()
+      for (k, v) in histograms.iteritems():
+        v.Write()
 
 
 # ______________________________________________________________________________
@@ -3234,13 +3241,17 @@ jobid = 0
 if use_condor:
   jobid = int(sys.argv[3])
 
-
-# Input files
+# Pattern bank
 bankfile = 'pattern_bank_18patt.29.npz'
 
+# NN models
 kerasfile = ['model.29.json', 'model_weights.29.h5',
              'model_run3.29.json', 'model_run3_weights.29.h5',
              'model_omtf.29.json', 'model_omtf_weights.29.h5',]
+
+
+# ______________________________________________________________________________
+# Input files
 
 infile_r = None  # input file handle
 
@@ -3282,7 +3293,6 @@ def unload_tree():
   except:
     pass
 
-# ______________________________________________________________________________
 def load_pgun():
   infile = 'ntuple_SingleMuon_Endcap_2GeV_add.5.root'
   return load_tree_single(infile)
