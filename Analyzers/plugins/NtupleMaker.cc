@@ -207,6 +207,7 @@ private:
   std::unique_ptr<std::vector<int16_t> >  vp_event;
   std::unique_ptr<std::vector<int32_t> >  vp_pdgid;
   std::unique_ptr<std::vector<int16_t> >  vp_status;
+  std::unique_ptr<std::vector<int16_t> >  vp_decay;
   std::unique_ptr<std::vector<int32_t> >  vp_genp;
   std::unique_ptr<int32_t              >  vp_size;
 
@@ -718,6 +719,7 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   //  vp_event      ->push_back(0);
   //  vp_pdgid      ->push_back(part.pdgId());
   //  vp_status     ->push_back(part.status());
+  //  vp_decay      ->push_back(0);
   //  vp_genp       ->push_back(igenPart);
   //
   //  ++igenPart;
@@ -745,6 +747,7 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
     vp_event      ->push_back(part.eventId().event());
     vp_pdgid      ->push_back(part.pdgId());
     vp_status     ->push_back(part.status());
+    vp_decay      ->push_back(part.decayVertices().size());
     vp_genp       ->push_back(igenPart);
   }
   (*vp_size) = trkParts_.size();
@@ -861,6 +864,7 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   vp_event      ->clear();
   vp_pdgid      ->clear();
   vp_status     ->clear();
+  vp_decay      ->clear();
   vp_genp       ->clear();
   (*vp_size)    = 0;
 
@@ -978,6 +982,7 @@ void NtupleMaker::makeTree() {
   vp_event      = std::make_unique<std::vector<int16_t > >();
   vp_pdgid      = std::make_unique<std::vector<int32_t > >();
   vp_status     = std::make_unique<std::vector<int16_t > >();
+  vp_decay      = std::make_unique<std::vector<int16_t > >();
   vp_genp       = std::make_unique<std::vector<int32_t > >();
   vp_size       = std::make_unique<int32_t>(0);
 
@@ -1076,6 +1081,7 @@ void NtupleMaker::makeTree() {
   tree->Branch("vp_event"     , &(*vp_event     ));
   tree->Branch("vp_pdgid"     , &(*vp_pdgid     ));
   tree->Branch("vp_status"    , &(*vp_status    ));
+  tree->Branch("vp_decay"     , &(*vp_decay     ));
   tree->Branch("vp_genp"      , &(*vp_genp      ));
   tree->Branch("vp_size"      , &(*vp_size      ));
 
