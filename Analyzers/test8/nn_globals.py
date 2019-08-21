@@ -18,13 +18,12 @@ discr_loss_weight = 20.
 l1_reg = 0.0
 l2_reg = 0.0
 
-infile_muon = '../test7/histos_tba.27.npz'
-#infile_pileup = '../test7/histos_tbd.27.npz'
-infile_pileup = '../test7/histos_tbd_alt.27.npz'
-infile_highpt = '../test7/histos_tbe.27.npz'
-infile_augmnt = '../test7/histos_tbf.27.npz'
-infile_displ1 = '../test7/histos_tba_displ1.27.npz'
-infile_displ2 = '../test7/histos_tba_displ2.27.npz'
+infile_muon = '../test7/histos_tba.29.npz'
+infile_pileup = '../test7/histos_tbd.29.npz'
+infile_highpt = '../test7/histos_tbe.29.npz'
+infile_augmnt = '../test7/histos_tbf.29.npz'
+infile_displ1 = '../test7/histos_tba_displ1.29.npz'
+infile_displ2 = '../test7/histos_tba_displ2.29.npz'
 
 infile_muon_run3 = '../test7/histos_tba_run3.27.npz'
 infile_pileup_run3 = '../test7/histos_tbd_run3.27.npz'
