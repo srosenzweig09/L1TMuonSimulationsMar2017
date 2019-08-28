@@ -8,6 +8,7 @@
 #include "SimDataFormats/GeneratorProducts/interface/HepMCProduct.h"
 
 #include "CLHEP/Random/RandFlat.h"
+#include "CLHEP/Random/RandGaussQ.h"
 #include "CLHEP/Units/GlobalSystemOfUnits.h"
 #include "CLHEP/Units/GlobalPhysicalConstants.h"
 //#include "CLHEP/Vector/ThreeVector.h"
@@ -64,8 +65,11 @@ HepMC::FourVector FlatEvtVtxGenerator2::newVertex(CLHEP::HepRandomEngine* engine
   aPhi = CLHEP::RandFlat::shoot(engine, -M_PI, M_PI);
   aX = aRho * std::cos(aPhi);
   aY = aRho * std::sin(aPhi);
-  aZ = CLHEP::RandFlat::shoot(engine, fMinZ, fMaxZ);
-  aT = CLHEP::RandFlat::shoot(engine, fMinT, fMaxT);
+  //aZ = CLHEP::RandFlat::shoot(engine, fMinZ, fMaxZ);
+  //aT = CLHEP::RandFlat::shoot(engine, fMinT, fMaxT);
+  double fSigmaZ = 5.0 * cm;  // use gaussian for vz
+  aZ = CLHEP::RandGaussQ::shoot(engine, 0., fSigmaZ);
+  aT = CLHEP::RandGaussQ::shoot(engine, 0., fSigmaZ);
 
   return HepMC::FourVector(aX,aY,aZ,aT);
 }
@@ -77,8 +81,11 @@ HepMC::FourVector FlatEvtVtxGenerator2::newVertexFlatD0(CLHEP::HepRandomEngine* 
   aRho = CLHEP::RandFlat::shoot(engine, -fMaxX, fMaxX);
   aX = aRho * -std::sin(phi);
   aY = aRho * std::cos(phi);
-  aZ = CLHEP::RandFlat::shoot(engine, fMinZ, fMaxZ);
-  aT = CLHEP::RandFlat::shoot(engine, fMinT, fMaxT);
+  //aZ = CLHEP::RandFlat::shoot(engine, fMinZ, fMaxZ);
+  //aT = CLHEP::RandFlat::shoot(engine, fMinT, fMaxT);
+  double fSigmaZ = 5.0 * cm;  // use gaussian for vz
+  aZ = CLHEP::RandGaussQ::shoot(engine, 0., fSigmaZ);
+  aT = CLHEP::RandGaussQ::shoot(engine, 0., fSigmaZ);
 
   return HepMC::FourVector(aX,aY,aZ,aT);
 }
