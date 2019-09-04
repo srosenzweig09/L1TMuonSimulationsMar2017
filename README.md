@@ -1,6 +1,6 @@
 # L1TMuonSimulationsMar2017
 
-Software package to do the Phase 2 studies for Endcap Muon Track Finder (EMTF).
+Software package to do the Phase 2 studies for the Level-1 Endcap Muon Track Finder (EMTF).
 
 [![Build Status](https://travis-ci.org/jiafulow/L1TMuonSimulationsMar2017.svg)](https://travis-ci.org/jiafulow/L1TMuonSimulationsMar2017)
 [![CMSSW version](https://img.shields.io/badge/cmssw-CMSSW__10__4__0-002963.svg)](https://github.com/cms-sw/cmssw)
@@ -10,6 +10,8 @@ Software package to do the Phase 2 studies for Endcap Muon Track Finder (EMTF).
 
 ```shell
 export SCRAM_ARCH=slc6_amd64_gcc700
+export VO_CMS_SW_DIR=/cvmfs/cms.cern.ch
+source $VO_CMS_SW_DIR/cmsset_default.sh
 scram p -n P2_CMSSW_10_4_0 CMSSW_10_4_0
 cd P2_CMSSW_10_4_0/src
 cmsenv
@@ -26,6 +28,8 @@ scram b -j 10
 Please do not develop on the 'master' branch. The 'master' branch is frequently changed/rebased. Create a new branch and do any development there.
 
 ## Version
+
+- v3.0.0 (2019-09-04): Remove PU discr. Retrain NN to do 3 parameters at the same time: pT, displaced pT, and d0.
 
 - v2.0.0 (2019-06-27): Codes are re-organized/re-factored so that they can be ported to CMSSW.
 
