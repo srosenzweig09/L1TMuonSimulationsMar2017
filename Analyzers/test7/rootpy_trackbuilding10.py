@@ -572,11 +572,11 @@ class EMTFRoadQuality(object):
     # Next 9 patterns for displaced muons: -1/14 <= q/pT <= +1/14, -120 <= d0 <= 120
     # Total is 18 patterns.
     # ipt   0  1  2  3  4  5  6  7  8
-    # strg  1  3  5  7  9  7  5  3  1
+    # strg  5  6  7  8  9  8  7  6  5
     # ipt   9 10 11 12 13 14 15 16 17
-    # strg  0  2  4  6  8  6  4  2  0
-    lut = [1,3,5,7,9,7,5,3,1,
-           0,2,4,6,8,6,4,2,0]
+    # strg  0  1  2  3  4  3  2  1  0
+    lut = [5,6,7,8,9,8,7,6,5,
+           0,1,2,3,4,3,2,1,0]
     self.lut = np.array(lut, dtype=np.int32)
     assert(self.lut.size == 9*2)
     assert(self.lut.min() == 0)
@@ -907,7 +907,7 @@ class Road(object):
 
 class Track(object):
   def __init__(self, _id, hits, mode, quality, sort_code,
-               xml_pt, pt, q, y_pred, y_discr, emtf_phi, emtf_theta):
+               xml_pt, pt, q, y_pred, y_discr, y_displ, d0_displ, emtf_phi, emtf_theta):
     self.id = _id  # (endcap, sector, ipt, ieta, iphi)
     self.hits = hits
     self.mode = mode
@@ -918,6 +918,8 @@ class Track(object):
     self.q = q
     self.y_pred = y_pred
     self.y_discr = y_discr
+    self.y_displ = y_displ
+    self.d0_displ = d0_displ
     self.emtf_phi = emtf_phi
     self.emtf_theta = emtf_theta
     self.phi = calc_phi_glob_deg(calc_phi_loc_deg(emtf_phi), _id[1])
@@ -1241,11 +1243,18 @@ class RoadCleaning(object):
         cut = 4
       else:
         cut = 12
-      if dtheta <= cut:
-        tmp_road_hits.append(hit)
+      if road.quality >= 5:
+        if dtheta <= cut:
+          tmp_road_hits.append(hit)
+      else:
+        if dtheta <= (cut * 2):
+          tmp_road_hits.append(hit)
 
     # Overwrite road hits
     road.hits = tmp_road_hits
+
+    # Overwrite road mode
+    road.mode = find_emtf_road_mode(road.hits)
 
     # Check whether the road is OK, after road hits are overwritten
     (endcap, sector, ipt, ieta, iphi) = road.id
@@ -1614,7 +1623,7 @@ class TrackProducer(object):
     assert(trg_pt > 2.)
     return trg_pt
 
-  def pass_trigger(self, ndof, mode, strg, zone, theta_median, y_pred, y_discr):
+  def pass_trigger(self, ndof, mode, strg, zone, theta_median, y_pred, y_discr, d0_pred):
     ipt1 = strg.astype(np.int32)
     ipt2 = find_pt_bin(y_pred)
     quality1 = find_emtf_road_quality(ipt1)
@@ -1622,7 +1631,14 @@ class TrackProducer(object):
     strg_ok = (quality2 <= (quality1+1))
 
     xml_pt = np.abs(1.0/y_pred)
-    trigger = (y_discr >= 0.)  # always true
+    if xml_pt > self.discr_pt_cut_high:  # >14 GeV
+      trigger = np.abs(d0_pred) < 20.
+    elif xml_pt > self.discr_pt_cut_med: # 8-14 GeV
+      trigger = np.abs(d0_pred) < 25.
+    elif xml_pt > self.discr_pt_cut_low: # 4-8 GeV
+      trigger = np.abs(d0_pred) < 30.
+    else:
+      trigger = (y_discr >= 0.)
 
     ## OBSOLETE since v3
     ## Apply cuts
@@ -1721,12 +1737,14 @@ class TrackProducer(object):
 
       y_pred = np.asscalar(y[..., 0])
       y_discr = np.ones_like(y[..., 0], dtype=np.float32)  # OBSOLETE since v3
+      d1_pred = np.asscalar(y[..., 3])
+      d0_pred = np.asscalar(y[..., 6])
       ndof = get_ndof_from_x_mask(x_mask)
       mode = get_mode_from_x_mask(x_mask)
       strg, zone, phi_median, theta_median = x_road
       eta = theta_to_eta_f(theta_median) # absolute eta
 
-      passed = self.pass_trigger(ndof, mode, strg, zone, theta_median, y_pred, y_discr)
+      passed = self.pass_trigger(ndof, mode, strg, zone, theta_median, y_pred, y_discr, d0_pred)
 
       if passed:
         xml_pt = np.abs(1.0/y_pred)
@@ -1736,7 +1754,7 @@ class TrackProducer(object):
 
         trk_q = np.sign(y_pred).astype(np.int32)
         trk = Track(myroad.id, myroad.hits, mode, myroad.quality, myroad.sort_code,
-                    xml_pt, pt, trk_q, y_pred, y_discr, phi_median, theta_median)
+                    xml_pt, pt, trk_q, y_pred, y_discr, d1_pred, d0_pred, phi_median, theta_median)
         tracks.append(trk)
     return tracks
 
