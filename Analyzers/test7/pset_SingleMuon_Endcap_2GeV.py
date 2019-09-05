@@ -5,9 +5,9 @@
 # with command line options: L1TMuonSimulations/Configuration/python/SingleMuonFlatOneOverPt2To7000_PositiveEndCap_cfi.py --step GEN,SIM,DIGI:pdigi_valid,L1,L1TrackTrigger,DIGI2RAW,RAW2DIGI --mc --eventcontent FEVTDEBUGHLT --datatier GEN-SIM-DIGI-RAW --processName L1 --conditions auto:phase2_realistic --beamspot HLLHC14TeV --geometry Extended2023D17 --era Phase2_timing --pileup NoPileUp --customise SimGeneral/MixingModule/customiseStoredTPConfig.higherPtTP,SLHCUpgradeSimulations/Configuration/aging.customise_aging_1000 --python_filename pset_SingleMuon_PositiveEndCap.py --fileout file:SingleMuon_PositiveEndCap.root --no_exec --nThreads 4 -n 100
 import FWCore.ParameterSet.Config as cms
 
-from Configuration.StandardSequences.Eras import eras
+from Configuration.Eras.Era_Phase2_timing_cff import Phase2_timing
 
-process = cms.Process('L1',eras.Phase2_timing)
+process = cms.Process('L1',Phase2_timing)
 
 # import of standard configurations
 process.load('Configuration.StandardSequences.Services_cff')
@@ -105,8 +105,8 @@ process.digitisation_step = cms.Path(process.pdigi_valid)
 #process.pL1TkIsoElectrons = cms.Path(process.L1TkIsoElectrons)
 process.L1simulation_step = cms.Path(process.SimL1Emulator)
 #process.L1TrackTrigger_step = cms.Path(process.L1TrackTrigger)
-process.digi2raw_step = cms.Path(process.DigiToRaw)
-process.raw2digi_step = cms.Path(process.RawToDigi)
+#process.digi2raw_step = cms.Path(process.DigiToRaw)
+#process.raw2digi_step = cms.Path(process.RawToDigi)
 process.genfiltersummary_step = cms.EndPath(process.genFilterSummary)
 process.endjob_step = cms.EndPath(process.endOfProcess)
 process.FEVTDEBUGHLToutput_step = cms.EndPath(process.FEVTDEBUGHLToutput)
@@ -119,9 +119,10 @@ process.FEVTDEBUGHLToutput_step = cms.EndPath(process.FEVTDEBUGHLToutput)
 ##Setup FWK for multithreaded
 #process.options.numberOfThreads=cms.untracked.uint32(4)
 #process.options.numberOfStreams=cms.untracked.uint32(0)
+#process.options.numberOfConcurrentLuminosityBlocks=cms.untracked.uint32(1)
 # filter all path with the production filter sequence
 for path in process.paths:
-    getattr(process,path)._seq = process.generator * getattr(process,path)._seq
+    getattr(process,path).insert(0, process.generator)
 
 # customisation of the process.
 
@@ -148,17 +149,6 @@ process = customiseEarlyDelete(process)
 
 
 # ______________________________________________________________________________
-# Check LCT BX shift
-import os
-if 'CMSSW_VERSION' not in os.environ:
-    raise RunTimeError('Could not determine CMSSW version.')
-cmssw_version = os.environ['CMSSW_VERSION']
-cmssw_version = cmssw_version[6:].split('_')[:3]
-cmssw_version = tuple(int(x) for x in cmssw_version)
-if cmssw_version < (10, 2, 0):
-    process.simEmtfDigis.CSCInputBXShift = cms.int32(-6)
-
-# ______________________________________________________________________________
 # Modify EMTF
 if True:
     from L1Trigger.L1TMuonEndCap.customise_Phase2 import customise as customise_Phase2
@@ -175,10 +165,10 @@ if True:
     process.ntupler.verbosity = 0
     process.TFileService = cms.Service('TFileService', fileName = cms.string(process.ntupler.outFileName.value()))
     # Modify sequences without any consequences
-    process.doAllDigi = cms.Sequence(process.generatorSmeared+process.muonDigi)
-    process.SimL1TMuon = cms.Sequence(process.SimL1TMuonCommon+process.rpcRecHits+process.simTwinMuxDigis+process.me0TriggerPseudoDigiSequence+process.simEmtfDigis)
-    process.SimL1EmulatorCore = cms.Sequence(process.SimL1TMuon)
-    process.SimL1Emulator = cms.Sequence(process.SimL1EmulatorCore)
+    process.doAllDigiTask = cms.Task(process.generatorSmeared, process.muonDigiTask)
+    process.SimL1TMuonTask = cms.Task(process.SimL1TMuonCommonTask, process.me0TriggerPseudoDigiTask, process.me0TriggerPseudoDigiTask105X, process.rpcRecHits, process.simBmtfDigis, process.simEmtfDigis, process.simOmtfDigis, process.simTwinMuxDigis)
+    process.SimL1EmulatorCoreTask = cms.Task(process.SimL1TMuonTask)
+    process.SimL1EmulatorTask = cms.Task(process.SimL1EmulatorCoreTask)
     process.ntuple_step = cms.Path(process.ntupler)
     process.schedule = cms.Schedule(process.generation_step,process.genfiltersummary_step,process.simulation_step,process.digitisation_step,process.L1simulation_step, process.ntuple_step)
 

@@ -15,6 +15,7 @@ AutoDict_*
 *.h5
 *.json
 .ipynb_checkpoints
+keras_logs
 
 # Other
 *~
