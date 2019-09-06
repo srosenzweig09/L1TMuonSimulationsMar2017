@@ -1,0 +1,1 @@
+cmsDriver.py step1 --step L1 --mc --eventcontent FEVTDEBUGHLT --customise SLHCUpgradeSimulations/Configuration/aging.customise_aging_1000 --datatier GEN-SIM-DIGI-RAW --conditions auto:phase2_realistic --geometry Extended2023D41 --era Phase2C8_timing_layer_bar --filein file:step0.root --fileout file:step1.root --no_exec --nThreads 4 -n 100
