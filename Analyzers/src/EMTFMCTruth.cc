@@ -208,7 +208,7 @@ int EMTFMCTruth::findCSCStripSimLink(const l1t::EMTFHit& hit, const std::vector<
         EncodedEventId eventId = linkItr->eventId();
         float fraction = linkItr->fraction();
 
-        if (std::abs(int(strip1) - int(channel)) <= 3) {  // allow +/-3
+        if (std::abs(strip1 - static_cast<int>(channel)) <= 3) {  // allow +/-3
           SimHitIdpr matchId(simTrackId, eventId);
           if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
           matches[matchId] += fraction;
@@ -239,7 +239,7 @@ int EMTFMCTruth::findCSCWireSimLink(const l1t::EMTFHit& hit, const TrackingParti
         EncodedEventId eventId = linkItr->eventId();
         float fraction = linkItr->fraction();
 
-        if (std::abs(int(wire1) - int(channel)) <= 3) {  // allow +/-3
+        if (std::abs(wire1 - static_cast<int>(channel)) <= 3) {  // allow +/-3
           SimHitIdpr matchId(simTrackId, eventId);
           if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
           matches[matchId] += fraction;
@@ -271,7 +271,7 @@ int EMTFMCTruth::findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
       EncodedEventId eventId = linkItr->getEventId();
 
       for (int strip0 = stripA; strip0 < stripB+1; ++strip0) {
-        if ((std::abs(int(strip0) - int(simStrip)) <= 1) && ((int) simBX == bx)) {  // allow +/-1
+        if ((std::abs(strip0 - static_cast<int>(simStrip)) <= 1) && (bx == static_cast<int>(simBX))) {  // allow +/-1
           SimHitIdpr matchId(simTrackId, eventId);
           if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
           matches[matchId] += 1.0;
@@ -291,7 +291,7 @@ int EMTFMCTruth::findRPCDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
 
       if (detUnitId == detId0.rawId()) {
         for (int strip0 = stripA; strip0 < stripB+1; ++strip0) {
-          if ((std::abs(int(strip0) - int(simStrip)) <= 1) && ((int) simBX == bx)) {  // allow +/-1
+          if ((std::abs(strip0 - static_cast<int>(simStrip)) <= 1) && (bx == static_cast<int>(simBX))) {  // allow +/-1
             SimHitIdpr matchId(simTrackId, eventId);
             if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
             matches[matchId] += 1.0;
@@ -337,7 +337,7 @@ int EMTFMCTruth::findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
         unsigned int simPad = (simStrip+1)/2;
 
         for (int strip0 = stripA; strip0 < stripB+1; ++strip0) {
-          if ((detId1.station() == 1) && (std::abs(int(strip0) - int(simPad)) <= 2) && ((int) simBX == bx)) {  // allow +/-2
+          if ((detId1.station() == 1) && (std::abs(strip0 - static_cast<int>(simPad)) <= 2) && (bx == static_cast<int>(simBX))) {  // allow +/-2
             SimHitIdpr matchId(simTrackId, eventId);
             if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
             matches[matchId] += 1.0;
@@ -349,7 +349,7 @@ int EMTFMCTruth::findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
             //          << " pdg " << linkItr->getParticleType() << " process " << linkItr->getProcessType()
             //          << " trackId " << linkItr->getTrackId() << " eventId " << linkItr->getEventId().bunchCrossing() << "," << linkItr->getEventId().event()
             //          << std::endl;
-          } else if ((detId1.station() == 2) && (std::abs(int(strip0) - int(simPad)) <= 1) && ((int) simBX == bx)) {  // allow +/-1
+          } else if ((detId1.station() == 2) && (std::abs(strip0 - static_cast<int>(simPad)) <= 2) && (bx == static_cast<int>(simBX))) {  // allow +/-2
             SimHitIdpr matchId(simTrackId, eventId);
             if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
             matches[matchId] += 1.0;
@@ -365,29 +365,34 @@ int EMTFMCTruth::findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
 int EMTFMCTruth::findME0DigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const {
   std::map<SimHitIdpr, float> matches;
 
-  int strip0 = hit.Strip();
+  int strip0 = hit.Strip();  // 'phiposition' is in half-strip unit
+  int strip1 = (strip0 >> 1);
   int bx     = hit.BX();
 
   // Check all 6 ME0 layers.
   for (unsigned ilayer = 0; ilayer < 6; ++ilayer) {
-    ME0DetId detId0 = hit.ME0_DetId();
-    ME0DetId detId1(detId0.region(), ilayer+1, detId0.chamber(), detId0.roll());
+    // Check neighbor rolls
+    int partition = hit.Roll();  // 'partition' is in half-roll unit
+    int iroll0 = (partition >> 1) + 1;
+    unsigned iroll_first = (iroll0 == 1) ? iroll0 : iroll0-1;
+    unsigned iroll_last = (iroll0 == 8) ? iroll0 : iroll0+1;
+    for (unsigned iroll = iroll_first; iroll <= iroll_last; ++iroll) {
+      ME0DetId detId0 = hit.ME0_DetId();
+      ME0DetId detId1(detId0.region(), ilayer+1, detId0.chamber(), iroll);
 
-    ME0DigiSimLinks::const_iterator me0DigiLayerLinks = me0DigiSimLinksPtr_->find(detId1);
-    if (me0DigiLayerLinks != me0DigiSimLinksPtr_->end()) {
-      for (ME0LayerLinks::const_iterator linkItr = me0DigiLayerLinks->begin(); linkItr != me0DigiLayerLinks->end(); ++linkItr) {
-        unsigned int simStrip = linkItr->getStrip();
-        unsigned int simBX = linkItr->getBx();
-        unsigned int simTrackId = linkItr->getTrackId();
-        EncodedEventId eventId = linkItr->getEventId();
+      ME0DigiSimLinks::const_iterator me0DigiLayerLinks = me0DigiSimLinksPtr_->find(detId1);
+      if (me0DigiLayerLinks != me0DigiSimLinksPtr_->end()) {
+        for (ME0LayerLinks::const_iterator linkItr = me0DigiLayerLinks->begin(); linkItr != me0DigiLayerLinks->end(); ++linkItr) {
+          unsigned int simStrip = linkItr->getStrip();
+          unsigned int simBX = linkItr->getBx();
+          unsigned int simTrackId = linkItr->getTrackId();
+          EncodedEventId eventId = linkItr->getEventId();
 
-        //int simPad = 1 + static_cast<int>(p->padOfStrip(simStrip));
-        unsigned int simPad = (simStrip+1)/2;
-
-        if ((std::abs(int(strip0) - int(simPad)) <= 3) && ((int) simBX == bx)) {  // allow +/-3
-          SimHitIdpr matchId(simTrackId, eventId);
-          if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
-          matches[matchId] += 1.0;
+          if ((std::abs(strip1 - static_cast<int>(simStrip)) <= 3) && (bx == static_cast<int>(simBX))) {  // allow +/-3
+            SimHitIdpr matchId(simTrackId, eventId);
+            if (matches.find(matchId) == matches.end())  matches[matchId] = 0.;
+            matches[matchId] += 1.0;
+          }
         }
       }
     }
