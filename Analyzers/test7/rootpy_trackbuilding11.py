@@ -297,7 +297,7 @@ class EMTFZone(object):
     lut[3,2,1][2] = 23,36   # GE2/1
     lut[3,2,1][3] = 34,46   # GE2/1
     #
-    lut[4,1,1][0] = 1,17    # ME0
+    lut[4,1,1][0] = 4,17    # ME0
     lut[4,1,1][1] = 16,23   # ME0
     #
     lut[0,1,1][6] = 92,130  # MB1
@@ -329,6 +329,7 @@ class EMTFBend(object):
     #elif hit.type == kGEM:
     #  emtf_bend *= hit.endcap
     elif hit.type == kME0:
+      emtf_bend = np.round(emtf_bend.astype(np.float32) * 0.5).astype(np.int32)
       emtf_bend = np.clip(emtf_bend, -64, 63)  # currently in 1/2-strip unit
     elif hit.type == kDT:
       if hit.quality >= 4:
@@ -1446,14 +1447,14 @@ class PtAssignment(object):
     from nn_models import load_my_model, update_keras_custom_objects
     update_keras_custom_objects()
     self.loaded_model = load_my_model(name=model_file, weights_name=model_weights_file)
-    self.loaded_model_run3 = load_my_model(name=model_run3_file, weights_name=model_run3_weights_file)
-    self.loaded_model_omtf = load_my_model(name=model_omtf_file, weights_name=model_omtf_weights_file)
+    #self.loaded_model_run3 = load_my_model(name=model_run3_file, weights_name=model_run3_weights_file)
+    #self.loaded_model_omtf = load_my_model(name=model_omtf_file, weights_name=model_omtf_weights_file)
     self.loaded_model.trainable = False
-    self.loaded_model_run3.trainable = False
-    self.loaded_model_omtf.trainable = False
+    #self.loaded_model_run3.trainable = False
+    #self.loaded_model_omtf.trainable = False
     assert(not self.loaded_model.updates)
-    assert(not self.loaded_model_run3.updates)
-    assert(not self.loaded_model_omtf.updates)
+    #assert(not self.loaded_model_run3.updates)
+    #assert(not self.loaded_model_omtf.updates)
 
   def predict(self, x):
     if self.omtf_input:
@@ -2413,13 +2414,13 @@ class EffieAnalysis(DummyAnalysis):
       histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -1, 2, name=hname, title="; gen q/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
 
     # Load tree
-    if pileup == 0:
-      if omtf_input:
-        tree = load_pgun_batch_omtf(jobid)
-      else:
-        tree = load_pgun_batch(jobid)
-    else:
-      tree = load_minbias_batch_for_effie(jobid, pileup=pileup)
+    #if pileup == 0:
+    #  if omtf_input:
+    #    tree = load_pgun_batch_omtf(jobid)
+    #  else:
+    #    tree = load_pgun_batch(jobid)
+
+    tree = load_minbias_batch_for_effie(jobid, pileup=pileup)
 
     # Workers
     bank = PatternBank(bankfile)
@@ -3351,13 +3352,14 @@ def load_pgun_batch_displ(k):
 
 def load_minbias_batch(k, pileup=200):
   if pileup == 140:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU140/SingleNeutrino/CRAB3/190416_160046/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(56)]
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_6_3/ntuple_SingleNeutrino_PU140_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190911_202515/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(125)]
   elif pileup == 200:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190416_160207/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(63)]
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_6_3/ntuple_SingleNeutrino_PU200_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190910_200739/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(168)]
+    #pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_6_3/ntuple_SingleNeutrino_PU200_PhaseIIMTDTDRAutumn18/NeutrinoGun_E_10GeV/CRAB3/190910_200856/0000/ntuple_SingleNeutrino_PU200_MTD_%i.root' % (i+1) for i in xrange(260)]
   elif pileup == 250:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU250/SingleNeutrino/CRAB3/190416_160323/0000/ntuple_SingleNeutrino_PU250_%i.root' % (i+1) for i in xrange(50)]
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_6_3/ntuple_SingleNeutrino_PU250_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190911_231010/0000/ntuple_SingleNeutrino_PU250_%i.root' % (i+1) for i in xrange(250)]
   elif pileup == 300:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU300/SingleNeutrino/CRAB3/190416_160441/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(53)]
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_6_3/ntuple_SingleNeutrino_PU300_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/000000_000000/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(250)]
   else:
     raise RunTimeError('Cannot recognize pileup: {0}'.format(pileup))
   #
@@ -3365,8 +3367,10 @@ def load_minbias_batch(k, pileup=200):
   return load_tree_single(infile)
 
 def load_minbias_batch_for_effie(k, pileup=200):
-  if pileup == 200:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU200/SingleMu_FlatPt-2to100/CRAB3/190416_160951/0000/ntuple_SingleMuon_PU200_%i.root' % (i+1) for i in xrange(26)]
+  if pileup == 0:
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_6_3/ntuple_MuMu_FlatPt_PU0_PhaseIITDRSpring19_csc1/ParticleGuns/CRAB3/190909_200854/0000/ntuple_MuMu_FlatPt_PU0_%i.root' % (i+1) for i in xrange(5)]
+  elif pileup == 200:
+    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_6_3/ntuple_MuMu_FlatPt_PU200_PhaseIITDRSpring19/Mu_FlatPt2to100-pythia8-gun/CRAB3/190910_200629/0000/ntuple_MuMu_FlatPt_PU200_%i.root' % (i+1) for i in xrange(33)]
   else:
     raise RunTimeError('Cannot recognize pileup: {0}'.format(pileup))
   #
