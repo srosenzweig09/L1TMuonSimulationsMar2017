@@ -3,10 +3,31 @@
 Software package to do the Phase 2 studies for the Level-1 Endcap Muon Track Finder (EMTF).
 
 [![Build Status](https://travis-ci.org/jiafulow/L1TMuonSimulationsMar2017.svg)](https://travis-ci.org/jiafulow/L1TMuonSimulationsMar2017)
-[![CMSSW version](https://img.shields.io/badge/cmssw-CMSSW__10__4__0-002963.svg)](https://github.com/cms-sw/cmssw)
+[![CMSSW version](https://img.shields.io/badge/cmssw-CMSSW__10__6__3-002963.svg)](https://github.com/cms-sw/cmssw)
 [![Latest tag](https://img.shields.io/github/tag/jiafulow/L1TMuonSimulationsMar2017.svg)](https://github.com/jiafulow/L1TMuonSimulationsMar2017)
 
 ## Build
+
+### SLC7
+
+``` shell
+export SCRAM_ARCH=slc7_amd64_gcc700
+export VO_CMS_SW_DIR=/cvmfs/cms.cern.ch
+source $VO_CMS_SW_DIR/cmsset_default.sh
+scram p -n P2_CMSSW_10_6_3 CMSSW_10_6_3
+cd P2_CMSSW_10_6_3/src
+cmsenv
+
+# Checkout the emulator in the 'phase2-develop' branch
+git clone -b phase2-develop git@github.com:jiafulow/DataFormatsSep2016.git DataFormats
+git clone -b phase2-develop git@github.com:jiafulow/L1TriggerSep2016.git L1Trigger
+# Checkout this repository
+git clone git@github.com:jiafulow/L1TMuonSimulationsMar2017 L1TMuonSimulations
+# Compile
+scram b -j 10
+```
+
+### SLC6
 
 ```shell
 export SCRAM_ARCH=slc6_amd64_gcc700
@@ -28,6 +49,8 @@ scram b -j 10
 Please do not develop on the 'master' branch. The 'master' branch is frequently changed/rebased. Create a new branch and do any development there.
 
 ## Version
+
+- v3.1.0 (2019-09-13): Move to CMSSW_10_6_3 with the change to use ME0TriggerDigi and GEMPadDigiCluster. Switch to use PhaseIITDRSpring19 samples. No change in NN.
 
 - v3.0.0 (2019-09-04): Remove PU discr. Retrain NN to do 3 parameters at the same time: pT, displaced pT, and d0.
 
