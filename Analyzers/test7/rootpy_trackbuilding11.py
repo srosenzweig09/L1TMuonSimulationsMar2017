@@ -10,6 +10,7 @@ from rootpy.io import root_open
 from ROOT import gROOT
 gROOT.SetBatch(True)
 
+# Adjust matplotlib logging
 import logging
 mpl_logger = logging.getLogger('matplotlib')
 mpl_logger.setLevel(logging.WARNING)
@@ -329,7 +330,7 @@ class EMTFBend(object):
     #elif hit.type == kGEM:
     #  emtf_bend *= hit.endcap
     elif hit.type == kME0:
-      emtf_bend = np.round(emtf_bend.astype(np.float32) * 0.5).astype(np.int32)
+      emtf_bend = np.round(emtf_bend.astype(np.float32) * 0.5001).astype(np.int32)  # use 0.5001 because NumPy rounds to the nearest even value
       emtf_bend = np.clip(emtf_bend, -64, 63)  # currently in 1/2-strip unit
     elif hit.type == kDT:
       if hit.quality >= 4:
@@ -1826,7 +1827,7 @@ class GhostBusting(object):
 class TrackMuonCorrelation(object):
   def __init__(self):
     self.nbins = 10
-    self.bounds = np.array([1.2, 1.32, 1.44, 1.56, 1.68, 1.80, 1.92, 2.04, 2.16, 2.28, 2.4])
+    self.bounds = np.array([1.2, 1.32, 1.44, 1.56, 1.68, 1.80, 1.92, 2.04, 2.16, 2.28, 2.4])  # eta boundaries
     assert(self.nbins == len(self.bounds) - 1)
     self.wdws_theta_low = np.array([[ 4.79923815e-05,  1.11477748e+00, -4.36100776e+00],
         [ 4.76547496e-05,  1.30626682e+00, -4.47946909e+00],
@@ -1868,13 +1869,14 @@ class TrackMuonCorrelation(object):
         [ 0.01002838,  1.86365365, -1.19649265],
         [ 0.00980687,  1.79091689, -1.23450375],
         [ 0.01045059,  1.76763996, -1.28661338]])
-    self.safety_factor_l = 0.7  # default: 0.5
-    self.safety_factor_h = 0.7  # default: 0.5
+    self.safety_factor_l = 0.6  # default: 0.5
+    self.safety_factor_h = 0.6  # default: 0.5
     self.initial_sf_l = 0.1  # default: 0.0
     self.initial_sf_h = 0.1  # default: 0.0
-    self.pt_start = 2.0
+    self.pt_start = 2.0  # default: 2.0
     self.pt_end = 8.0  # default: 6.0
     self.do_relax_factor = True
+    self.also_check_pt = True
 
   def run(self, particles, tracks):
     matched = np.zeros((len(particles), len(tracks)), dtype=np.bool)
@@ -1966,6 +1968,11 @@ class TrackMuonCorrelation(object):
             ((dphi_sign * part.q) < 0) and \
             ((trk.eta * part.eta) > 0)
         )
+
+        if matched[ipart, itrk] and self.also_check_pt:
+          # Require particle pT above some fraction of track pT
+          if part.pt <= self.pt_end:
+            matched[ipart, itrk] = matched[ipart, itrk] and (part.pt >= (1 - self.safety_factor_l) * trk.pt)
 
     # Make sure the matching is unique
     for ipart in xrange(matched.shape[0]):
@@ -2093,12 +2100,12 @@ class RoadsAnalysis(DummyAnalysis):
 
       # Quick efficiency
       if omtf_input:
-        is_important = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0) and (part.pt > 5.)
+        is_important = lambda part: (part.bx == 0) and (0.8 <= abs(part.eta) <= 1.24) and (abs(part.d0) >= 0) and (part.pt > 5.)
         is_possible = lambda hits: (any([(hit.type == kDT and hit.station == 1) for hit in hits]) and any([(hit.type == kDT and 2 <= hit.station <= 3) for hit in hits])) or \
             (any([(hit.type == kCSC and hit.station == 1) for hit in hits]) and any([(hit.type == kDT and 1 <= hit.station <= 2) for hit in hits])) or \
             (any([(hit.type == kCSC and hit.station == 1) for hit in hits]) and any([(hit.type == kCSC and 2 <= hit.station <= 3) for hit in hits]))
       else:
-        is_important = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0) and (part.pt > 4.)
+        is_important = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0) and (part.pt > 4.)
         is_possible = lambda hits: any([((hit.type == kCSC or hit.type == kME0) and hit.station == 1) for hit in hits]) and \
             any([(hit.type == kCSC and hit.station >= 2) for hit in hits])
 
@@ -2198,8 +2205,10 @@ class RatesAnalysis(DummyAnalysis):
       hname = "highest_%s_absEtaMin2.15_absEtaMax2.4_qmin12_pt" % m
       histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
 
-      hname = "highest_%s_absEtaMin0.8_absEtaMax2.4_matched_qmin12_pt" % m
-      histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
+      hname = "highest_%s_absEtaMin1.24_absEtaMax2.4_qmin12_matched0_pt" % m
+      histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV] {no MC match}; entries", type='F')
+      hname = "highest_%s_absEtaMin1.24_absEtaMax2.4_qmin12_matched1_pt" % m
+      histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV] {found MC match}; entries", type='F')
 
       for l in xrange(14,22+1):
         hname = "%s_ptmin%i_qmin12_eta" % (m,l)
@@ -2280,6 +2289,22 @@ class RatesAnalysis(DummyAnalysis):
           highest_pt = min(100.-1e-4, highest_pt)
           histograms[hname].fill(highest_pt)
 
+      def fill_highest_pt_matched():
+        highest_pt = -999999.
+        highest_pt_itrk = -999
+        for itrk, trk in enumerate(tracks):
+          if select(trk):
+            if highest_pt < trk.pt:  # using scaled pT
+              highest_pt = trk.pt
+              highest_pt_itrk = itrk
+        if highest_pt > 0.:
+          highest_pt = min(100.-1e-4, highest_pt)
+          highest_pt_trk = tracks[highest_pt_itrk]
+          if highest_pt_trk.matched:
+            histograms[hname_matched1].fill(highest_pt)
+          else:
+            histograms[hname_matched0].fill(highest_pt)
+
       def fill_eta():
         h = histograms[hname]
         eta_bins = [False] * (h.GetNbinsX()+2)
@@ -2337,7 +2362,7 @@ class RatesAnalysis(DummyAnalysis):
       hname = "highest_emtf2026_absEtaMin2.15_absEtaMax2.4_qmin12_pt"
       fill_highest_pt()
       for l in xrange(14,22+1):
-        select = lambda trk: trk and (0 <= abs(trk.eta) <= 9.9) and (trk.pt > float(l))
+        select = lambda trk: trk and (0 <= abs(trk.eta) <= 9.9) and trk.zone in (0,1,2,3,4,5,6) and (trk.pt > float(l))
         hname = "emtf2026_ptmin%i_qmin12_eta" % (l)
         fill_eta()
 
@@ -2347,9 +2372,10 @@ class RatesAnalysis(DummyAnalysis):
         mytrk.matched = m.any()
 
       tracks = emtf2026_tracks
-      select = lambda trk: trk and (0.8 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5,6) and trk.matched
-      hname = "highest_emtf2026_absEtaMin0.8_absEtaMax2.4_matched_qmin12_pt"
-      fill_highest_pt()
+      select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5)
+      hname_matched0 = "highest_emtf2026_absEtaMin1.24_absEtaMax2.4_qmin12_matched0_pt"
+      hname_matched1 = "highest_emtf2026_absEtaMin1.24_absEtaMax2.4_qmin12_matched1_pt"
+      fill_highest_pt_matched()
 
     # End loop over events
     unload_tree()
@@ -2372,11 +2398,11 @@ class EffieAnalysis(DummyAnalysis):
   def run(self, omtf_input=False, run2_input=False, pileup=0):
     # Book histograms
     histograms = {}
-    eff_pt_bins = (0., 0.5, 1., 1.5, 2., 3., 4., 5., 6., 7., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 34., 40., 48., 60., 80., 120.)
+    eff_pt_bins = (0., 0.5, 1., 1.5, 2., 3., 4., 5., 6., 7., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 34., 40., 48., 60., 80., 100., 120.)
     eff_highpt_bins = (2., 2.5, 3., 3.5, 4., 4.5, 5., 6., 7., 8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30., 34., 40., 48., 60., 80., 100., 120., 250., 500., 1000.)
 
     for m in ("emtf", "emtf2026"):
-      for l in (0, 10, 20, 30, 40, 50, 60):
+      for l in (0, 5, 10, 20, 30, 40, 50, 60):
         for k in ("denom", "numer"):
           hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
@@ -2384,8 +2410,12 @@ class EffieAnalysis(DummyAnalysis):
           histograms[hname] = Hist(eff_highpt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
           hname = "%s_eff_vs_genphi_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(76, -190, 190, name=hname, title="; gen #phi {gen p_{T} > 20 GeV}", type='F')
+          hname = "%s_eff_vs_genphi_lowpt_l1pt%i_%s" % (m,l,k)
+          histograms[hname] = Hist(76, -190, 190, name=hname, title="; gen #phi {5 < gen p_{T} #leq 20 GeV}", type='F')
           hname = "%s_eff_vs_geneta_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
+          hname = "%s_eff_vs_geneta_lowpt_l1pt%i_%s" % (m,l,k)
+          histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {5 < gen p_{T} #leq 20 GeV}", type='F')
           hname = "%s_eff_vs_gend0_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(80, 0, 120, name=hname, title="; gen |d_{0}| {gen p_{T} > 20 GeV}", type='F')
           hname = "%s_eff_vs_gendz_l1pt%i_%s" % (m,l,k)
@@ -2508,80 +2538,75 @@ class EffieAnalysis(DummyAnalysis):
           y_pred = np.true_divide(mytrk.q, mytrk.xml_pt)
           m = emtf2026_matched[:, itrk]
           print(".. trk {0} id: {1} pt: {2} eta: {3} y_true: {4} y_pred: {5} delta: {6} m: {7}".format(itrk, mytrk.id, mytrk.pt, mytrk.eta, y_true, y_pred, (y_pred - y_true), m.any()))
-        if True:
-          select_track = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.6) and trk.zone in (0,1,2,3,4,5) and (trk.pt > float(l))
-          tracks = emtf2026_tracks
-          triggers = [any([select_track(trk) for trk in tracks]) for l in (0,10,20,30,40,50,60)]
-          warning = (part.pt > 60) and (triggers[2] == False)
-          print(".. {0}{1}".format(triggers, " WARNING" if warning else ""))
         for itrk, mytrk in enumerate(evt.tracks):
           print(".. otrk {0} id: {1} pt: {2} eta: {3} mode: {4}".format(itrk, (mytrk.endcap, mytrk.sector, -1, -1, -1), mytrk.pt, mytrk.eta, mytrk.mode))
 
       # ________________________________________________________________________
       # Fill histograms
 
-      def _fill_efficiency(harvest_f, select_part, select_track):
+      def base_fill_efficiency(harvest_part, select_part, select_track):
         if select_part(part):
           trigger = any([select_track(trk) for trk in tracks])  # using scaled pT
           denom = histograms[hname + "_denom"]
           numer = histograms[hname + "_numer"]
-          denom.fill(harvest_f(part))
+          denom.fill(harvest_part(part))
           if trigger:
-            numer.fill(harvest_f(part))
+            numer.fill(harvest_part(part))
 
       def fill_efficiency_pt():
-        harvest_f = lambda part: part.pt
-        _fill_efficiency(harvest_f, select_part, select_track)
+        harvest_part = lambda part: part.pt
+        base_fill_efficiency(harvest_part, select_part, select_track)
 
       def fill_efficiency_phi():
-        harvest_f = lambda part: np.rad2deg(part.phi)
-        _fill_efficiency(harvest_f, select_part, select_track)
+        harvest_part = lambda part: np.rad2deg(part.phi)
+        base_fill_efficiency(harvest_part, select_part, select_track)
 
       def fill_efficiency_eta():
-        harvest_f = lambda part: abs(part.eta)
-        select_part_eta = lambda part: (part.bx == 0)
-        _fill_efficiency(harvest_f, select_part_eta, select_track)
+        harvest_part = lambda part: abs(part.eta)
+        select_part_eta = lambda part: (part.bx == 0) and (abs(part.d0) >= 0)  # no cut on eta
+        base_fill_efficiency(harvest_part, select_part_eta, select_track)
 
       def fill_efficiency_d0():
-        harvest_f = lambda part: abs(part.d0)
-        _fill_efficiency(harvest_f, select_part, select_track)
+        harvest_part = lambda part: abs(part.d0)
+        select_part_d0 = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4)  # no cut on d0
+        base_fill_efficiency(harvest_part, select_part_d0, select_track)
 
       def fill_efficiency_dz():
-        harvest_f = lambda part: abs(part.vz)
-        _fill_efficiency(harvest_f, select_part, select_track)
+        harvest_part = lambda part: abs(part.vz)
+        base_fill_efficiency(harvest_part, select_part, select_track)
 
-      def _fill_efficiency_for_roads(harvest_f, select_part, select_track):
+      def base_fill_efficiency_for_roads(harvest_part, select_part, select_track):
         if select_part(part):
           trigger_roads = len(roads) > 0
           denom = histograms[hname_roads + "_denom"]
           numer = histograms[hname_roads + "_numer"]
-          denom.fill(harvest_f(part))
+          denom.fill(harvest_part(part))
           if trigger_roads:
-            numer.fill(harvest_f(part))
+            numer.fill(harvest_part(part))
           #
           trigger_croads = len(clean_roads) > 0
           denom = histograms[hname_croads + "_denom"]
           numer = histograms[hname_croads + "_numer"]
-          denom.fill(harvest_f(part))
+          denom.fill(harvest_part(part))
           if trigger_croads:
-            numer.fill(harvest_f(part))
+            numer.fill(harvest_part(part))
 
       def fill_efficiency_pt_for_roads():
-        harvest_f = lambda part: part.pt
-        _fill_efficiency_for_roads(harvest_f, select_part, select_track)
+        harvest_part = lambda part: part.pt
+        base_fill_efficiency_for_roads(harvest_part, select_part, select_track)
 
       def fill_efficiency_eta_for_roads():
-        harvest_f = lambda part: abs(part.eta)
+        harvest_part = lambda part: abs(part.eta)
         select_part_eta = lambda part: (part.bx == 0)
-        _fill_efficiency_for_roads(harvest_f, select_part_eta, select_track)
+        base_fill_efficiency_for_roads(harvest_part, select_part_eta, select_track)
 
       def fill_efficiency_d0_for_roads():
-        harvest_f = lambda part: abs(part.d0)
-        _fill_efficiency_for_roads(harvest_f, select_part, select_track)
+        harvest_part = lambda part: abs(part.d0)
+        base_fill_efficiency_for_roads(harvest_part, select_part, select_track)
 
       def fill_efficiency_dz_for_roads():
-        harvest_f = lambda part: abs(part.vz)
-        _fill_efficiency_for_roads(harvest_f, select_part, select_track)
+        harvest_part = lambda part: abs(part.vz)
+        base_fill_efficiency_for_roads(harvest_part, select_part, select_track)
 
       def fill_resolution():
         if (part.bx == 0):
@@ -2593,10 +2618,10 @@ class EffieAnalysis(DummyAnalysis):
             histograms[hname2].fill(abs(part.invpt), abs(part.invpt/trk.invpt) - 1)
 
       # Check various L1 pT thresholds
-      for l in (0, 10, 20, 30, 40, 50, 60):
+      for l in (0, 5, 10, 20, 30, 40, 50, 60):
         # EMTF tracks
         tracks = evt.tracks
-        select_part = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
+        select_part = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0)
         select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15)) and (trk.pt > float(l)) and (trk.eta * part.eta > 0)
 
         hname = "emtf_eff_vs_genpt_l1pt%i" % (l)
@@ -2612,6 +2637,11 @@ class EffieAnalysis(DummyAnalysis):
           fill_efficiency_d0()
           hname = "emtf_eff_vs_gendz_l1pt%i" % (l)
           fill_efficiency_dz()
+        elif 5 < part.pt <= 20.:
+          hname = "emtf_eff_vs_genphi_lowpt_l1pt%i" % (l)
+          fill_efficiency_phi()
+          hname = "emtf_eff_vs_geneta_lowpt_l1pt%i" % (l)
+          fill_efficiency_eta()
         if l == 0:
           # Resolution
           hname1 = "emtf_l1pt_vs_genpt"
@@ -2621,11 +2651,11 @@ class EffieAnalysis(DummyAnalysis):
         # EMTF++ tracks
         tracks = emtf2026_tracks
         if omtf_input:
-          select_part = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0)
+          select_part = lambda part: (part.bx == 0) and (0.8 <= abs(part.eta) <= 1.24) and (abs(part.d0) >= 0)
           #select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and trk.zone in (6,) and (trk.pt > float(l))
           select_track = lambda trk: trk and (0.75 <= abs(trk.eta) <= 1.4) and trk.zone in (6,) and (trk.pt > float(l))
         else:
-          select_part = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
+          select_part = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0)
           #select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5) and (trk.pt > float(l))
           select_track = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.6) and trk.zone in (0,1,2,3,4,5) and (trk.pt > float(l))
 
@@ -2642,6 +2672,17 @@ class EffieAnalysis(DummyAnalysis):
           fill_efficiency_d0()
           hname = "emtf2026_eff_vs_gendz_l1pt%i" % (l)
           fill_efficiency_dz()
+        elif 5 < part.pt <= 20.:
+          hname = "emtf2026_eff_vs_genphi_lowpt_l1pt%i" % (l)
+          fill_efficiency_phi()
+          hname = "emtf2026_eff_vs_geneta_lowpt_l1pt%i" % (l)
+          fill_efficiency_eta()
+        if l == 0:
+          # Resolution
+          hname1 = "emtf2026_l1pt_vs_genpt"
+          hname2 = "emtf2026_l1ptres_vs_genpt"
+          fill_resolution()
+
         if l == 0:
           # Pattern recognition & road cleaning (EMTF++ tracks only)
           hname_roads = "emtf2026_eff_vs_genpt_roads"
@@ -2657,17 +2698,13 @@ class EffieAnalysis(DummyAnalysis):
             hname_roads = "emtf2026_eff_vs_gendz_roads"
             hname_croads = "emtf2026_eff_vs_gendz_croads"
             fill_efficiency_dz_for_roads()
-          # Resolution
-          hname1 = "emtf2026_l1pt_vs_genpt"
-          hname2 = "emtf2026_l1ptres_vs_genpt"
-          fill_resolution()
 
     # End loop over events
     unload_tree()
 
     # __________________________________________________________________________
     # Quick efficiency
-    for l in (0, 10, 20, 30, 40, 50, 60):
+    for l in (0, 5, 10, 20, 30, 40, 50, 60):
       for k in ("denom", "numer"):
         m = 'emtf2026'
         hname = "%s_eff_vs_genpt_l1pt%i_%s" % (m,l,k)
@@ -2788,10 +2825,10 @@ class MixingAnalysis(DummyAnalysis):
           return highest_pt
 
         if omtf_input:
-          select_part = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0)
+          select_part = lambda part: (part.bx == 0) and (0.8 <= abs(part.eta) <= 1.24) and (abs(part.d0) >= 0)
           select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and (trk.bx == 0) and (trk.mode > 0)
         else:
-          select_part = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0)
+          select_part = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0)
           select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
 
         #highest_part_pt = find_highest_part_pt()
@@ -3023,12 +3060,12 @@ class AugmentationAnalysis(DummyAnalysis):
 
       # Quick efficiency
       if omtf_input:
-        is_important = lambda part: (0.8 <= abs(part.eta) <= 1.24) and (part.bx == 0) and (part.pt > 5.)
+        is_important = lambda part: (part.bx == 0) and (0.8 <= abs(part.eta) <= 1.24) and (abs(part.d0) >= 0) and (part.pt > 5.)
         is_possible = lambda hits: (any([(hit.type == kDT and hit.station == 1) for hit in hits]) and any([(hit.type == kDT and 2 <= hit.station <= 3) for hit in hits])) or \
             (any([(hit.type == kCSC and hit.station == 1) for hit in hits]) and any([(hit.type == kDT and 1 <= hit.station <= 2) for hit in hits])) or \
             (any([(hit.type == kCSC and hit.station == 1) for hit in hits]) and any([(hit.type == kCSC and 2 <= hit.station <= 3) for hit in hits]))
       else:
-        is_important = lambda part: (1.24 <= abs(part.eta) <= 2.4) and (part.bx == 0) and (part.pt > 4.)
+        is_important = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0) and (part.pt > 4.)
         is_possible = lambda hits: any([((hit.type == kCSC or hit.type == kME0) and hit.station == 1) for hit in hits]) and \
             any([(hit.type == kCSC and hit.station >= 2) for hit in hits])
 
@@ -3232,6 +3269,7 @@ class ImagesAnalysis(DummyAnalysis):
 # Settings
 
 # Condor or not
+# if 'CONDOR_EXEC' is defined, take 3 arguments (algo, analysis, jobid)
 use_condor = ('CONDOR_EXEC' in os.environ)
 if use_condor:
   os.environ['ROOTPY_GRIDMODE'] = 'true'
@@ -3340,7 +3378,7 @@ def load_pgun_batch_omtf(k):
 def load_pgun_batch_displ(k):
   jj = np.split(np.arange(2000), 200)[k]
   infiles = []
-  if j < 100:
+  if k < 100:
     for j in jj:
       infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Displaced_2GeV/ParticleGuns/CRAB3/190405_195607/%04i/ntuple_SingleMuon_Displaced_%i.root' % ((j+1)/1000, (j+1)))
       infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Displaced2_2GeV/ParticleGuns/CRAB3/190405_195725/%04i/ntuple_SingleMuon_Displaced2_%i.root' % ((j+1)/1000, (j+1)))
