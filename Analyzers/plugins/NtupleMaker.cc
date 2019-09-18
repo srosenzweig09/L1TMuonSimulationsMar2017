@@ -169,6 +169,7 @@ private:
   std::unique_ptr<std::vector<int16_t> >  vt_endcap;
   std::unique_ptr<std::vector<int16_t> >  vt_sector;
   std::unique_ptr<std::vector<int16_t> >  vt_bx;
+  std::unique_ptr<std::vector<int32_t> >  vt_nhits;
   std::unique_ptr<std::vector<int32_t> >  vt_hitref1;
   std::unique_ptr<std::vector<int32_t> >  vt_hitref2;
   std::unique_ptr<std::vector<int32_t> >  vt_hitref3;
@@ -637,6 +638,7 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
     vt_endcap     ->push_back(trk.Endcap());
     vt_sector     ->push_back(trk.Sector());
     vt_bx         ->push_back(trk.BX());
+    vt_nhits      ->push_back(trk.Hits().size());
     vt_hitref1    ->push_back(hit_refs.at(0));
     vt_hitref2    ->push_back(hit_refs.at(1));
     vt_hitref3    ->push_back(hit_refs.at(2));
@@ -832,6 +834,7 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   vt_endcap     ->clear();
   vt_sector     ->clear();
   vt_bx         ->clear();
+  vt_nhits      ->clear();
   vt_hitref1    ->clear();
   vt_hitref2    ->clear();
   vt_hitref3    ->clear();
@@ -953,6 +956,7 @@ void NtupleMaker::makeTree() {
   vt_endcap     = std::make_unique<std::vector<int16_t > >();
   vt_sector     = std::make_unique<std::vector<int16_t > >();
   vt_bx         = std::make_unique<std::vector<int16_t > >();
+  vt_nhits      = std::make_unique<std::vector<int32_t > >();
   vt_hitref1    = std::make_unique<std::vector<int32_t > >();
   vt_hitref2    = std::make_unique<std::vector<int32_t > >();
   vt_hitref3    = std::make_unique<std::vector<int32_t > >();
@@ -1055,6 +1059,7 @@ void NtupleMaker::makeTree() {
   tree->Branch("vt_endcap"    , &(*vt_endcap    ));
   tree->Branch("vt_sector"    , &(*vt_sector    ));
   tree->Branch("vt_bx"        , &(*vt_bx        ));
+  tree->Branch("vt_nhits"     , &(*vt_nhits     ));
   tree->Branch("vt_hitref1"   , &(*vt_hitref1   ));
   tree->Branch("vt_hitref2"   , &(*vt_hitref2   ));
   tree->Branch("vt_hitref3"   , &(*vt_hitref3   ));
