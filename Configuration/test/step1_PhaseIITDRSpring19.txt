@@ -1,1 +1,16 @@
 cmsDriver.py step1 --step L1 --mc --eventcontent FEVTDEBUGHLT --customise SLHCUpgradeSimulations/Configuration/aging.customise_aging_1000 --datatier GEN-SIM-DIGI-RAW --conditions auto:phase2_realistic --geometry Extended2023D41 --era Phase2C8_timing_layer_bar --filein file:step0.root --fileout file:step1.root --no_exec --nThreads 4 -n 100
+
+
+# Particle gun
+cmsDriver.py L1TMuonSimulations/Configuration/python/SingleMuonFlatOneOverPt2To7000_PositiveEndCap_cfi.py \
+    --step GEN,SIM,DIGI:pdigi_valid,L1,L1TrackTrigger \
+    --conditions auto:phase2_realistic \
+    --eventcontent FEVTDEBUGHLT \
+    --datatier GEN-SIM-DIGI-RAW \
+    --era Phase2C8_timing_layer_bar \
+    --beamspot HLLHC14TeV \
+    --geometry Extended2023D41 \
+    --customise SimGeneral/MixingModule/customiseStoredTPConfig.higherPtTP,SLHCUpgradeSimulations/Configuration/aging.customise_aging_1000 \
+    --python_filename pset_SingleMuon_Endcap_2GeV_PhaseIITDRSpring19.py \
+    --fileout file:SingleMuon_Endcap.root \
+    --mc --processName L1 --no_exec --nThreads 4 -n 100
