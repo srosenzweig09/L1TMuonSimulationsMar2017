@@ -7,7 +7,7 @@ from six.moves import range, zip, map, filter
 from rootpy.plotting import Hist, Hist2D, Graph, Efficiency
 from rootpy.tree import Tree, TreeChain
 from rootpy.io import root_open
-from ROOT import gROOT
+from rootpy.ROOT import gROOT
 gROOT.SetBatch(True)
 
 # Adjust matplotlib logging
@@ -2087,6 +2087,7 @@ class RoadsAnalysis(DummyAnalysis):
 
       part = evt.particles[0]  # particle gun
       part.invpt = np.true_divide(part.q, part.pt)
+      part.d0 = calculate_d0(part.invpt, part.phi, part.vx, part.vy)
 
       roads = recog.run(evt.hits)
       clean_roads = clean.run(roads)
@@ -2741,14 +2742,16 @@ class MixingAnalysis(DummyAnalysis):
     slim = RoadSlimming(bank)
     ghost = GhostBusting()
     mucorr = TrackMuonCorrelation()
+    mucorr.also_check_pt = False
+
     out_particles = []
     out_roads = []
     out_aux = []
 
     training_phase = (jobid < test_job)
     if training_phase:
-      bx_shifts = [+2, +1, 0, -1, -2]  # include BX != 0 events
-      #bx_shifts = [0]
+      #bx_shifts = [+2, +1, 0, -1, -2]  # include BX != 0 events
+      bx_shifts = [0]
     else:
       bx_shifts = [0]
 
@@ -2771,8 +2774,9 @@ class MixingAnalysis(DummyAnalysis):
         zone = myroad.id[3]
         phi_median = myroad.phi_median
         theta_median = myroad.theta_median
-        xml_pt, pt, trk_q, y_pred, y_discr = 0, 0, 0, 0, 0
-        trk = Track(myroad.id, myroad.hits, mode, myroad.quality, zone, xml_pt, pt, trk_q, y_pred, y_discr, phi_median, theta_median)
+        xml_pt, pt, trk_q, y_pred, y_discr, d1_pred, d0_pred = 0, 0, 0, 0, 0, 0, 0
+        trk = Track(myroad.id, myroad.hits, mode, myroad.quality, myroad.sort_code,
+                    xml_pt, pt, trk_q, y_pred, y_discr, d1_pred, d0_pred, phi_median, theta_median)
         trk.myroad = myroad
         tracks.append(trk)
       return tracks
@@ -3041,6 +3045,7 @@ class AugmentationAnalysis(DummyAnalysis):
 
       part = evt.particles[0]  # particle gun
       part.invpt = np.true_divide(part.q, part.pt)
+      part.d0 = calculate_d0(part.invpt, part.phi, part.vx, part.vy)
 
       if not (part.pt > 20.):  # only applies augmentation to high pT
         continue
@@ -3312,6 +3317,8 @@ kerasfile = ['model.29.json', 'model_weights.29.h5',
 
 infile_r = None  # input file handle
 
+eos_prefix = 'root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_6_3/'
+
 def purge_bad_files(infiles):
   good_files = []
   for infile in infiles:
@@ -3351,66 +3358,59 @@ def unload_tree():
     pass
 
 def load_pgun():
-  infile = 'ntuple_SingleMuon_Endcap_2GeV_add.5.root'
+  infile = 'ntuple_SingleMuon_Endcap_2GeV_add.6.root'
   return load_tree_single(infile)
 
 def load_pgun_batch(k):
-  jj = np.split(np.arange(100), 100)[k]
+  jj = np.split(np.arange(1000), 100)[k]
   infiles = []
   for j in jj:
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Endcap_2GeV/ParticleGuns/CRAB3/190416_194707/%04i/ntuple_SingleMuon_Endcap_%i.root' % ((j+1)/1000, (j+1)))
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Endcap2_2GeV/ParticleGuns/CRAB3/190416_194826/%04i/ntuple_SingleMuon_Endcap2_%i.root' % ((j+1)/1000, (j+1)))
+    infiles.append(eos_prefix + 'SingleMuon_Endcap_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/190923_203236/%04i/ntuple_SingleMuon_Endcap_%i.root' % ((j+1)//1000, (j+1)))
+    infiles.append(eos_prefix + 'SingleMuon_Endcap2_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/190923_203346/%04i/ntuple_SingleMuon_Endcap2_%i.root' % ((j+1)//1000, (j+1)))
   return load_tree_multiple(infiles)
 
 def load_pgun_omtf():
-  infile = 'ntuple_SingleMuon_Overlap_3GeV_add.5.root'
-  return load_tree_single(infile)
+  raise NotImplementedError()
 
 def load_pgun_batch_omtf(k):
-  jj = np.split(np.arange(50), 50)[k]
-  infiles = []
-  for j in jj:
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Overlap_3GeV/ParticleGuns/CRAB3/190416_194944/%04i/ntuple_SingleMuon_Overlap_%i.root' % ((j+1)/1000, (j+1)))
-    infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_Overlap2_3GeV/ParticleGuns/CRAB3/190416_195101/%04i/ntuple_SingleMuon_Overlap2_%i.root' % ((j+1)/1000, (j+1)))
-  #infiles = purge_bad_files(infiles)
-  return load_tree_multiple(infiles)
+  raise NotImplementedError()
+
+def load_pgun_displ():
+  infile = 'ntuple_SingleMuon_Displaced_2GeV_add.6.root'
+  return load_tree_single(infile)
 
 def load_pgun_batch_displ(k):
-  jj = np.split(np.arange(2000), 200)[k]
+  jj = np.split(np.arange(1000), 100)[k]
   infiles = []
-  if k < 100:
-    for j in jj:
-      infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Displaced_2GeV/ParticleGuns/CRAB3/190405_195607/%04i/ntuple_SingleMuon_Displaced_%i.root' % ((j+1)/1000, (j+1)))
-      infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Displaced2_2GeV/ParticleGuns/CRAB3/190405_195725/%04i/ntuple_SingleMuon_Displaced2_%i.root' % ((j+1)/1000, (j+1)))
-  else:
-    for j in jj:
-      infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Displaced_FlatPhi_2GeV/ParticleGuns/CRAB3/190405_201844/%04i/ntuple_SingleMuon_Displaced_FlatPhi_%i.root' % ((j-1000+1)/1000, (j-1000+1)))
-      infiles.append('root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/SingleMuon_Displaced2_FlatPhi_2GeV/ParticleGuns/CRAB3/190405_202001/%04i/ntuple_SingleMuon_Displaced2_FlatPhi_%i.root' % ((j-1000+1)/1000, (j-1000+1)))
+  for j in jj:
+    infiles.append(eos_prefix + 'SingleMuon_Displaced_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/190923_212343/%04i/ntuple_SingleMuon_Displaced_%i.root' % ((j+1)//1000, (j+1)))
+    infiles.append(eos_prefix + 'SingleMuon_Displaced2_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/190923_212452/%04i/ntuple_SingleMuon_Displaced2_%i.root' % ((j+1)//1000, (j+1)))
   return load_tree_multiple(infiles)
 
 def load_minbias_batch(k, pileup=200):
   if pileup == 140:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_6_3/ntuple_SingleNeutrino_PU140_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190911_202515/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(125)]
+    pufiles = [eos_prefix + 'ntuple_SingleNeutrino_PU140_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190926_145646/0000/ntuple_%i.root' % (i+1) for i in range(63)]
   elif pileup == 200:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_6_3/ntuple_SingleNeutrino_PU200_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190910_200739/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(168)]
-    #pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_6_3/ntuple_SingleNeutrino_PU200_PhaseIIMTDTDRAutumn18/NeutrinoGun_E_10GeV/CRAB3/190910_200856/0000/ntuple_SingleNeutrino_PU200_MTD_%i.root' % (i+1) for i in xrange(260)]
+    pufiles = [eos_prefix + 'ntuple_SingleNeutrino_PU200_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190926_145529/0000/ntuple_%i.root' % (i+1) for i in range(85)]
   elif pileup == 250:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_6_3/ntuple_SingleNeutrino_PU250_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190911_231010/0000/ntuple_SingleNeutrino_PU250_%i.root' % (i+1) for i in xrange(250)]
+    pufiles = [eos_prefix + 'ntuple_SingleNeutrino_PU250_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190926_145757/0000/ntuple_%i.root' % (i+1) for i in range(125)]
   elif pileup == 300:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_6_3/ntuple_SingleNeutrino_PU300_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/000000_000000/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(250)]
+    pufiles = [eos_prefix + 'ntuple_SingleNeutrino_PU300_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/000000_000000/0000/ntuple_%i.root' % (i+1) for i in range(125)]
   else:
-    raise RunTimeError('Cannot recognize pileup: {0}'.format(pileup))
+    raise RuntimeError('Cannot recognize pileup: {0}'.format(pileup))
   #
   infile = pufiles[k]
   return load_tree_single(infile)
 
 def load_minbias_batch_for_effie(k, pileup=200):
   if pileup == 0:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_6_3/ntuple_MuMu_FlatPt_PU0_PhaseIITDRSpring19_csc1/ParticleGuns/CRAB3/190909_200854/0000/ntuple_MuMu_FlatPt_PU0_%i.root' % (i+1) for i in xrange(5)]
+    pufiles = [eos_prefix + 'ntuple_MuMu_FlatPt_PU0_PhaseIITDRSpring19/Mu_FlatPt2to100-pythia8-gun/CRAB3/190925_042003/0000/ntuple_MuMu_FlatPt_PU0_%i.root' % (i+1) for i in range(5)]
   elif pileup == 200:
-    pufiles = ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_6_3/ntuple_MuMu_FlatPt_PU200_PhaseIITDRSpring19/Mu_FlatPt2to100-pythia8-gun/CRAB3/190910_200629/0000/ntuple_MuMu_FlatPt_PU200_%i.root' % (i+1) for i in xrange(33)]
+    pufiles = [eos_prefix + 'ntuple_MuMu_FlatPt_PU200_PhaseIITDRSpring19/Mu_FlatPt2to100-pythia8-gun/CRAB3/190925_051735/0000/ntuple_%i.root' % (i+1) for i in range(33)]
+  elif pileup == 300:
+    pufiles = [eos_prefix + 'ntuple_MuMu_FlatPt_PU300_PhaseIITDRSpring19/Mu_FlatPt2to100-pythia8-gun/CRAB3/190924_201214/0000/ntuple_MuMu_FlatPt_PU300_%i.root' % (i+1) for i in range(280)]
   else:
-    raise RunTimeError('Cannot recognize pileup: {0}'.format(pileup))
+    raise RuntimeError('Cannot recognize pileup: {0}'.format(pileup))
   #
   infile = pufiles[k]
   return load_tree_single(infile)
@@ -3418,26 +3418,25 @@ def load_minbias_batch_for_effie(k, pileup=200):
 def load_minbias_batch_for_mixing(k):
   pufiles = []
   # For training purposes
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU140/SingleNeutrino/CRAB3/190416_160046/0000/ntuple_SingleNeutrino_PU140_%i.root' % (i+1) for i in xrange(20)]  # up to 20/56
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190416_160207/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30)]  # up to 30/63
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU250/SingleNeutrino/CRAB3/190416_160323/0000/ntuple_SingleNeutrino_PU250_%i.root' % (i+1) for i in xrange(20)]  # up to 20/50
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU300/SingleNeutrino/CRAB3/190416_160441/0000/ntuple_SingleNeutrino_PU300_%i.root' % (i+1) for i in xrange(20)]  # up to 20/53
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleElectron_PU140/SingleE_FlatPt-2to100/CRAB3/190416_160602/0000/ntuple_SingleElectron_PU140_%i.root' % (i+1) for i in xrange(28)]
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleElectron_PU200/SingleE_FlatPt-2to100/CRAB3/190416_160719/0000/ntuple_SingleElectron_PU200_%i.root' % (i+1) for i in xrange(27)]
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU140/SingleMu_FlatPt-2to100/CRAB3/190416_160834/0000/ntuple_SingleMuon_PU140_%i.root' % (i+1) for i in xrange(25)]
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU200/SingleMu_FlatPt-2to100/CRAB3/190416_160951/0000/ntuple_SingleMuon_PU200_%i.root' % (i+1) for i in xrange(26)]
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU140/SinglePhoton_FlatPt-8to150/CRAB3/190416_161116/0000/ntuple_SinglePhoton_PU140_%i.root' % (i+1) for i in xrange(27)]
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SinglePhoton_PU200/SinglePhoton_FlatPt-8to150/CRAB3/190416_161239/0000/ntuple_SinglePhoton_PU200_%i.root' % (i+1) for i in xrange(27)]
+  pufiles += [eos_prefix + 'ntuple_SingleNeutrino_PU140_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190926_145646/0000/ntuple_%i.root' % (i+1) for i in range(30)]  # up to 30/63
+  pufiles += [eos_prefix + 'ntuple_SingleNeutrino_PU200_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190926_145529/0000/ntuple_%i.root' % (i+1) for i in range(40)]  # up to 40/85
+  pufiles += [eos_prefix + 'ntuple_SingleNeutrino_PU250_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190926_145757/0000/ntuple_%i.root' % (i+1) for i in range(50)]  # up to 50/125
+  pufiles += [eos_prefix + 'ntuple_DoubleElectron_PU140_PhaseIITDRSpring19/DoubleElectron_FlatPt-1To100/CRAB3/190925_044352/0000/ntuple_%i.root' % (i+1) for i in range(25)]
+  pufiles += [eos_prefix + 'ntuple_DoubleElectron_PU200_PhaseIITDRSpring19/DoubleElectron_FlatPt-1To100/CRAB3/190925_044710/0000/ntuple_%i.root' % (i+1) for i in range(25)]
+  pufiles += [eos_prefix + 'ntuple_DoublePhoton_PU140_PhaseIITDRSpring19/DoublePhoton_FlatPt-1To100/CRAB3/190925_044839/0000/ntuple_%i.root' % (i+1) for i in range(25)]
+  pufiles += [eos_prefix + 'ntuple_DoublePhoton_PU200_PhaseIITDRSpring19/DoublePhoton_FlatPt-1To100/CRAB3/190925_044947/0000/ntuple_%i.root' % (i+1) for i in range(25)]
+  pufiles += [eos_prefix + 'ntuple_SingleElectron_PU200_PhaseIITDRSpring19/SingleElectron_PT2to100/CRAB3/190925_181236/0000/ntuple_%i.root' % (i+1) for i in range(15)]
+  pufiles += [eos_prefix + 'ntuple_SinglePhoton_PU200_PhaseIITDRSpring19/PhotonFlatPt8To150/CRAB3/190925_181357/0000/ntuple_%i.root' % (i+1) for i in range(77)]
+  #
   # For testing purposes (SingleNeutrino, PU200)
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleNeutrino_PU200/SingleNeutrino/CRAB3/190416_160207/0000/ntuple_SingleNeutrino_PU200_%i.root' % (i+1) for i in xrange(30,63)]  # from 30/63
+  pufiles += [eos_prefix + 'ntuple_SingleNeutrino_PU200_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190926_145529/0000/ntuple_%i.root' % (i+1) for i in range(40,85)]  # from 40/85
   #
   infile = pufiles[k]
   return load_tree_single(infile)
 
 def load_minbias_batch_for_collusion(k):
   pufiles = []
-  #pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU140/SingleMu_FlatPt-2to100/CRAB3/190416_160834/0000/ntuple_SingleMuon_PU140_%i.root' % (i+1) for i in xrange(25)]
-  pufiles += ['root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigger/P2_10_4_0/ntuple_SingleMuon_PU200/SingleMu_FlatPt-2to100/CRAB3/190416_160951/0000/ntuple_SingleMuon_PU200_%i.root' % (i+1) for i in xrange(26)]
+  pufiles += [eos_prefix + 'ntuple_MuMu_FlatPt_PU200_PhaseIITDRSpring19/Mu_FlatPt2to100-pythia8-gun/CRAB3/190925_051735/0000/ntuple_%i.root' % (i+1) for i in range(33)]
   #
   infile = pufiles[k]
   return load_tree_single(infile)
@@ -3516,7 +3515,7 @@ if __name__ == "__main__":
     analysis.run(omtf_input=omtf_input, run2_input=run2_input)
 
   else:
-    raise RunTimeError('Cannot recognize analysis: {0}'.format(analysis))
+    raise RuntimeError('Cannot recognize analysis: {0}'.format(analysis))
 
   stop_time = datetime.datetime.now()
   print('[INFO] Elapsed time    : {0}'.format(stop_time - start_time))
