@@ -15,7 +15,7 @@ xtick.color: .15
 ytick.color: .15
 #axes.axisbelow: True
 #image.cmap: Greys
-#font.family: sans-serif
+font.family: sans-serif
 #font.sans-serif: Arial, Liberation Sans, Bitstream Vera Sans, sans-serif
 #grid.linestyle: -
 lines.solid_capstyle: round
@@ -69,7 +69,6 @@ image.cmap : viridis
 
 ### FONT
 font.size : 11
-font.family: sans-serif
 font.sans-serif : Helvetica, Arial, Liberation Sans, Bitstream Vera Sans, sans-serif
 
 ### AXES
@@ -87,8 +86,8 @@ axes.labelweight : 500
 #lines.markersize : 10
 
 ### TICKS
-xtick.direction: in
-ytick.direction: in
+xtick.direction : in
+ytick.direction : in
 xtick.labelsize : small
 ytick.labelsize : small
 xtick.major.size : 6.0
@@ -97,6 +96,10 @@ xtick.minor.size : 3.0
 ytick.minor.size : 3.0
 xtick.minor.visible : True
 ytick.minor.visible : True
+xtick.bottom : True
+xtick.top : True
+ytick.left : True
+ytick.right : True
 
 ### LEGEND
 legend.fontsize : medium
