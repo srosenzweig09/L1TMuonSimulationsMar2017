@@ -17,3 +17,4 @@ jupyter-notebook --no-browser --port=8888 --ip localhost
 #nohup jupyter-nbconvert --ExecutePreprocessor.timeout=-1 --to notebook --execute mykeras14.ipynb --output mykeras14_evaluated.ipynb &
 #nohup jupyter-nbconvert --ExecutePreprocessor.timeout=-1 --to notebook --execute mykeras15.ipynb --output mykeras15_evaluated.ipynb &
 #nohup jupyter-nbconvert --ExecutePreprocessor.timeout=-1 --to notebook --execute mykeras16.ipynb --output mykeras16_evaluated.ipynb &
+#nohup jupyter-nbconvert --ExecutePreprocessor.timeout=-1 --to notebook --execute mykeras17.ipynb --output mykeras17_evaluated.ipynb &
