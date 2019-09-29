@@ -326,12 +326,11 @@ class EMTFBend(object):
         emtf_bend = np.round(emtf_bend.astype(np.float32) * 0.026331/0.014264).astype(np.int32)
         emtf_bend = np.clip(emtf_bend, -32, 31)
       emtf_bend *= hit.endcap
-      emtf_bend = np.sign(emtf_bend) * (np.abs(emtf_bend)/2)  # from 1/32-strip unit to 1/16-strip unit
-    #elif hit.type == kGEM:
-    #  emtf_bend *= hit.endcap
+      emtf_bend = np.round(emtf_bend.astype(np.float32) * 0.5001).astype(np.int32)  # from 1/32-strip unit to 1/16-strip unit
+      emtf_bend = np.clip(emtf_bend, -16, 15)
     elif hit.type == kME0:
-      emtf_bend = np.round(emtf_bend.astype(np.float32) * 0.5001).astype(np.int32)  # use 0.5001 because NumPy rounds to the nearest even value
-      emtf_bend = np.clip(emtf_bend, -64, 63)  # currently in 1/2-strip unit
+      emtf_bend = np.round(emtf_bend.astype(np.float32) * 0.5001).astype(np.int32)  # from 1/4-strip unit to 1/2-strip unit
+      emtf_bend = np.clip(emtf_bend, -64, 63)
     elif hit.type == kDT:
       if hit.quality >= 4:
         emtf_bend = np.clip(emtf_bend, -512, 511)
@@ -945,15 +944,27 @@ def roads_to_variables(roads):
     variables[i] = road.to_variables()
   return variables
 
+# Based on
+#   https://www.tensorflow.org/guide/ragged_tensor
+#   https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/ragged/ragged_tensor_value.py
 class RaggedTensorValue(object):
-  # Based on
-  #   https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/ragged/ragged_tensor_value.py
+  """Represents the value of a `RaggedTensor`."""
+
   def __init__(self, values, row_splits):
+    """Creates a `RaggedTensorValue`.
+    Args:
+      values: A numpy array of any type and shape; or a RaggedTensorValue.
+      row_splits: A 1-D int32 or int64 numpy array.
+    """
     if not (isinstance(row_splits, (np.ndarray, np.generic)) and
-            row_splits.dtype == np.int64 and row_splits.ndim == 1):
-      raise TypeError("row_splits must be a 1D int64 numpy array")
+            row_splits.dtype in (np.int64, np.int32) and row_splits.ndim == 1):
+      raise TypeError("row_splits must be a 1D int32 or int64 numpy array")
     if not isinstance(values, (np.ndarray, np.generic, RaggedTensorValue)):
       raise TypeError("values must be a numpy array or a RaggedTensorValue")
+    if (isinstance(values, RaggedTensorValue) and
+        row_splits.dtype != values.row_splits.dtype):
+      raise ValueError("row_splits and values.row_splits must have "
+                       "the same dtype")
     self._values = values
     self._row_splits = row_splits
 
@@ -990,9 +1001,12 @@ class RaggedTensorValue(object):
       arr[i] = self._values[self._row_splits[i]:self._row_splits[i + 1]]
     return arr
 
+# Based on
+#   https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/ragged/ragged_factory_ops.py
 def create_ragged_array(pylist):
-  # Based on
-  #   https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/ragged/ragged_factory_ops.py
+  """Construct a constant RaggedTensorValue from a nested list."""
+
+  # Ragged rank for returned value
   ragged_rank = 1
 
   # Build the splits for each ragged rank, and concatenate the inner values
@@ -2414,35 +2428,43 @@ class EffieAnalysis(DummyAnalysis):
           hname = "%s_eff_vs_genphi_lowpt_l1pt%i_%s" % (m,l,k)
           histograms[hname] = Hist(76, -190, 190, name=hname, title="; gen #phi {5 < gen p_{T} #leq 20 GeV}", type='F')
           hname = "%s_eff_vs_geneta_l1pt%i_%s" % (m,l,k)
-          histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
+          histograms[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
           hname = "%s_eff_vs_geneta_lowpt_l1pt%i_%s" % (m,l,k)
-          histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {5 < gen p_{T} #leq 20 GeV}", type='F')
+          histograms[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta| {5 < gen p_{T} #leq 20 GeV}", type='F')
           hname = "%s_eff_vs_gend0_l1pt%i_%s" % (m,l,k)
-          histograms[hname] = Hist(80, 0, 120, name=hname, title="; gen |d_{0}| {gen p_{T} > 20 GeV}", type='F')
+          histograms[hname] = Hist(80, 0, 120, name=hname, title="; gen |d_{0}| [cm] {gen p_{T} > 20 GeV}", type='F')
           hname = "%s_eff_vs_gendz_l1pt%i_%s" % (m,l,k)
-          histograms[hname] = Hist(80, 0, 40, name=hname, title="; gen |d_{z}| {gen p_{T} > 20 GeV}", type='F')
+          histograms[hname] = Hist(80, 0, 40, name=hname, title="; gen |d_{z}| [cm] {gen p_{T} > 20 GeV}", type='F')
+
+          hname = "%s_eff_vs_gend0d1_l1pt%i_%s" % (m,l,k)
+          histograms[hname] = Hist2D(60, -120, 120, 50, -0.5, 0.5, name=hname, title="; gen d_{0} [cm]; gen q/p_{T} [1/GeV]", type='F')
+          hname = "%s_eff_vs_genetad1_l1pt%i_%s" % (m,l,k)
+          histograms[hname] = Hist2D(52, 1.2, 2.5, 50, -0.5, 0.5, name=hname, title="; gen |#eta|; gen q/p_{T} [1/GeV]", type='F')
+          hname = "%s_eff_vs_genetad0_l1pt%i_%s" % (m,l,k)
+          histograms[hname] = Hist2D(52, 1.2, 2.5, 60, -120, 120, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}; gen d_{0} [cm]", type='F')
+
           if l == 0:
             hname = "%s_eff_vs_genpt_roads_%s" % (m,k)
             histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
             hname = "%s_eff_vs_genpt_croads_%s" % (m,k)
             histograms[hname] = Hist(eff_pt_bins, name=hname, title="; gen p_{T} [GeV]", type='F')
             hname = "%s_eff_vs_geneta_roads_%s" % (m,k)
-            histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
+            histograms[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
             hname = "%s_eff_vs_geneta_croads_%s" % (m,k)
-            histograms[hname] = Hist(85, 0.8, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
+            histograms[hname] = Hist(26, 1.2, 2.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}", type='F')
             hname = "%s_eff_vs_gend0_roads_%s" % (m,k)
-            histograms[hname] = Hist(80, 0, 120, name=hname, title="; gen |d_{0}| {gen p_{T} > 20 GeV}", type='F')
+            histograms[hname] = Hist(80, 0, 120, name=hname, title="; gen |d_{0}| [cm] {gen p_{T} > 20 GeV}", type='F')
             hname = "%s_eff_vs_gend0_croads_%s" % (m,k)
-            histograms[hname] = Hist(80, 0, 120, name=hname, title="; gen |d_{0}| {gen p_{T} > 20 GeV}", type='F')
-            hname = "%s_eff_vs_gendz_roads_%s" % (m,k)
-            histograms[hname] = Hist(80, 0, 40, name=hname, title="; gen |d_{z}| {gen p_{T} > 20 GeV}", type='F')
-            hname = "%s_eff_vs_gendz_croads_%s" % (m,k)
-            histograms[hname] = Hist(80, 0, 40, name=hname, title="; gen |d_{z}| {gen p_{T} > 20 GeV}", type='F')
+            histograms[hname] = Hist(80, 0, 120, name=hname, title="; gen |d_{0}| [cm] {gen p_{T} > 20 GeV}", type='F')
 
       hname = "%s_l1pt_vs_genpt" % m
-      histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -0.5, 0.5, name=hname, title="; gen q/p_{T} [1/GeV]; q/p_{T} [1/GeV]", type='F')
+      histograms[hname] = Hist2D(100, -0.5, 0.5, 200, -0.5, 0.5, name=hname, title="; gen q/p_{T} [1/GeV]; q/p_{T} [1/GeV]", type='F')
       hname = "%s_l1ptres_vs_genpt" % m
-      histograms[hname] = Hist2D(100, -0.5, 0.5, 300, -1, 2, name=hname, title="; gen q/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
+      histograms[hname] = Hist2D(100, -0.5, 0.5, 200, -3, 3, name=hname, title="; gen q/p_{T} [1/GeV]; #Delta(p_{T})/p_{T}", type='F')
+      hname = "%s_l1pt_vs_geneta" % m
+      histograms[hname] = Hist2D(52, 1.2, 2.5, 200, -0.5, 0.5, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}; q/p_{T} [1/GeV]", type='F')
+      hname = "%s_l1ptres_vs_geneta" % m
+      histograms[hname] = Hist2D(52, 1.2, 2.5, 200, -15, 15, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}; #Delta(p_{T})/p_{T}", type='F')
 
     # Load tree
     #if pileup == 0:
@@ -2576,6 +2598,33 @@ class EffieAnalysis(DummyAnalysis):
         harvest_part = lambda part: abs(part.vz)
         base_fill_efficiency(harvest_part, select_part, select_track)
 
+      def base_fill_efficiency_2D(harvest_part_x, harvest_part_y, select_part, select_track):
+        if select_part(part):
+          trigger = any([select_track(trk) for trk in tracks])  # using scaled pT
+          denom = histograms[hname + "_denom"]
+          numer = histograms[hname + "_numer"]
+          denom.fill(harvest_part_x(part), harvest_part_y(part))
+          if trigger:
+            numer.fill(harvest_part_x(part), harvest_part_y(part))
+
+      def fill_efficiency_d0d1():
+        harvest_part_x = lambda part: part.d0
+        harvest_part_y = lambda part: part.invpt
+        select_part_d0 = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4)  # no cut on d0
+        base_fill_efficiency_2D(harvest_part_x, harvest_part_y, select_part_d0, select_track)
+
+      def fill_efficiency_etad1():
+        harvest_part_x = lambda part: abs(part.eta)
+        harvest_part_y = lambda part: part.invpt
+        select_part_d0 = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4)  # no cut on d0
+        base_fill_efficiency_2D(harvest_part_x, harvest_part_y, select_part_d0, select_track)
+
+      def fill_efficiency_etad0():
+        harvest_part_x = lambda part: abs(part.eta)
+        harvest_part_y = lambda part: part.d0
+        select_part_d0 = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4)  # no cut on d0
+        base_fill_efficiency_2D(harvest_part_x, harvest_part_y, select_part_d0, select_track)
+
       def base_fill_efficiency_for_roads(harvest_part, select_part, select_track):
         if select_part(part):
           trigger_roads = len(roads) > 0
@@ -2605,10 +2654,6 @@ class EffieAnalysis(DummyAnalysis):
         harvest_part = lambda part: abs(part.d0)
         base_fill_efficiency_for_roads(harvest_part, select_part, select_track)
 
-      def fill_efficiency_dz_for_roads():
-        harvest_part = lambda part: abs(part.vz)
-        base_fill_efficiency_for_roads(harvest_part, select_part, select_track)
-
       def fill_resolution():
         if (part.bx == 0):
           trigger = any([select_track(trk) for trk in tracks])  # using scaled pT
@@ -2616,7 +2661,11 @@ class EffieAnalysis(DummyAnalysis):
             trk = tracks[0]
             trk.invpt = np.true_divide(trk.q, trk.xml_pt)  # using unscaled pT
             histograms[hname1].fill(part.invpt, trk.invpt)
-            histograms[hname2].fill(abs(part.invpt), abs(part.invpt/trk.invpt) - 1)
+            #histograms[hname2].fill(abs(part.invpt), abs(part.invpt/trk.invpt) - 1)
+            histograms[hname2].fill(part.invpt, -(trk.invpt - part.invpt)/abs(part.invpt))
+            if part.pt > 20.:
+              histograms[hname3].fill(abs(part.eta), trk.invpt)
+              histograms[hname4].fill(abs(part.eta), -(trk.invpt - part.invpt)/abs(part.invpt))
 
       # Check various L1 pT thresholds
       for l in (0, 5, 10, 20, 30, 40, 50, 60):
@@ -2643,10 +2692,21 @@ class EffieAnalysis(DummyAnalysis):
           fill_efficiency_phi()
           hname = "emtf_eff_vs_geneta_lowpt_l1pt%i" % (l)
           fill_efficiency_eta()
+
+        hname = "emtf_eff_vs_gend0d1_l1pt%i" % (l)
+        fill_efficiency_d0d1()
+        hname = "emtf_eff_vs_genetad1_l1pt%i" % (l)
+        fill_efficiency_etad1()
+        if part.pt > 20.:
+          hname = "emtf_eff_vs_genetad0_l1pt%i" % (l)
+          fill_efficiency_etad0()
+
         if l == 0:
           # Resolution
           hname1 = "emtf_l1pt_vs_genpt"
           hname2 = "emtf_l1ptres_vs_genpt"
+          hname3 = "emtf_l1pt_vs_geneta"
+          hname4 = "emtf_l1ptres_vs_geneta"
           fill_resolution()
 
         # EMTF++ tracks
@@ -2655,10 +2715,12 @@ class EffieAnalysis(DummyAnalysis):
           select_part = lambda part: (part.bx == 0) and (0.8 <= abs(part.eta) <= 1.24) and (abs(part.d0) >= 0)
           #select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and trk.zone in (6,) and (trk.pt > float(l))
           select_track = lambda trk: trk and (0.75 <= abs(trk.eta) <= 1.4) and trk.zone in (6,) and (trk.pt > float(l))
+          #select_track = lambda trk: trk and (0.75 <= abs(trk.eta) <= 1.4) and trk.zone in (6,) and (abs(1.0/trk.y_displ) > float(l)) and (abs(trk.d0_displ) >= 0)
         else:
           select_part = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0)
           #select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5) and (trk.pt > float(l))
           select_track = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.6) and trk.zone in (0,1,2,3,4,5) and (trk.pt > float(l))
+          #select_track = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.6) and trk.zone in (0,1,2,3,4,5) and (abs(1.0/trk.y_displ) > float(l)) and (abs(trk.d0_displ) >= 0)
 
         hname = "emtf2026_eff_vs_genpt_l1pt%i" % (l)
         fill_efficiency_pt()
@@ -2678,10 +2740,21 @@ class EffieAnalysis(DummyAnalysis):
           fill_efficiency_phi()
           hname = "emtf2026_eff_vs_geneta_lowpt_l1pt%i" % (l)
           fill_efficiency_eta()
+
+        hname = "emtf2026_eff_vs_gend0d1_l1pt%i" % (l)
+        fill_efficiency_d0d1()
+        hname = "emtf2026_eff_vs_genetad1_l1pt%i" % (l)
+        fill_efficiency_etad1()
+        if part.pt > 20.:
+          hname = "emtf2026_eff_vs_genetad0_l1pt%i" % (l)
+          fill_efficiency_etad0()
+
         if l == 0:
           # Resolution
           hname1 = "emtf2026_l1pt_vs_genpt"
           hname2 = "emtf2026_l1ptres_vs_genpt"
+          hname3 = "emtf2026_l1pt_vs_geneta"
+          hname4 = "emtf2026_l1ptres_vs_geneta"
           fill_resolution()
 
         if l == 0:
@@ -2696,9 +2769,6 @@ class EffieAnalysis(DummyAnalysis):
             hname_roads = "emtf2026_eff_vs_gend0_roads"
             hname_croads = "emtf2026_eff_vs_gend0_croads"
             fill_efficiency_d0_for_roads()
-            hname_roads = "emtf2026_eff_vs_gendz_roads"
-            hname_croads = "emtf2026_eff_vs_gendz_croads"
-            fill_efficiency_dz_for_roads()
 
     # End loop over events
     unload_tree()
@@ -2731,7 +2801,7 @@ class EffieAnalysis(DummyAnalysis):
 # Analysis: mixing
 
 class MixingAnalysis(DummyAnalysis):
-  def run(self, omtf_input=False, run2_input=False, test_job=159):
+  def run(self, omtf_input=False, run2_input=False):
     # Load tree
     tree = load_minbias_batch_for_mixing(jobid)
 
@@ -2747,25 +2817,6 @@ class MixingAnalysis(DummyAnalysis):
     out_particles = []
     out_roads = []
     out_aux = []
-
-    training_phase = (jobid < test_job)
-    if training_phase:
-      #bx_shifts = [+2, +1, 0, -1, -2]  # include BX != 0 events
-      bx_shifts = [0]
-    else:
-      bx_shifts = [0]
-
-    def keep_old_bx(hits, particles):
-      for hit in hits:
-        hit.old_bx = hit.bx
-      for part in particles:
-        part.old_bx = part.bx
-
-    def manipulate_bx(hits, particles, bx_shift):
-      for hit in hits:
-        hit.bx = hit.old_bx + bx_shift
-      for part in particles:
-        part.bx = part.old_bx + bx_shift
 
     def make_tracks_without_pt(roads):
       tracks = []
@@ -2790,78 +2841,69 @@ class MixingAnalysis(DummyAnalysis):
       if maxEvents != -1 and ievt == maxEvents:
         break
 
-      # Remember the BX
-      keep_old_bx(evt.hits, evt.particles)
+      roads = recog.run(evt.hits)
+      clean_roads = clean.run(roads)
+      slim_roads = slim.run(clean_roads)
+      assert(len(clean_roads) == len(slim_roads))
 
-      # Manipulate hit BX multiple times
-      for bx_shift in bx_shifts:
+      tracks_without_pt = make_tracks_without_pt(slim_roads)
+      emtf2026_tracks = ghost.run(tracks_without_pt)
+      emtf2026_matched = mucorr.run(evt.particles, emtf2026_tracks)
 
-        # Manipulate hit BX
-        manipulate_bx(evt.hits, evt.particles, bx_shift=bx_shift)
+      def find_highest_part_pt():
+        highest_pt = -999999.
+        for ipart, part in enumerate(evt.particles):
+          if select_part(part):
+            if highest_pt < part.pt:
+              highest_pt = part.pt
+        if highest_pt > 0.:
+          highest_pt = min(100.-1e-4, highest_pt)
+        return highest_pt
 
-        roads = recog.run(evt.hits)
-        clean_roads = clean.run(roads)
-        slim_roads = slim.run(clean_roads)
-        assert(len(clean_roads) == len(slim_roads))
+      def find_highest_track_pt():
+        highest_pt = -999999.
+        for itrk, trk in enumerate(evt.tracks):
+          if select_track(trk):
+            if highest_pt < trk.pt:  # using scaled pT
+              highest_pt = trk.pt
+        if highest_pt > 0.:
+          highest_pt = min(100.-1e-4, highest_pt)
+        return highest_pt
 
-        tracks_without_pt = make_tracks_without_pt(slim_roads)
-        emtf2026_tracks = ghost.run(tracks_without_pt)
-        emtf2026_matched = mucorr.run(evt.particles, emtf2026_tracks)
+      if omtf_input:
+        select_part = lambda part: (part.bx == 0) and (0.8 <= abs(part.eta) <= 1.24) and (abs(part.d0) >= 0)
+        select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and (trk.bx == 0) and (trk.mode > 0)
+      else:
+        select_part = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0)
+        select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
 
-        def find_highest_part_pt():
-          highest_pt = -999999.
-          for ipart, part in enumerate(evt.particles):
-            if select_part(part):
-              if highest_pt < part.pt:
-                highest_pt = part.pt
-          if highest_pt > 0.:
-            highest_pt = min(100.-1e-4, highest_pt)
-          return highest_pt
+      #highest_part_pt = find_highest_part_pt()
+      highest_track_pt = find_highest_track_pt()
 
-        def find_highest_track_pt():
-          highest_pt = -999999.
-          for itrk, trk in enumerate(evt.tracks):
-            if select_track(trk):
-              if highest_pt < trk.pt:  # using scaled pT
-                highest_pt = trk.pt
-          if highest_pt > 0.:
-            highest_pt = min(100.-1e-4, highest_pt)
-          return highest_pt
-
-        if omtf_input:
-          select_part = lambda part: (part.bx == 0) and (0.8 <= abs(part.eta) <= 1.24) and (abs(part.d0) >= 0)
-          select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and (trk.bx == 0) and (trk.mode > 0)
+      for itrk, mytrk in enumerate(emtf2026_tracks):
+        m = emtf2026_matched[:, itrk]
+        if m.any():
+          assert(np.squeeze(m.nonzero()).ndim == 0)
+          m_ipart = np.asscalar(np.squeeze(m.nonzero()))
+          m_part = evt.particles[m_ipart]
+          mypart = Particle(m_part.pt, m_part.eta, m_part.phi, m_part.q, m_part.vx, m_part.vy, m_part.vz)
+          highest_part_pt = m_part.pt
         else:
-          select_part = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0)
-          select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
+          mypart = Particle(0., 0., 0., -1, 0., 0., 0.)
+          highest_part_pt = -999999.
+        aux = (jobid, ievt, highest_part_pt, highest_track_pt)
+        out_particles.append(mypart)
+        out_roads.append(mytrk.myroad)
+        out_aux.append(aux)
 
-        #highest_part_pt = find_highest_part_pt()
-        highest_track_pt = find_highest_track_pt()
+      debug_event_list = set([2826, 2937, 3675, 4581, 4838, 5379, 7640])
 
-        for itrk, mytrk in enumerate(emtf2026_tracks):
-          m = emtf2026_matched[:, itrk]
-          if m.any():
-            assert(np.squeeze(m.nonzero()).ndim == 0)
-            m_ipart = np.asscalar(np.squeeze(m.nonzero()))
-            m_part = evt.particles[m_ipart]
-            mypart = Particle(m_part.pt, m_part.eta, m_part.phi, m_part.q, m_part.vx, m_part.vy, m_part.vz)
-            highest_part_pt = m_part.pt
-          else:
-            mypart = Particle(0., 0., 0., -1, 0., 0., 0.)
-            highest_part_pt = -999999.
-          aux = (jobid, ievt, highest_part_pt, highest_track_pt)
-          out_particles.append(mypart)
-          out_roads.append(mytrk.myroad)
-          out_aux.append(aux)
-
-        debug_event_list = set([2826, 2937, 3675, 4581, 4838, 5379, 7640])
-
-        if ievt < 20 or ((ievt in debug_event_list) and not training_phase):
-          print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), '?'))
-          for iroad, myroad in enumerate(clean_roads):
-            print(".. croad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
-            for ihit, myhit in enumerate(myroad.hits):
-              print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
+      if ievt < 20 or (ievt in debug_event_list):
+        print("evt {0} has {1} roads, {2} clean roads, {3} old tracks, {4} new tracks".format(ievt, len(roads), len(clean_roads), len(evt.tracks), '?'))
+        for iroad, myroad in enumerate(clean_roads):
+          print(".. croad {0} id: {1} nhits: {2} mode: {3} qual: {4} sort: {5}".format(iroad, myroad.id, len(myroad.hits), myroad.mode, myroad.quality, myroad.sort_code))
+          for ihit, myhit in enumerate(myroad.hits):
+            print(".. .. hit {0} id: {1} lay: {2} ph: {3} th: {4} tp: {5}".format(ihit, myhit.id, myhit.emtf_layer, myhit.emtf_phi, myhit.emtf_theta, myhit.sim_tp))
 
     # End loop over events
     unload_tree()
@@ -3395,7 +3437,7 @@ def load_minbias_batch(k, pileup=200):
   elif pileup == 250:
     pufiles = [eos_prefix + 'ntuple_SingleNeutrino_PU250_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190926_145757/0000/ntuple_%i.root' % (i+1) for i in range(125)]
   elif pileup == 300:
-    pufiles = [eos_prefix + 'ntuple_SingleNeutrino_PU300_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/000000_000000/0000/ntuple_%i.root' % (i+1) for i in range(125)]
+    pufiles = [eos_prefix + 'ntuple_SingleNeutrino_PU300_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/191002_214457/0000/ntuple_%i.root' % (i+1) for i in range(111)]
   else:
     raise RuntimeError('Cannot recognize pileup: {0}'.format(pileup))
   #
