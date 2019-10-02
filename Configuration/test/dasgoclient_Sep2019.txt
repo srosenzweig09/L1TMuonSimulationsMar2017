@@ -2,6 +2,7 @@
 dasgoclient -query="file dataset=/Nu_E10-pythia8-gun/PhaseIITDRSpring19DR-PU140_106X_upgrade2023_realistic_v3_ext3-v1/GEN-SIM-DIGI-RAW" > input_Nu_E10-pythia8-gun_PhaseIITDRSpring19_PU140.txt
 dasgoclient -query="file dataset=/Nu_E10-pythia8-gun/PhaseIITDRSpring19DR-PU200_106X_upgrade2023_realistic_v3-v3/GEN-SIM-DIGI-RAW" > input_Nu_E10-pythia8-gun_PhaseIITDRSpring19_PU200.txt
 dasgoclient -query="file dataset=/Nu_E10-pythia8-gun/PhaseIITDRSpring19DR-PU250_106X_upgrade2023_realistic_v3_ext2-v1/GEN-SIM-DIGI-RAW" > input_Nu_E10-pythia8-gun_PhaseIITDRSpring19_PU250.txt
+dasgoclient -query="file dataset=/Nu_E10-pythia8-gun/PhaseIITDRSpring19DR-PU300_106X_upgrade2023_realistic_v3_ext1-v2/GEN-SIM-DIGI-RAW" > input_Nu_E10-pythia8-gun_PhaseIITDRSpring19_PU300.txt
 
 dasgoclient -query="file dataset=/Mu_FlatPt2to100-pythia8-gun/PhaseIITDRSpring19DR-NoPU_106X_upgrade2023_realistic_v3-v1/GEN-SIM-DIGI-RAW" > input_Mu_FlatPt2to100-pythia8-gun_PhaseIITDRSpring19_NoPU.txt
 dasgoclient -query="file dataset=/Mu_FlatPt2to100-pythia8-gun/PhaseIITDRSpring19DR-PU200_106X_upgrade2023_realistic_v3-v2/GEN-SIM-DIGI-RAW" > input_Mu_FlatPt2to100-pythia8-gun_PhaseIITDRSpring19_PU200.txt
