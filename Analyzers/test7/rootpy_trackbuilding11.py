@@ -2074,7 +2074,7 @@ class RoadsAnalysis(DummyAnalysis):
 
     # Load tree
     if omtf_input:
-      tree = load_pgun_batch_omtf(jobid)
+      tree = load_pgun_omtf_batch(jobid)
     else:
       tree = load_pgun_batch(jobid)
 
@@ -2114,15 +2114,9 @@ class RoadsAnalysis(DummyAnalysis):
         out_roads.append(slim_roads[0])
 
       # Quick efficiency
-      if omtf_input:
-        is_important = lambda part: (part.bx == 0) and (0.8 <= abs(part.eta) <= 1.24) and (abs(part.d0) >= 0) and (part.pt > 5.)
-        is_possible = lambda hits: (any([(hit.type == kDT and hit.station == 1) for hit in hits]) and any([(hit.type == kDT and 2 <= hit.station <= 3) for hit in hits])) or \
-            (any([(hit.type == kCSC and hit.station == 1) for hit in hits]) and any([(hit.type == kDT and 1 <= hit.station <= 2) for hit in hits])) or \
-            (any([(hit.type == kCSC and hit.station == 1) for hit in hits]) and any([(hit.type == kCSC and 2 <= hit.station <= 3) for hit in hits]))
-      else:
-        is_important = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0) and (part.pt > 4.)
-        is_possible = lambda hits: any([((hit.type == kCSC or hit.type == kME0) and hit.station == 1) for hit in hits]) and \
-            any([(hit.type == kCSC and hit.station >= 2) for hit in hits])
+      is_important = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0) and (part.pt > 4.)
+      is_possible = lambda hits: any([((hit.type == kCSC or hit.type == kME0) and hit.station == 1) for hit in hits]) and \
+          any([(hit.type == kCSC and hit.station >= 2) for hit in hits])
 
       if ievt < 20 or (len(clean_roads) == 0 and is_important(part) and is_possible(evt.hits)):
         print("evt {0} has {1} roads and {2} clean roads".format(ievt, len(roads), len(clean_roads)))
@@ -2206,12 +2200,9 @@ class RatesAnalysis(DummyAnalysis):
     histograms = {}
     hname = "nevents"
     histograms[hname] = Hist(5, 0, 5, name=hname, title="; count", type='F')
+
     for m in ("emtf", "emtf2026"):
-      hname = "highest_%s_absEtaMin0.8_absEtaMax2.4_qmin12_pt" % m
-      histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
       hname = "highest_%s_absEtaMin1.24_absEtaMax2.4_qmin12_pt" % m
-      histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
-      hname = "highest_%s_absEtaMin0.8_absEtaMax1.24_qmin12_pt" % m
       histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
       hname = "highest_%s_absEtaMin1.24_absEtaMax1.65_qmin12_pt" % m
       histograms[hname] = Hist(100, 0., 100., name=hname, title="; p_{T} [GeV]; entries", type='F')
@@ -2237,8 +2228,8 @@ class RatesAnalysis(DummyAnalysis):
     recog = PatternRecognition(bank, omtf_input=omtf_input, run2_input=run2_input)
     clean = RoadCleaning()
     slim = RoadSlimming(bank)
-    ptassig1, ptassig2 = PtAssignment(kerasfile, omtf_input=False, run2_input=run2_input), PtAssignment(kerasfile, omtf_input=True, run2_input=run2_input)
-    trkprod1, trkprod2 = TrackProducer(omtf_input=False, run2_input=run2_input), TrackProducer(omtf_input=True, run2_input=run2_input)
+    ptassig = PtAssignment(kerasfile, omtf_input=omtf_input, run2_input=run2_input)
+    trkprod = TrackProducer(omtf_input=omtf_input, run2_input=run2_input)
     ghost = GhostBusting()
     mucorr = TrackMuonCorrelation()
 
@@ -2254,21 +2245,12 @@ class RatesAnalysis(DummyAnalysis):
       roads = recog.run(evt.hits)
       clean_roads = clean.run(roads)
       slim_roads = slim.run(clean_roads)
-
-      # EMTF mode
-      slim_roads1 = [road for road in slim_roads if road.zone != 6]  # ignore zone 6
-      variables1 = roads_to_variables(slim_roads1)
-      variables1, predictions1, x_mask_vars1, x_road_vars1 = ptassig1.run(variables1)
-      tracks1 = trkprod1.run(slim_roads1, variables1, predictions1, x_mask_vars1, x_road_vars1)
-
-      # OMTF mode
-      slim_roads2 = [road for road in slim_roads if road.zone == 6]  # only zone 6
-      variables2 = roads_to_variables(slim_roads2)
-      variables2, predictions2, x_mask_vars2, x_road_vars2 = ptassig2.run(variables2)
-      tracks2 = trkprod2.run(slim_roads2, variables2, predictions2, x_mask_vars2, x_road_vars2)
+      variables = roads_to_variables(slim_roads)
+      variables, predictions, x_mask_vars, x_road_vars = ptassig.run(variables)
+      tracks = trkprod.run(slim_roads, variables, predictions, x_mask_vars, x_road_vars)
 
       # Ghost busting & muon correlator
-      emtf2026_tracks = ghost.run(tracks1 + tracks2)
+      emtf2026_tracks = ghost.run(tracks)
       emtf2026_matched = mucorr.run(evt.particles, emtf2026_tracks)
 
       found_high_pt_tracks = any(map(lambda trk: trk.pt > 20., emtf2026_tracks))
@@ -2333,14 +2315,8 @@ class RatesAnalysis(DummyAnalysis):
 
       # EMTF tracks
       tracks = evt.tracks
-      select = lambda trk: trk and (0.8 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
-      hname = "highest_emtf_absEtaMin0.8_absEtaMax2.4_qmin12_pt"
-      fill_highest_pt()
       select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
       hname = "highest_emtf_absEtaMin1.24_absEtaMax2.4_qmin12_pt"
-      fill_highest_pt()
-      select = lambda trk: trk and (0.8 <= abs(trk.eta) < 1.24) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
-      hname = "highest_emtf_absEtaMin0.8_absEtaMax1.24_qmin12_pt"
       fill_highest_pt()
       select = lambda trk: trk and (1.24 <= abs(trk.eta) < 1.65) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
       hname = "highest_emtf_absEtaMin1.24_absEtaMax1.65_qmin12_pt"
@@ -2358,26 +2334,20 @@ class RatesAnalysis(DummyAnalysis):
 
       # EMTF++ tracks
       tracks = emtf2026_tracks
-      select = lambda trk: trk and (0.8 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5,6)
-      hname = "highest_emtf2026_absEtaMin0.8_absEtaMax2.4_qmin12_pt"
-      fill_highest_pt()
-      select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5)
+      select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4)
       hname = "highest_emtf2026_absEtaMin1.24_absEtaMax2.4_qmin12_pt"
       fill_highest_pt()
-      select = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and trk.zone in (6,)
-      hname = "highest_emtf2026_absEtaMin0.8_absEtaMax1.24_qmin12_pt"
-      fill_highest_pt()
-      select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 1.65) and trk.zone in (0,1,2,3,4,5)
+      select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 1.65)
       hname = "highest_emtf2026_absEtaMin1.24_absEtaMax1.65_qmin12_pt"
       fill_highest_pt()
-      select = lambda trk: trk and (1.65 <= abs(trk.eta) <= 2.15) and trk.zone in (0,1,2,3,4,5)
+      select = lambda trk: trk and (1.65 <= abs(trk.eta) <= 2.15)
       hname = "highest_emtf2026_absEtaMin1.65_absEtaMax2.15_qmin12_pt"
       fill_highest_pt()
-      select = lambda trk: trk and (2.15 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5)
+      select = lambda trk: trk and (2.15 <= abs(trk.eta) <= 2.4)
       hname = "highest_emtf2026_absEtaMin2.15_absEtaMax2.4_qmin12_pt"
       fill_highest_pt()
       for l in xrange(14,22+1):
-        select = lambda trk: trk and (0 <= abs(trk.eta) <= 9.9) and trk.zone in (0,1,2,3,4,5,6) and (trk.pt > float(l))
+        select = lambda trk: trk and (0 <= abs(trk.eta) <= 9.9) and (trk.pt > float(l))
         hname = "emtf2026_ptmin%i_qmin12_eta" % (l)
         fill_eta()
 
@@ -2387,7 +2357,7 @@ class RatesAnalysis(DummyAnalysis):
         mytrk.matched = m.any()
 
       tracks = emtf2026_tracks
-      select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5)
+      select = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4)
       hname_matched0 = "highest_emtf2026_absEtaMin1.24_absEtaMax2.4_qmin12_matched0_pt"
       hname_matched1 = "highest_emtf2026_absEtaMin1.24_absEtaMax2.4_qmin12_matched1_pt"
       fill_highest_pt_matched()
@@ -2467,12 +2437,8 @@ class EffieAnalysis(DummyAnalysis):
       histograms[hname] = Hist2D(52, 1.2, 2.5, 200, -15, 15, name=hname, title="; gen |#eta| {gen p_{T} > 20 GeV}; #Delta(p_{T})/p_{T}", type='F')
 
     # Load tree
-    #if pileup == 0:
-    #  if omtf_input:
-    #    tree = load_pgun_batch_omtf(jobid)
-    #  else:
-    #    tree = load_pgun_batch(jobid)
-
+    #tree = load_pgun_batch(jobid)
+    #tree = load_pgun_displ_batch(jobid)
     tree = load_minbias_batch_for_effie(jobid, pileup=pileup)
 
     # Workers
@@ -2480,8 +2446,8 @@ class EffieAnalysis(DummyAnalysis):
     recog = PatternRecognition(bank, omtf_input=omtf_input, run2_input=run2_input)
     clean = RoadCleaning()
     slim = RoadSlimming(bank)
-    ptassig1, ptassig2 = PtAssignment(kerasfile, omtf_input=False, run2_input=run2_input), PtAssignment(kerasfile, omtf_input=True, run2_input=run2_input)
-    trkprod1, trkprod2 = TrackProducer(omtf_input=False, run2_input=run2_input), TrackProducer(omtf_input=True, run2_input=run2_input)
+    ptassig = PtAssignment(kerasfile, omtf_input=omtf_input, run2_input=run2_input)
+    trkprod = TrackProducer(omtf_input=omtf_input, run2_input=run2_input)
     ghost = GhostBusting()
     mucorr = TrackMuonCorrelation()
 
@@ -2499,7 +2465,7 @@ class EffieAnalysis(DummyAnalysis):
 
       part = evt.particles[0]  # particle gun
       if sum([(part.status == 1) for part in evt.particles]) == 2:
-        part = evt.particles[(ievt % 2)]  # centrally produced samples contain 2 muons, here I pick only one
+        part = evt.particles[(ievt % 2)]  # centrally produced samples contain 2 muons, pick only one
       part.invpt = np.true_divide(part.q, part.pt)
       part.d0 = calculate_d0(part.invpt, part.phi, part.vx, part.vy)
       if part.eta >= 0.:
@@ -2510,21 +2476,12 @@ class EffieAnalysis(DummyAnalysis):
       roads = recog.run(evt.hits, sectors=sectors)
       clean_roads = clean.run(roads)
       slim_roads = slim.run(clean_roads)
-
-      # EMTF mode
-      slim_roads1 = [road for road in slim_roads if road.zone != 6]  # ignore zone 6
-      variables1 = roads_to_variables(slim_roads1)
-      variables1, predictions1, x_mask_vars1, x_road_vars1 = ptassig1.run(variables1)
-      tracks1 = trkprod1.run(slim_roads1, variables1, predictions1, x_mask_vars1, x_road_vars1)
-
-      # OMTF mode
-      slim_roads2 = [road for road in slim_roads if road.zone == 6]  # only zone 6
-      variables2 = roads_to_variables(slim_roads2)
-      variables2, predictions2, x_mask_vars2, x_road_vars2 = ptassig2.run(variables2)
-      tracks2 = trkprod2.run(slim_roads2, variables2, predictions2, x_mask_vars2, x_road_vars2)
+      variables = roads_to_variables(slim_roads)
+      variables, predictions, x_mask_vars, x_road_vars = ptassig.run(variables)
+      tracks = trkprod.run(slim_roads, variables, predictions, x_mask_vars, x_road_vars)
 
       # Ghost busting & muon correlator
-      emtf2026_tracks = ghost.run(tracks1 + tracks2)
+      emtf2026_tracks = ghost.run(tracks)
       emtf2026_matched = mucorr.run(evt.particles, emtf2026_tracks)
 
       if ievt < 20 and False:
@@ -2711,16 +2668,9 @@ class EffieAnalysis(DummyAnalysis):
 
         # EMTF++ tracks
         tracks = emtf2026_tracks
-        if omtf_input:
-          select_part = lambda part: (part.bx == 0) and (0.8 <= abs(part.eta) <= 1.24) and (abs(part.d0) >= 0)
-          #select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and trk.zone in (6,) and (trk.pt > float(l))
-          select_track = lambda trk: trk and (0.75 <= abs(trk.eta) <= 1.4) and trk.zone in (6,) and (trk.pt > float(l))
-          #select_track = lambda trk: trk and (0.75 <= abs(trk.eta) <= 1.4) and trk.zone in (6,) and (abs(1.0/trk.y_displ) > float(l)) and (abs(trk.d0_displ) >= 0)
-        else:
-          select_part = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0)
-          #select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and trk.zone in (0,1,2,3,4,5) and (trk.pt > float(l))
-          select_track = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.6) and trk.zone in (0,1,2,3,4,5) and (trk.pt > float(l))
-          #select_track = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.6) and trk.zone in (0,1,2,3,4,5) and (abs(1.0/trk.y_displ) > float(l)) and (abs(trk.d0_displ) >= 0)
+        select_part = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0)
+        select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.pt > float(l))
+        #select_track = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.6) and (abs(1.0/trk.y_displ) > float(l)) and (abs(trk.d0_displ) >= 0)
 
         hname = "emtf2026_eff_vs_genpt_l1pt%i" % (l)
         fill_efficiency_pt()
@@ -2870,12 +2820,8 @@ class MixingAnalysis(DummyAnalysis):
           highest_pt = min(100.-1e-4, highest_pt)
         return highest_pt
 
-      if omtf_input:
-        select_part = lambda part: (part.bx == 0) and (0.8 <= abs(part.eta) <= 1.24) and (abs(part.d0) >= 0)
-        select_track = lambda trk: trk and (0.8 <= abs(trk.eta) <= 1.24) and (trk.bx == 0) and (trk.mode > 0)
-      else:
-        select_part = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0)
-        select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
+      select_part = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0)
+      select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.bx == 0) and (trk.mode in (11,13,14,15))
 
       #highest_part_pt = find_highest_part_pt()
       highest_track_pt = find_highest_track_pt()
@@ -3043,7 +2989,7 @@ class AugmentationAnalysis(DummyAnalysis):
   def run(self, omtf_input=False, run2_input=False):
     # Load tree
     if omtf_input:
-      tree = load_pgun_batch_omtf(jobid)
+      tree = load_pgun_omtf_batch(jobid)
     else:
       tree = load_pgun_batch(jobid)
 
@@ -3106,15 +3052,9 @@ class AugmentationAnalysis(DummyAnalysis):
         out_roads.append(slim_roads[0])
 
       # Quick efficiency
-      if omtf_input:
-        is_important = lambda part: (part.bx == 0) and (0.8 <= abs(part.eta) <= 1.24) and (abs(part.d0) >= 0) and (part.pt > 5.)
-        is_possible = lambda hits: (any([(hit.type == kDT and hit.station == 1) for hit in hits]) and any([(hit.type == kDT and 2 <= hit.station <= 3) for hit in hits])) or \
-            (any([(hit.type == kCSC and hit.station == 1) for hit in hits]) and any([(hit.type == kDT and 1 <= hit.station <= 2) for hit in hits])) or \
-            (any([(hit.type == kCSC and hit.station == 1) for hit in hits]) and any([(hit.type == kCSC and 2 <= hit.station <= 3) for hit in hits]))
-      else:
-        is_important = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0) and (part.pt > 4.)
-        is_possible = lambda hits: any([((hit.type == kCSC or hit.type == kME0) and hit.station == 1) for hit in hits]) and \
-            any([(hit.type == kCSC and hit.station >= 2) for hit in hits])
+      is_important = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0) and (part.pt > 4.)
+      is_possible = lambda hits: any([((hit.type == kCSC or hit.type == kME0) and hit.station == 1) for hit in hits]) and \
+          any([(hit.type == kCSC and hit.station >= 2) for hit in hits])
 
       # Quick efficiency
       if is_important(part):
@@ -3414,14 +3354,14 @@ def load_pgun_batch(k):
 def load_pgun_omtf():
   raise NotImplementedError()
 
-def load_pgun_batch_omtf(k):
+def load_pgun_omtf_batch(k):
   raise NotImplementedError()
 
 def load_pgun_displ():
   infile = 'ntuple_SingleMuon_Displaced_2GeV_add.6.root'
   return load_tree_single(infile)
 
-def load_pgun_batch_displ(k):
+def load_pgun_displ_batch(k):
   jj = np.split(np.arange(1000), 100)[k]
   infiles = []
   for j in jj:
@@ -3539,6 +3479,9 @@ if __name__ == "__main__":
   elif analysis == 'effie200':
     analysis = EffieAnalysis()
     analysis.run(omtf_input=omtf_input, run2_input=run2_input, pileup=200)
+  elif analysis == 'effie300':
+    analysis = EffieAnalysis()
+    analysis.run(omtf_input=omtf_input, run2_input=run2_input, pileup=300)
 
   elif analysis == 'mixing':
     analysis = MixingAnalysis()
