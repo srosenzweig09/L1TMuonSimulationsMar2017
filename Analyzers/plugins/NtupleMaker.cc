@@ -156,9 +156,10 @@ private:
   // Tracks
   std::unique_ptr<std::vector<float  > >  vt_pt;
   std::unique_ptr<std::vector<float  > >  vt_xml_pt;
+  std::unique_ptr<std::vector<float  > >  vt_pt_dxy;
+  std::unique_ptr<std::vector<float  > >  vt_dxy;
   std::unique_ptr<std::vector<float  > >  vt_invpt_prompt;
   std::unique_ptr<std::vector<float  > >  vt_invpt_displ;
-  std::unique_ptr<std::vector<float  > >  vt_d0_displ;
   std::unique_ptr<std::vector<float  > >  vt_phi;
   std::unique_ptr<std::vector<float  > >  vt_eta;
   std::unique_ptr<std::vector<float  > >  vt_theta;
@@ -625,9 +626,10 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
 
     vt_pt         ->push_back(trk.Pt());
     vt_xml_pt     ->push_back(trk.Pt_XML());
+    vt_pt_dxy     ->push_back(trk.Pt_dxy());
+    vt_dxy        ->push_back(trk.Dxy());
     vt_invpt_prompt ->push_back(trk.Invpt_prompt());
     vt_invpt_displ  ->push_back(trk.Invpt_displ());
-    vt_d0_displ     ->push_back(trk.D0_displ());
     vt_phi        ->push_back(trk.Phi_glob());
     vt_eta        ->push_back(trk.Eta());
     vt_theta      ->push_back(trk.Theta());
@@ -821,9 +823,10 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   // Tracks
   vt_pt         ->clear();
   vt_xml_pt     ->clear();
+  vt_pt_dxy     ->clear();
+  vt_dxy        ->clear();
   vt_invpt_prompt ->clear();
   vt_invpt_displ  ->clear();
-  vt_d0_displ     ->clear();
   vt_phi        ->clear();
   vt_eta        ->clear();
   vt_theta      ->clear();
@@ -943,9 +946,10 @@ void NtupleMaker::makeTree() {
   // Tracks
   vt_pt         = std::make_unique<std::vector<float   > >();
   vt_xml_pt     = std::make_unique<std::vector<float   > >();
+  vt_pt_dxy     = std::make_unique<std::vector<float   > >();
+  vt_dxy        = std::make_unique<std::vector<float   > >();
   vt_invpt_prompt = std::make_unique<std::vector<float   > >();
   vt_invpt_displ  = std::make_unique<std::vector<float   > >();
-  vt_d0_displ     = std::make_unique<std::vector<float   > >();
   vt_phi        = std::make_unique<std::vector<float   > >();
   vt_eta        = std::make_unique<std::vector<float   > >();
   vt_theta      = std::make_unique<std::vector<float   > >();
@@ -1046,9 +1050,10 @@ void NtupleMaker::makeTree() {
   // Tracks
   tree->Branch("vt_pt"        , &(*vt_pt        ));
   tree->Branch("vt_xml_pt"    , &(*vt_xml_pt    ));
+  tree->Branch("vt_pt_dxy"    , &(*vt_pt_dxy    ));
+  tree->Branch("vt_dxy"       , &(*vt_dxy       ));
   tree->Branch("vt_invpt_prompt", &(*vt_invpt_prompt));
   tree->Branch("vt_invpt_displ" , &(*vt_invpt_displ ));
-  tree->Branch("vt_d0_displ"    , &(*vt_d0_displ    ));
   tree->Branch("vt_phi"       , &(*vt_phi       ));
   tree->Branch("vt_eta"       , &(*vt_eta       ));
   tree->Branch("vt_theta"     , &(*vt_theta     ));
