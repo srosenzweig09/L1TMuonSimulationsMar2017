@@ -908,7 +908,7 @@ class Road(object):
 
 class Track(object):
   def __init__(self, _id, hits, mode, quality, sort_code,
-               xml_pt, pt, q, y_pred, y_discr, y_displ, d0_displ, emtf_phi, emtf_theta):
+               xml_pt, pt, q, y_pred, y_discr, y_displ, d0_displ, pt_displ, emtf_phi, emtf_theta):
     self.id = _id  # (endcap, sector, ipt, ieta, iphi)
     self.hits = hits
     self.mode = mode
@@ -921,6 +921,7 @@ class Track(object):
     self.y_discr = y_discr
     self.y_displ = y_displ
     self.d0_displ = d0_displ
+    self.pt_displ = pt_displ
     self.emtf_phi = emtf_phi
     self.emtf_theta = emtf_theta
     self.phi = calc_phi_glob_deg(calc_phi_loc_deg(emtf_phi), _id[1])
@@ -1530,6 +1531,21 @@ class PtAssignment(object):
     y[..., 6] *= y[..., 7]
     return (x_new, y, z, t)
 
+  def postprocessing(self, x_new, y):
+    y_pred = y[..., 0]
+    d0_pred = y[..., 6]
+
+    discr_pt_cut_low = 4.
+    discr_pt_cut_med = 8.
+    discr_pt_cut_high = 14.
+    demote = (np.abs(1.0/y_pred) > discr_pt_cut_high) & (np.abs(d0_pred) > 20.)
+    demote |= (np.abs(1.0/y_pred) > discr_pt_cut_med) & (np.abs(d0_pred) > 25.)
+    demote |= (np.abs(1.0/y_pred) > discr_pt_cut_low) & (np.abs(d0_pred) > 30.)
+
+    y_new = y.copy()
+    y_new[..., 0][demote] = 0.5  # demote to 2 GeV
+    return y_new
+
   def run(self, x):
     x_new = np.array([], dtype=np.float32)
     y = np.array([], dtype=np.float32)
@@ -1539,7 +1555,8 @@ class PtAssignment(object):
       return (x_new, y, z, t)
 
     (x_new, y, z, t) = self.predict(x)
-    return (x_new, y, z, t)
+    y_new = self.postprocessing(x_new, y)
+    return (x_new, y_new, z, t)
 
 
 # Track producer module
@@ -1645,16 +1662,19 @@ class TrackProducer(object):
     quality1 = find_emtf_road_quality(ipt1)
     quality2 = find_emtf_road_quality(ipt2)
     strg_ok = (quality2 <= (quality1+1))
+    trigger = (y_discr >= 0.)
 
-    xml_pt = np.abs(1.0/y_pred)
-    if xml_pt > self.discr_pt_cut_high:  # >14 GeV
-      trigger = np.abs(d0_pred) < 20.
-    elif xml_pt > self.discr_pt_cut_med: # 8-14 GeV
-      trigger = np.abs(d0_pred) < 25.
-    elif xml_pt > self.discr_pt_cut_low: # 4-8 GeV
-      trigger = np.abs(d0_pred) < 30.
-    else:
-      trigger = (y_discr >= 0.)
+    ## OBSOLETE since v4
+    ## Apply cuts on d0
+    #xml_pt = np.abs(1.0/y_pred)
+    #if xml_pt > self.discr_pt_cut_high:  # >14 GeV
+    #  trigger = np.abs(d0_pred) < 20.
+    #elif xml_pt > self.discr_pt_cut_med: # 8-14 GeV
+    #  trigger = np.abs(d0_pred) < 25.
+    #elif xml_pt > self.discr_pt_cut_low: # 4-8 GeV
+    #  trigger = np.abs(d0_pred) < 30.
+    #else:
+    #  trigger = (y_discr >= 0.)
 
     ## OBSOLETE since v3
     ## Apply cuts
@@ -1768,9 +1788,12 @@ class TrackProducer(object):
         if 2.15 <= eta <= 2.25:
           pt = self.get_trigger_pt_wp50(y_pred)
 
+        pt_displ = self.get_trigger_pt(d1_pred)
+
         trk_q = np.sign(y_pred).astype(np.int32)
         trk = Track(myroad.id, myroad.hits, mode, myroad.quality, myroad.sort_code,
-                    xml_pt, pt, trk_q, y_pred, y_discr, d1_pred, d0_pred, phi_median, theta_median)
+                    xml_pt, pt, trk_q, y_pred, y_discr,
+                    d1_pred, d0_pred, pt_displ, phi_median, theta_median)
         tracks.append(trk)
     return tracks
 
@@ -2670,7 +2693,7 @@ class EffieAnalysis(DummyAnalysis):
         tracks = emtf2026_tracks
         select_part = lambda part: (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (abs(part.d0) >= 0)
         select_track = lambda trk: trk and (1.24 <= abs(trk.eta) <= 2.4) and (trk.pt > float(l))
-        #select_track = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.6) and (abs(1.0/trk.y_displ) > float(l)) and (abs(trk.d0_displ) >= 0)
+        #select_track = lambda trk: trk and (1.1 <= abs(trk.eta) <= 2.6) and (trk.pt_displ > float(l)) and (abs(trk.d0_displ) >= 0)
 
         hname = "emtf2026_eff_vs_genpt_l1pt%i" % (l)
         fill_efficiency_pt()
