@@ -13,7 +13,4 @@
 <use name="SimDataFormats/TrackingAnalysis"/>
 <use name="SimDataFormats/DigiSimLinks"/>
 
-<use name="SimTracker/TrackTriggerAssociation"/>
-
 <use name="root"/>
-<use name="clhep"/>

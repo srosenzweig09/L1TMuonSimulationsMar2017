@@ -402,10 +402,10 @@ void EmuAccuracy::sitrep(const std::vector<int>& unp_matches, const std::vector<
     return match;
   };
 
-  auto check_track_pt = [](const auto& trk1, const auto& trk2) {
-    bool match = (trk1.GMT_pt() == trk2.GMT_pt());
-    return match;
-  };
+  //auto check_track_pt = [](const auto& trk1, const auto& trk2) {
+  //  bool match = (trk1.GMT_pt() == trk2.GMT_pt());
+  //  return match;
+  //};
 
   auto check_track_eta = [](const auto& trk1, const auto& trk2) {
     bool match = (trk1.GMT_eta() == trk2.GMT_eta());

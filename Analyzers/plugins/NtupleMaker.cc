@@ -4,15 +4,11 @@
 #include <vector>
 #include <iostream>
 #include <algorithm>
-#include <random>
 #include <cassert>
 #include <cstdint>
 
 #include "TString.h"
 #include "TFile.h"
-//#include "TH1F.h"
-//#include "TH2F.h"
-//#include "TEfficiency.h"
 #include "TTree.h"
 
 #include "FWCore/Framework/interface/Frameworkfwd.h"
@@ -115,8 +111,9 @@ private:
   TrackingParticleCollection    trkParts_;
 
   // For edm products
-  const L1TrackTriggerTrackCollection * tkTracks_;
-  const L1TrackTriggerTrackAssociator * tkTrackAssoc_;
+  const L1TrackTriggerTrackCollection*  tkTracks_;
+  const L1TrackTriggerTrackAssociator*  tkTrackAssoc_;
+  const std::vector<PileupSummaryInfo>* pileupInfo_;
 
   // TTree
   TTree* tree;
@@ -141,11 +138,11 @@ private:
   std::unique_ptr<std::vector<int16_t> >  vh_bend;
   std::unique_ptr<std::vector<int16_t> >  vh_time;
   std::unique_ptr<std::vector<int16_t> >  vh_fr;
-  std::unique_ptr<std::vector<int32_t> >  vh_emtf_phi;
-  std::unique_ptr<std::vector<int32_t> >  vh_emtf_theta;
+  std::unique_ptr<std::vector<int32_t> >  vh_emtf_phi;   // integer unit
+  std::unique_ptr<std::vector<int32_t> >  vh_emtf_theta; // integer unit
   //
-  std::unique_ptr<std::vector<float  > >  vh_sim_phi;
-  std::unique_ptr<std::vector<float  > >  vh_sim_theta;
+  std::unique_ptr<std::vector<float  > >  vh_sim_phi;    // in degrees
+  std::unique_ptr<std::vector<float  > >  vh_sim_theta;  // in degrees
   std::unique_ptr<std::vector<float  > >  vh_sim_eta;
   std::unique_ptr<std::vector<float  > >  vh_sim_r;
   std::unique_ptr<std::vector<float  > >  vh_sim_z;
@@ -160,9 +157,9 @@ private:
   std::unique_ptr<std::vector<float  > >  vt_dxy;
   std::unique_ptr<std::vector<float  > >  vt_invpt_prompt;
   std::unique_ptr<std::vector<float  > >  vt_invpt_displ;
-  std::unique_ptr<std::vector<float  > >  vt_phi;
+  std::unique_ptr<std::vector<float  > >  vt_phi;   // in degrees
+  std::unique_ptr<std::vector<float  > >  vt_theta; // in degrees
   std::unique_ptr<std::vector<float  > >  vt_eta;
-  std::unique_ptr<std::vector<float  > >  vt_theta;
   std::unique_ptr<std::vector<int16_t> >  vt_q;  // charge
   //
   std::unique_ptr<std::vector<uint64_t> > vt_address;
@@ -170,7 +167,7 @@ private:
   std::unique_ptr<std::vector<int16_t> >  vt_endcap;
   std::unique_ptr<std::vector<int16_t> >  vt_sector;
   std::unique_ptr<std::vector<int16_t> >  vt_bx;
-  std::unique_ptr<std::vector<int32_t> >  vt_nhits;
+  std::unique_ptr<std::vector<int16_t> >  vt_nhits;
   std::unique_ptr<std::vector<int32_t> >  vt_hitref1;
   std::unique_ptr<std::vector<int32_t> >  vt_hitref2;
   std::unique_ptr<std::vector<int32_t> >  vt_hitref3;
@@ -180,8 +177,8 @@ private:
   // Track trigger tracks
   std::unique_ptr<std::vector<float  > >  vu_pt;
   std::unique_ptr<std::vector<float  > >  vu_phi;
-  std::unique_ptr<std::vector<float  > >  vu_eta;
   std::unique_ptr<std::vector<float  > >  vu_theta;
+  std::unique_ptr<std::vector<float  > >  vu_eta;
   std::unique_ptr<std::vector<float  > >  vu_vx;
   std::unique_ptr<std::vector<float  > >  vu_vy;
   std::unique_ptr<std::vector<float  > >  vu_vz;
@@ -197,7 +194,7 @@ private:
   std::unique_ptr<std::vector<int32_t> >  vu_sim_tp;
   std::unique_ptr<std::vector<int32_t> >  vu_sim_pdgid;
   std::unique_ptr<std::vector<int16_t> >  vu_sim_assoc;  // isGenuine, isLooselyGenuine, isCombinatoric, isUnknown
-  std::unique_ptr<int32_t>                vu_size;
+  std::unique_ptr<int32_t              >  vu_size;
 
   // Tracking particles
   std::unique_ptr<std::vector<float  > >  vp_pt;
@@ -220,7 +217,7 @@ private:
   std::unique_ptr<std::vector<uint64_t> > ve_event;
   std::unique_ptr<std::vector<uint32_t> > ve_run;
   std::unique_ptr<std::vector<uint32_t> > ve_lumi;
-  std::unique_ptr<std::vector<int32_t> >  ve_npv;
+  std::unique_ptr<std::vector<float  > >  ve_npv;
   std::unique_ptr<int32_t              >  ve_size;
 };
 
@@ -336,7 +333,6 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
 
   // Pileup info
   edm::Handle<std::vector<PileupSummaryInfo> > pileupInfo_handle;
-  iEvent.getByToken(pileupInfoToken_, pileupInfo_handle);
 
   if (!iEvent.isRealData()) {
     if (!pileupInfoToken_.isUninitialized()) {
@@ -344,6 +340,9 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
     }
     if (!pileupInfo_handle.isValid()) {
       if (firstEvent_)  edm::LogError("NtupleMaker") << "Cannot get the product: " << pileupInfoTag_;
+      pileupInfo_ = nullptr;
+    } else {
+      pileupInfo_ = pileupInfo_handle.product();
     }
   }
 
@@ -353,28 +352,24 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
   emuHits_.clear();
   for (const auto& hit : (*emuHits_handle)) {
     if (!(-2 <= hit.BX() && hit.BX() <= 2))  continue;  // only BX=[-2,+2]
-    //if (hit.Endcap() != 1)  continue;  // only positive endcap
     emuHits_.push_back(hit);
   }
 
   emuTracks_.clear();
   for (const auto& trk : (*emuTracks_handle)) {
     if (trk.BX() != 0)      continue;  // only BX=0
-    //if (trk.Endcap() != 1)  continue;  // only positive endcap
     emuTracks_.push_back(trk);
   }
 
   genParts_.clear();
   for (const auto& part : (*genParts_handle)) {
     if (!(part.pt() >= 2.))     continue;  // only pT > 2
-    //if (!(1.2 <= part.eta() && part.eta() <= 2.4))  continue;  // only positive endcap
     genParts_.push_back(part);
   }
 
   trkParts_.clear();
   for (const auto& part : (*trkParts_handle)) {
     //if (!(part.pt() >= 2.))     continue;  // only pT > 2
-    //if (!(1.2 <= part.eta() && part.eta() <= 2.4))  continue;  // only positive endcap
     if (!(std::abs(part.pdgId()) == 13))  continue;  // only muons
 
     // Tracking particle selection
@@ -391,8 +386,8 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
       // Primary+charged: pT > 0.2 GeV, |eta| < 3.0, |rho0| < 0.5 cm, |z0| < 30 cm
       //bool primary = (part.charge() != 0 && part.pt() > 0.2 && std::abs(part.eta()) < 3.0 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 0.5 && std::abs(part.vz()) < 30.0);
 
-      // Primary+secondary pT > 0.5 GeV, |eta| < 3.0, |rho0| < 120 cm, |z0| < 100 cm
-      bool secondary = (part.charge() != 0 && part.pt() > 0.5 && std::abs(part.eta()) < 3.0 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 120.0 && std::abs(part.vz()) < 100.0);
+      // Primary+secondary pT > 0.5 GeV, |eta| < 3.0, |rho0| < 300 cm, |z0| < 100 cm
+      bool secondary = (part.charge() != 0 && part.pt() > 0.5 && std::abs(part.eta()) < 3.0 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 300.0 && std::abs(part.vz()) < 100.0);
 
       // Do not decay
       //bool nodecay = (part.decayVertices().empty());
@@ -404,7 +399,6 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
       if (!secondary) continue;
       //if (!nodecay)   continue;
     }
-
     trkParts_.push_back(part);
   }
 }
@@ -562,7 +556,6 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
       }
       assert(has_hit == has_hit_check);
     }
-
     return hit_refs;
   };
 
@@ -579,7 +572,7 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
 
   // ___________________________________________________________________________
   // Hits
-  prepare_sim_tp();  // must be called before calling get_sim_tp1() and get_sim_tp2()
+  prepare_sim_tp();  // must be called before calling get_sim_tp_matches()
 
   for (const auto& hit : emuHits_) {
     const std::pair<int,int>& sim_tp_pair = get_sim_tp_matches(hit);
@@ -602,7 +595,7 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
     vh_pattern    ->push_back(get_pattern(hit));  // modified
     vh_bend       ->push_back(hit.Bend());
     vh_time       ->push_back(get_time(hit));     // modified
-    vh_fr         ->push_back(isFront(hit));
+    vh_fr         ->push_back(isFront(hit));      // added
     vh_emtf_phi   ->push_back(hit.Phi_fp());
     vh_emtf_theta ->push_back(hit.Theta_fp());
     //
@@ -619,7 +612,7 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   // ___________________________________________________________________________
   // Tracks
   for (const auto& trk : emuTracks_) {
-    const auto& hit_refs = get_hit_refs(trk, emuHits_);
+    const std::vector<int32_t>& hit_refs = get_hit_refs(trk, emuHits_);
     assert(hit_refs.size() == 4);
 
     const l1t::EMTFPtLUT& ptlut_data = trk.PtLUT();
@@ -631,8 +624,8 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
     vt_invpt_prompt ->push_back(trk.Invpt_prompt());
     vt_invpt_displ  ->push_back(trk.Invpt_displ());
     vt_phi        ->push_back(trk.Phi_glob());
-    vt_eta        ->push_back(trk.Eta());
     vt_theta      ->push_back(trk.Theta());
+    vt_eta        ->push_back(trk.Eta());
     vt_q          ->push_back(trk.Charge());
     //
     vt_address    ->push_back(ptlut_data.address);
@@ -650,19 +643,19 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
 
   // ___________________________________________________________________________
   // L1TrackTrigger tracks
-  if (tkTracks_) {
+  if (tkTracks_ != nullptr && tkTrackAssoc_ != nullptr) {
     int itkTrack = 0;
     edm::Handle<L1TrackTriggerTrackCollection> tkTracks_handle;
 
     for (const auto& trk : *tkTracks_) {
       const GlobalVector& momentum = trk.getMomentum();
       const GlobalPoint&  poca     = trk.getPOCA();
-      double              rinv     = trk.getRInv();
+      const double        rinv     = trk.getRInv();
 
       vu_pt    ->push_back(momentum.perp());
       vu_phi   ->push_back(momentum.phi());
-      vu_eta   ->push_back(momentum.eta());
       vu_theta ->push_back(momentum.theta());
+      vu_eta   ->push_back(momentum.eta());
       vu_vx    ->push_back(poca.x());
       vu_vy    ->push_back(poca.y());
       vu_vz    ->push_back(poca.z());
@@ -765,15 +758,13 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
 
   // ___________________________________________________________________________
   // Event info
-  {
-    int trueNPV = 0;
-    if (!iEvent.isRealData()) {
-      edm::Handle<std::vector<PileupSummaryInfo> > pileupInfo_handle;
-      iEvent.getByToken(pileupInfoToken_, pileupInfo_handle);
-      for (std::vector<PileupSummaryInfo>::const_iterator it = pileupInfo_handle->begin(); it != pileupInfo_handle->end(); ++it) {
-        if (it->getBunchCrossing()==0) {
-          trueNPV = it->getTrueNumInteractions();
-        }
+  if (pileupInfo_ != nullptr) {
+    float trueNPV = 0;
+
+    for (const auto& pui : *pileupInfo_) {
+      if (pui.getBunchCrossing() == 0) {
+        trueNPV = pui.getTrueNumInteractions();
+        break;
       }
     }
 
@@ -828,8 +819,8 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   vt_invpt_prompt ->clear();
   vt_invpt_displ  ->clear();
   vt_phi        ->clear();
-  vt_eta        ->clear();
   vt_theta      ->clear();
+  vt_eta        ->clear();
   vt_q          ->clear();
   //
   vt_address    ->clear();
@@ -847,8 +838,8 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   // L1TrackTrigger tracks
   vu_pt         ->clear();
   vu_phi        ->clear();
-  vu_eta        ->clear();
   vu_theta      ->clear();
+  vu_eta        ->clear();
   vu_vx         ->clear();
   vu_vy         ->clear();
   vu_vz         ->clear();
@@ -912,105 +903,105 @@ void NtupleMaker::makeTree() {
 
   // Create pointers
   // Hits
-  vh_endcap     = std::make_unique<std::vector<int16_t > >();
-  vh_station    = std::make_unique<std::vector<int16_t > >();
-  vh_ring       = std::make_unique<std::vector<int16_t > >();
-  vh_sector     = std::make_unique<std::vector<int16_t > >();
-  vh_subsector  = std::make_unique<std::vector<int16_t > >();
-  vh_chamber    = std::make_unique<std::vector<int16_t > >();
-  vh_cscid      = std::make_unique<std::vector<int16_t > >();
-  vh_bx         = std::make_unique<std::vector<int16_t > >();
-  vh_type       = std::make_unique<std::vector<int16_t > >();
-  vh_neighbor   = std::make_unique<std::vector<int16_t > >();
+  vh_endcap     = std::make_unique<std::vector<int16_t> >();
+  vh_station    = std::make_unique<std::vector<int16_t> >();
+  vh_ring       = std::make_unique<std::vector<int16_t> >();
+  vh_sector     = std::make_unique<std::vector<int16_t> >();
+  vh_subsector  = std::make_unique<std::vector<int16_t> >();
+  vh_chamber    = std::make_unique<std::vector<int16_t> >();
+  vh_cscid      = std::make_unique<std::vector<int16_t> >();
+  vh_bx         = std::make_unique<std::vector<int16_t> >();
+  vh_type       = std::make_unique<std::vector<int16_t> >();
+  vh_neighbor   = std::make_unique<std::vector<int16_t> >();
   //
-  vh_strip      = std::make_unique<std::vector<int16_t > >();
-  vh_wire       = std::make_unique<std::vector<int16_t > >();
-  vh_roll       = std::make_unique<std::vector<int16_t > >();
-  vh_quality    = std::make_unique<std::vector<int16_t > >();
-  vh_pattern    = std::make_unique<std::vector<int16_t > >();
-  vh_bend       = std::make_unique<std::vector<int16_t > >();
-  vh_time       = std::make_unique<std::vector<int16_t > >();
-  vh_fr         = std::make_unique<std::vector<int16_t > >();
-  vh_emtf_phi   = std::make_unique<std::vector<int32_t > >();
-  vh_emtf_theta = std::make_unique<std::vector<int32_t > >();
+  vh_strip      = std::make_unique<std::vector<int16_t> >();
+  vh_wire       = std::make_unique<std::vector<int16_t> >();
+  vh_roll       = std::make_unique<std::vector<int16_t> >();
+  vh_quality    = std::make_unique<std::vector<int16_t> >();
+  vh_pattern    = std::make_unique<std::vector<int16_t> >();
+  vh_bend       = std::make_unique<std::vector<int16_t> >();
+  vh_time       = std::make_unique<std::vector<int16_t> >();
+  vh_fr         = std::make_unique<std::vector<int16_t> >();
+  vh_emtf_phi   = std::make_unique<std::vector<int32_t> >();
+  vh_emtf_theta = std::make_unique<std::vector<int32_t> >();
   //
-  vh_sim_phi    = std::make_unique<std::vector<float   > >();
-  vh_sim_theta  = std::make_unique<std::vector<float   > >();
-  vh_sim_eta    = std::make_unique<std::vector<float   > >();
-  vh_sim_r      = std::make_unique<std::vector<float   > >();
-  vh_sim_z      = std::make_unique<std::vector<float   > >();
-  vh_sim_tp1    = std::make_unique<std::vector<int32_t > >();
-  vh_sim_tp2    = std::make_unique<std::vector<int32_t > >();
+  vh_sim_phi    = std::make_unique<std::vector<float  > >();
+  vh_sim_theta  = std::make_unique<std::vector<float  > >();
+  vh_sim_eta    = std::make_unique<std::vector<float  > >();
+  vh_sim_r      = std::make_unique<std::vector<float  > >();
+  vh_sim_z      = std::make_unique<std::vector<float  > >();
+  vh_sim_tp1    = std::make_unique<std::vector<int32_t> >();
+  vh_sim_tp2    = std::make_unique<std::vector<int32_t> >();
   vh_size       = std::make_unique<int32_t>(0);
 
   // Tracks
-  vt_pt         = std::make_unique<std::vector<float   > >();
-  vt_xml_pt     = std::make_unique<std::vector<float   > >();
-  vt_pt_dxy     = std::make_unique<std::vector<float   > >();
-  vt_dxy        = std::make_unique<std::vector<float   > >();
-  vt_invpt_prompt = std::make_unique<std::vector<float   > >();
-  vt_invpt_displ  = std::make_unique<std::vector<float   > >();
-  vt_phi        = std::make_unique<std::vector<float   > >();
-  vt_eta        = std::make_unique<std::vector<float   > >();
-  vt_theta      = std::make_unique<std::vector<float   > >();
-  vt_q          = std::make_unique<std::vector<int16_t > >();
+  vt_pt         = std::make_unique<std::vector<float  > >();
+  vt_xml_pt     = std::make_unique<std::vector<float  > >();
+  vt_pt_dxy     = std::make_unique<std::vector<float  > >();
+  vt_dxy        = std::make_unique<std::vector<float  > >();
+  vt_invpt_prompt = std::make_unique<std::vector<float  > >();
+  vt_invpt_displ  = std::make_unique<std::vector<float  > >();
+  vt_phi        = std::make_unique<std::vector<float  > >();
+  vt_theta      = std::make_unique<std::vector<float  > >();
+  vt_eta        = std::make_unique<std::vector<float  > >();
+  vt_q          = std::make_unique<std::vector<int16_t> >();
   //
   vt_address    = std::make_unique<std::vector<uint64_t> >();
-  vt_mode       = std::make_unique<std::vector<int16_t > >();
-  vt_endcap     = std::make_unique<std::vector<int16_t > >();
-  vt_sector     = std::make_unique<std::vector<int16_t > >();
-  vt_bx         = std::make_unique<std::vector<int16_t > >();
-  vt_nhits      = std::make_unique<std::vector<int32_t > >();
-  vt_hitref1    = std::make_unique<std::vector<int32_t > >();
-  vt_hitref2    = std::make_unique<std::vector<int32_t > >();
-  vt_hitref3    = std::make_unique<std::vector<int32_t > >();
-  vt_hitref4    = std::make_unique<std::vector<int32_t > >();
+  vt_mode       = std::make_unique<std::vector<int16_t> >();
+  vt_endcap     = std::make_unique<std::vector<int16_t> >();
+  vt_sector     = std::make_unique<std::vector<int16_t> >();
+  vt_bx         = std::make_unique<std::vector<int16_t> >();
+  vt_nhits      = std::make_unique<std::vector<int16_t> >();
+  vt_hitref1    = std::make_unique<std::vector<int32_t> >();
+  vt_hitref2    = std::make_unique<std::vector<int32_t> >();
+  vt_hitref3    = std::make_unique<std::vector<int32_t> >();
+  vt_hitref4    = std::make_unique<std::vector<int32_t> >();
   vt_size       = std::make_unique<int32_t>(0);
 
   // L1TrackTrigger trakcs
-  vu_pt         = std::make_unique<std::vector<float   > >();
-  vu_phi        = std::make_unique<std::vector<float   > >();
-  vu_eta        = std::make_unique<std::vector<float   > >();
-  vu_theta      = std::make_unique<std::vector<float   > >();
-  vu_vx         = std::make_unique<std::vector<float   > >();
-  vu_vy         = std::make_unique<std::vector<float   > >();
-  vu_vz         = std::make_unique<std::vector<float   > >();
-  vu_q          = std::make_unique<std::vector<int16_t > >();
-  vu_rinv       = std::make_unique<std::vector<float   > >();
-  vu_chi2       = std::make_unique<std::vector<float   > >();
-  vu_ndof       = std::make_unique<std::vector<int16_t > >();
-  vu_sector     = std::make_unique<std::vector<int16_t > >();
+  vu_pt         = std::make_unique<std::vector<float  > >();
+  vu_phi        = std::make_unique<std::vector<float  > >();
+  vu_theta      = std::make_unique<std::vector<float  > >();
+  vu_eta        = std::make_unique<std::vector<float  > >();
+  vu_vx         = std::make_unique<std::vector<float  > >();
+  vu_vy         = std::make_unique<std::vector<float  > >();
+  vu_vz         = std::make_unique<std::vector<float  > >();
+  vu_q          = std::make_unique<std::vector<int16_t> >();
+  vu_rinv       = std::make_unique<std::vector<float  > >();
+  vu_chi2       = std::make_unique<std::vector<float  > >();
+  vu_ndof       = std::make_unique<std::vector<int16_t> >();
+  vu_sector     = std::make_unique<std::vector<int16_t> >();
   //
-  vu_sim_pt     = std::make_unique<std::vector<float   > >();
-  vu_sim_phi    = std::make_unique<std::vector<float   > >();
-  vu_sim_eta    = std::make_unique<std::vector<float   > >();
-  vu_sim_tp     = std::make_unique<std::vector<int32_t > >();
-  vu_sim_pdgid  = std::make_unique<std::vector<int32_t > >();
-  vu_sim_assoc  = std::make_unique<std::vector<int16_t > >();
+  vu_sim_pt     = std::make_unique<std::vector<float  > >();
+  vu_sim_phi    = std::make_unique<std::vector<float  > >();
+  vu_sim_eta    = std::make_unique<std::vector<float  > >();
+  vu_sim_tp     = std::make_unique<std::vector<int32_t> >();
+  vu_sim_pdgid  = std::make_unique<std::vector<int32_t> >();
+  vu_sim_assoc  = std::make_unique<std::vector<int16_t> >();
   vu_size       = std::make_unique<int32_t>(0);
 
   // Tracking particles
-  vp_pt         = std::make_unique<std::vector<float   > >();
-  vp_phi        = std::make_unique<std::vector<float   > >();
-  vp_eta        = std::make_unique<std::vector<float   > >();
-  vp_theta      = std::make_unique<std::vector<float   > >();
-  vp_vx         = std::make_unique<std::vector<float   > >();
-  vp_vy         = std::make_unique<std::vector<float   > >();
-  vp_vz         = std::make_unique<std::vector<float   > >();
-  vp_q          = std::make_unique<std::vector<int16_t > >();
-  vp_bx         = std::make_unique<std::vector<int16_t > >();
-  vp_event      = std::make_unique<std::vector<int16_t > >();
-  vp_pdgid      = std::make_unique<std::vector<int32_t > >();
-  vp_status     = std::make_unique<std::vector<int16_t > >();
-  vp_decay      = std::make_unique<std::vector<int16_t > >();
-  vp_genp       = std::make_unique<std::vector<int32_t > >();
+  vp_pt         = std::make_unique<std::vector<float  > >();
+  vp_phi        = std::make_unique<std::vector<float  > >();
+  vp_eta        = std::make_unique<std::vector<float  > >();
+  vp_theta      = std::make_unique<std::vector<float  > >();
+  vp_vx         = std::make_unique<std::vector<float  > >();
+  vp_vy         = std::make_unique<std::vector<float  > >();
+  vp_vz         = std::make_unique<std::vector<float  > >();
+  vp_q          = std::make_unique<std::vector<int16_t> >();
+  vp_bx         = std::make_unique<std::vector<int16_t> >();
+  vp_event      = std::make_unique<std::vector<int16_t> >();
+  vp_pdgid      = std::make_unique<std::vector<int32_t> >();
+  vp_status     = std::make_unique<std::vector<int16_t> >();
+  vp_decay      = std::make_unique<std::vector<int16_t> >();
+  vp_genp       = std::make_unique<std::vector<int32_t> >();
   vp_size       = std::make_unique<int32_t>(0);
 
   // Event info
-  ve_event      = std::make_unique<std::vector<uint64_t > >();
-  ve_run        = std::make_unique<std::vector<uint32_t > >();
-  ve_lumi       = std::make_unique<std::vector<uint32_t > >();
-  ve_npv        = std::make_unique<std::vector<int32_t > > ();
+  ve_event      = std::make_unique<std::vector<uint64_t> >();
+  ve_run        = std::make_unique<std::vector<uint32_t> >();
+  ve_lumi       = std::make_unique<std::vector<uint32_t> >();
+  ve_npv        = std::make_unique<std::vector<float  > >();
   ve_size       = std::make_unique<int32_t>(0);
 
 
@@ -1055,8 +1046,8 @@ void NtupleMaker::makeTree() {
   tree->Branch("vt_invpt_prompt", &(*vt_invpt_prompt));
   tree->Branch("vt_invpt_displ" , &(*vt_invpt_displ ));
   tree->Branch("vt_phi"       , &(*vt_phi       ));
-  tree->Branch("vt_eta"       , &(*vt_eta       ));
   tree->Branch("vt_theta"     , &(*vt_theta     ));
+  tree->Branch("vt_eta"       , &(*vt_eta       ));
   tree->Branch("vt_q"         , &(*vt_q         ));
   //
   tree->Branch("vt_address"   , &(*vt_address   ));
@@ -1074,8 +1065,8 @@ void NtupleMaker::makeTree() {
   // L1TrackTrigger tracks
   tree->Branch("vu_pt"        , &(*vu_pt        ));
   tree->Branch("vu_phi"       , &(*vu_phi       ));
-  tree->Branch("vu_eta"       , &(*vu_eta       ));
   tree->Branch("vu_theta"     , &(*vu_theta     ));
+  tree->Branch("vu_eta"       , &(*vu_eta       ));
   tree->Branch("vu_vx"        , &(*vu_vx        ));
   tree->Branch("vu_vy"        , &(*vu_vy        ));
   tree->Branch("vu_vz"        , &(*vu_vz        ));
