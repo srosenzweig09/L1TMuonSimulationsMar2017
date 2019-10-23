@@ -147,9 +147,8 @@ print("[INFO] Using GlobalTag: %s" % process.GlobalTag.globaltag.value())
 print("[INFO] Using random number seed: %d" % process.RandomNumberGeneratorService.generator.initialSeed.value())
 if True:
     # Ntuplize
-    process.load('L1TMuonSimulations.Analyzers.rpcintegration_cfi')
-    process.ntupler.outFileName = 'ntuple_SingleMuon_Endcap.root'
-    process.TFileService = cms.Service('TFileService', fileName = cms.string(process.ntupler.outFileName.value()))
+    process.load('L1TMuonSimulations.Analyzers.ntupler_cfi')
+    process.TFileService = cms.Service('TFileService', fileName = process.ntupler.outFileName)
     # Modify sequences without any consequences
     process.doAllDigiTask = cms.Task(process.generatorSmeared, process.muonDigiTask)
     process.SimL1TMuonTask = cms.Task(process.SimL1TMuonCommonTask, process.me0TriggerPseudoDigiTask, process.me0TriggerPseudoDigiTask105X, process.rpcRecHits, process.simBmtfDigis, process.simEmtfDigis, process.simOmtfDigis, process.simTwinMuxDigis)

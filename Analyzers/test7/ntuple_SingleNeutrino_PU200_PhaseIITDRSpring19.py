@@ -96,23 +96,6 @@ if True:
   process.source.fileNames = fileNames_txt
 
 # ______________________________________________________________________________
-# Drop obsolete input branches
-if True:
-    process.source.inputCommands = cms.untracked.vstring(
-        'keep *',
-        'drop l1tEMTFHit2016s_*_*_*',
-        'drop l1tEMTFHit2016Extras_*_*_*',
-        'drop l1tEMTFTrack2016s_*_*_*',
-        'drop l1tEMTFTrack2016Extras_*_*_*',
-        'drop *_simCscTriggerPrimitiveDigis_*_*',
-        'drop *_simBmtfDigis_*_*',
-        'drop *_simEmtfDigis_*_*',
-        'drop *_simOmtfDigis_*_*',
-        'drop *_simGmtStage2Digis_*_*',
-        'drop *_simGtStage2Digis_*_*',
-    )
-
-# ______________________________________________________________________________
 # Modify EMTF
 if True:
     from L1Trigger.L1TMuonEndCap.customise_Phase2 import customise as customise_Phase2
@@ -123,10 +106,8 @@ if True:
 print("[INFO] Using GlobalTag: %s" % process.GlobalTag.globaltag.value())
 if True:
     # Ntuplize
-    process.load('L1TMuonSimulations.Analyzers.rpcintegration_cfi')
-    process.ntupler.outFileName = 'ntuple_SingleNeutrino_PU200.root'
-    process.ntupler.verbosity = 0
-    process.TFileService = cms.Service('TFileService', fileName = cms.string(process.ntupler.outFileName.value()))
+    process.load('L1TMuonSimulations.Analyzers.ntupler_cfi')
+    process.TFileService = cms.Service('TFileService', fileName = process.ntupler.outFileName)
     # Modify sequences without any consequences
     #process.doAllDigiTask = cms.Task(process.generatorSmeared, process.muonDigiTask)
     process.SimL1TMuonTask = cms.Task(process.SimL1TMuonCommonTask, process.me0TriggerPseudoDigiTask, process.me0TriggerPseudoDigiTask105X, process.rpcRecHits, process.simBmtfDigis, process.simEmtfDigis, process.simOmtfDigis, process.simTwinMuxDigis)

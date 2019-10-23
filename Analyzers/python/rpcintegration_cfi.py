@@ -24,6 +24,8 @@ trackcounting = cms.EDAnalyzer('TrackCounting',
 def use_fs_trackcounting(process):
     process.TFileService.fileName = process.trackcounting.outFileName.value()
 
+
+## Do not use this! Please use the one in ntupler_cfi.py instead.
 ntupler = cms.EDAnalyzer('NtupleMaker',
     emuHitTag = cms.InputTag('simEmtfDigis'),
     emuTrackTag = cms.InputTag('simEmtfDigis'),

@@ -175,10 +175,8 @@ if True:
 print("[INFO] Using GlobalTag: %s" % process.GlobalTag.globaltag.value())
 if True:
     # Ntuplize
-    process.load('L1TMuonSimulations.Analyzers.rpcintegration_cfi')
-    process.ntupler.outFileName = 'ntuple_SingleMuon_Endcap.root'
-    process.ntupler.verbosity = 0
-    process.TFileService = cms.Service('TFileService', fileName = cms.string(process.ntupler.outFileName.value()))
+    process.load('L1TMuonSimulations.Analyzers.ntupler_cfi')
+    process.TFileService = cms.Service('TFileService', fileName = process.ntupler.outFileName)
     # Modify sequences without any consequences
     #process.SimL1TMuon = cms.Sequence(process.simCscTriggerPrimitiveDigis + process.simEmtfDigis)
     process.SimL1TMuon = cms.Sequence(process.SimL1TMuonCommon + process.rpcRecHits + process.simTwinMuxDigis + process.me0TriggerPseudoDigiSequence + process.simEmtfDigis)
