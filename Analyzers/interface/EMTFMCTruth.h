@@ -10,8 +10,10 @@
 //
 
 #include "FWCore/Framework/interface/Event.h"
+#include "FWCore/Framework/interface/EventSetup.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/Framework/interface/ConsumesCollector.h"
+#include "FWCore/Framework/interface/ESHandle.h"
 #include "DataFormats/Common/interface/Handle.h"
 
 #include "SimDataFormats/TrackingHit/interface/PSimHit.h"
@@ -30,6 +32,13 @@
 //#include "SimDataFormats/Track/interface/SimTrackContainer.h"
 #include "SimDataFormats/TrackingAnalysis/interface/TrackingParticle.h"
 #include "SimDataFormats/TrackingAnalysis/interface/TrackingParticleFwd.h"
+
+#include "Geometry/CSCGeometry/interface/CSCGeometry.h"
+#include "Geometry/RPCGeometry/interface/RPCGeometry.h"
+#include "Geometry/GEMGeometry/interface/GEMGeometry.h"
+#include "Geometry/GEMGeometry/interface/ME0Geometry.h"
+#include "Geometry/DTGeometry/interface/DTGeometry.h"
+#include "Geometry/Records/interface/MuonGeometryRecord.h"
 
 // Forwards
 namespace l1t {
@@ -57,6 +66,20 @@ public:
 
   typedef std::pair<uint32_t, EncodedEventId> SimHitIdpr;
 
+  // Classes
+  struct EndcapSimHit {
+    int   type;
+    int   station;
+    int   ring;
+    int   layer;
+    int   chamber;
+    float phi;
+    float theta;
+    float eta;
+    float r;  // cm
+    float z;  // cm
+  };
+
   // Constructor
   EMTFMCTruth(const edm::ParameterSet& iConfig, edm::ConsumesCollector && iConsumes);
 
@@ -77,6 +100,9 @@ public:
   int findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const;
   int findME0DigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const;
   int findDTDigiSimLink(const l1t::EMTFHit& hit, const TrackingParticleCollection& trkPartColl) const;
+
+  // Find sim hits
+  std::vector<EndcapSimHit> findEndcapSimHits() const;
 
 
 private:
@@ -126,6 +152,12 @@ private:
   const edm::PSimHitContainer *     dtSimHitsPtr_;
   const CrossingFrame<PSimHit> *    dtSimHitsXFPtr_;
   const DTDigiSimLinks*             dtDigiSimLinksPtr_;
+
+  const CSCGeometry *   cscGeomPtr_;
+  const RPCGeometry *   rpcGeomPtr_;
+  const GEMGeometry *   gemGeomPtr_;
+  const ME0Geometry *   me0GeomPtr_;
+  const DTGeometry *    dtGeomPtr_;
 
   std::map<SimHitIdpr, int> trackingParticleLinks_;
 };

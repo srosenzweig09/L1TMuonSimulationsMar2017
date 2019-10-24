@@ -1,5 +1,6 @@
 #include "L1TMuonSimulations/Analyzers/interface/EMTFMCTruth.h"
 
+#include "DataFormats/MuonDetId/interface/DTWireId.h"
 #include "DataFormats/L1TMuon/interface/EMTFHit.h"
 //#include "DataFormats/L1TMuon/interface/EMTFTrack.h"
 #include <iostream>
@@ -63,42 +64,115 @@ EMTFMCTruth::EMTFMCTruth(const edm::ParameterSet& iConfig, edm::ConsumesCollecto
     dtSimHitsXFToken_    = iConsumes.consumes<CrossingFrame<PSimHit> >   (dtSimHitsXFTag_);
   }
   dtDigiSimLinksToken_   = iConsumes.consumes<DTDigiSimLinks>            (dtDigiSimLinksTag_);
-
 }
 
 EMTFMCTruth::~EMTFMCTruth() {}
 
 void EMTFMCTruth::initEvent(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
 
-  //// SimHits
-  //edm::Handle<edm::PSimHitContainer> cscSimHits_handle;
-  //
-  //if (!iEvent.isRealData()) {
-  //  if (!cscSimHitsToken_.isUninitialized()) {
-  //    iEvent.getByToken(cscSimHitsToken_, cscSimHits_handle);
-  //  }
-  //  if (!cscSimHits_handle.isValid()) {
-  //    edm::LogError("EMTFMCTruth") << "Cannot get the product: " << cscSimHitsTag_;
-  //  }
-  //}
-  //
-  //cscSimHitsPtr_ = cscSimHits_handle.product();
+  // PSimHits
+  edm::Handle<edm::PSimHitContainer> cscSimHits_handle;
+  edm::Handle<edm::PSimHitContainer> rpcSimHits_handle;
+  edm::Handle<edm::PSimHitContainer> gemSimHits_handle;
+  edm::Handle<edm::PSimHitContainer> me0SimHits_handle;
+  edm::Handle<edm::PSimHitContainer> dtSimHits_handle;
 
+  if (!crossingFrame_) {
+    if (!iEvent.isRealData()) {
+      if (!cscSimHitsToken_.isUninitialized()) {
+        iEvent.getByToken(cscSimHitsToken_, cscSimHits_handle);
+      }
+      if (!cscSimHits_handle.isValid()) {
+        edm::LogError("EMTFMCTruth") << "Cannot get the product: " << cscSimHitsTag_;
+      }
 
-  //// SimHits (using crossing frame)
-  //edm::Handle<CrossingFrame<PSimHit> > cscSimHitsXF_handle;
-  //
-  //if (!iEvent.isRealData()) {
-  //  if (!cscSimHitsXFToken_.isUninitialized()) {
-  //    iEvent.getByToken(cscSimHitsXFToken_, cscSimHitsXF_handle);
-  //  }
-  //  if (!cscSimHitsXF_handle.isValid()) {
-  //    edm::LogError("EMTFMCTruth") << "Cannot get the product: " << cscSimHitsXFTag_;
-  //  }
-  //}
-  //
-  //cscSimHitsXFPtr_ = cscSimHitsXF_handle.product();
+      if (!rpcSimHitsToken_.isUninitialized()) {
+        iEvent.getByToken(rpcSimHitsToken_, rpcSimHits_handle);
+      }
+      if (!rpcSimHits_handle.isValid()) {
+        edm::LogError("EMTFMCTruth") << "Cannot get the product: " << rpcSimHitsTag_;
+      }
 
+      if (!gemSimHitsToken_.isUninitialized()) {
+        iEvent.getByToken(gemSimHitsToken_, gemSimHits_handle);
+      }
+      if (!gemSimHits_handle.isValid()) {
+        edm::LogError("EMTFMCTruth") << "Cannot get the product: " << gemSimHitsTag_;
+      }
+
+      if (!me0SimHitsToken_.isUninitialized()) {
+        iEvent.getByToken(me0SimHitsToken_, me0SimHits_handle);
+      }
+      if (!me0SimHits_handle.isValid()) {
+        edm::LogError("EMTFMCTruth") << "Cannot get the product: " << me0SimHitsTag_;
+      }
+
+      if (!dtSimHitsToken_.isUninitialized()) {
+        iEvent.getByToken(dtSimHitsToken_, dtSimHits_handle);
+      }
+      if (!dtSimHits_handle.isValid()) {
+        edm::LogError("EMTFMCTruth") << "Cannot get the product: " << dtSimHitsTag_;
+      }
+
+      cscSimHitsPtr_ = cscSimHits_handle.product();
+      rpcSimHitsPtr_ = rpcSimHits_handle.product();
+      gemSimHitsPtr_ = gemSimHits_handle.product();
+      me0SimHitsPtr_ = me0SimHits_handle.product();
+      dtSimHitsPtr_ = dtSimHits_handle.product();
+    }
+  }
+
+  // PSimHits (with crossing frame)
+  edm::Handle<CrossingFrame<PSimHit> > cscSimHitsXF_handle;
+  edm::Handle<CrossingFrame<PSimHit> > rpcSimHitsXF_handle;
+  edm::Handle<CrossingFrame<PSimHit> > gemSimHitsXF_handle;
+  edm::Handle<CrossingFrame<PSimHit> > me0SimHitsXF_handle;
+  edm::Handle<CrossingFrame<PSimHit> > dtSimHitsXF_handle;
+
+  if (crossingFrame_) {
+    if (!iEvent.isRealData()) {
+      if (!cscSimHitsXFToken_.isUninitialized()) {
+        iEvent.getByToken(cscSimHitsXFToken_, cscSimHitsXF_handle);
+      }
+      if (!cscSimHitsXF_handle.isValid()) {
+        edm::LogError("EMTFMCTruth") << "Cannot get the product: " << cscSimHitsXFTag_;
+      }
+
+      if (!rpcSimHitsXFToken_.isUninitialized()) {
+        iEvent.getByToken(rpcSimHitsXFToken_, rpcSimHitsXF_handle);
+      }
+      if (!rpcSimHitsXF_handle.isValid()) {
+        edm::LogError("EMTFMCTruth") << "Cannot get the product: " << rpcSimHitsXFTag_;
+      }
+
+      if (!gemSimHitsXFToken_.isUninitialized()) {
+        iEvent.getByToken(gemSimHitsXFToken_, gemSimHitsXF_handle);
+      }
+      if (!gemSimHitsXF_handle.isValid()) {
+        edm::LogError("EMTFMCTruth") << "Cannot get the product: " << gemSimHitsXFTag_;
+      }
+
+      if (!me0SimHitsXFToken_.isUninitialized()) {
+        iEvent.getByToken(me0SimHitsXFToken_, me0SimHitsXF_handle);
+      }
+      if (!me0SimHitsXF_handle.isValid()) {
+        edm::LogError("EMTFMCTruth") << "Cannot get the product: " << me0SimHitsXFTag_;
+      }
+
+      if (!dtSimHitsXFToken_.isUninitialized()) {
+        iEvent.getByToken(dtSimHitsXFToken_, dtSimHitsXF_handle);
+      }
+      if (!dtSimHitsXF_handle.isValid()) {
+        edm::LogError("EMTFMCTruth") << "Cannot get the product: " << dtSimHitsXFTag_;
+      }
+
+      cscSimHitsXFPtr_ = cscSimHitsXF_handle.product();
+      rpcSimHitsXFPtr_ = rpcSimHitsXF_handle.product();
+      gemSimHitsXFPtr_ = gemSimHitsXF_handle.product();
+      me0SimHitsXFPtr_ = me0SimHitsXF_handle.product();
+      dtSimHitsXFPtr_ = dtSimHitsXF_handle.product();
+    }
+  }
 
   // SimLinks
   edm::Handle<StripDigiSimLinks> cscStripSimLinks_handle;
@@ -108,68 +182,81 @@ void EMTFMCTruth::initEvent(const edm::Event& iEvent, const edm::EventSetup& iSe
   edm::Handle<ME0DigiSimLinks>   me0DigiSimLinks_handle;
   edm::Handle<DTDigiSimLinks>    dtDigiSimLinks_handle;
 
-  if (!iEvent.isRealData()) {
-    if (cscStripSimLinksTag_.encode() != "") {
+  {
+    if (!iEvent.isRealData()) {
       if (!cscStripSimLinksToken_.isUninitialized()) {
         iEvent.getByToken(cscStripSimLinksToken_, cscStripSimLinks_handle);
       }
       if (!cscStripSimLinks_handle.isValid()) {
         edm::LogError("EMTFMCTruth") << "Cannot get the product: " << cscStripSimLinksTag_;
       }
-    }
 
-    if (cscWireSimLinksTag_.encode() != "") {
       if (!cscWireSimLinksToken_.isUninitialized()) {
         iEvent.getByToken(cscWireSimLinksToken_, cscWireSimLinks_handle);
       }
       if (!cscWireSimLinks_handle.isValid()) {
         edm::LogError("EMTFMCTruth") << "Cannot get the product: " << cscWireSimLinksTag_;
       }
-    }
 
-    if (rpcDigiSimLinksTag_.encode() != "") {
       if (!rpcDigiSimLinksToken_.isUninitialized()) {
         iEvent.getByToken(rpcDigiSimLinksToken_, rpcDigiSimLinks_handle);
       }
       if (!rpcDigiSimLinks_handle.isValid()) {
         edm::LogError("EMTFMCTruth") << "Cannot get the product: " << rpcDigiSimLinksTag_;
       }
-    }
 
-    if (gemDigiSimLinksTag_.encode() != "") {
       if (!gemDigiSimLinksToken_.isUninitialized()) {
         iEvent.getByToken(gemDigiSimLinksToken_, gemDigiSimLinks_handle);
       }
       if (!gemDigiSimLinks_handle.isValid()) {
         edm::LogError("EMTFMCTruth") << "Cannot get the product: " << gemDigiSimLinksTag_;
       }
-    }
 
-    if (me0DigiSimLinksTag_.encode() != "") {
       if (!me0DigiSimLinksToken_.isUninitialized()) {
         iEvent.getByToken(me0DigiSimLinksToken_, me0DigiSimLinks_handle);
       }
       if (!me0DigiSimLinks_handle.isValid()) {
         edm::LogError("EMTFMCTruth") << "Cannot get the product: " << me0DigiSimLinksTag_;
       }
-    }
 
-    if (dtDigiSimLinksTag_.encode() != "") {
       if (!dtDigiSimLinksToken_.isUninitialized()) {
         iEvent.getByToken(dtDigiSimLinksToken_, dtDigiSimLinks_handle);
       }
       if (!dtDigiSimLinks_handle.isValid()) {
         edm::LogError("EMTFMCTruth") << "Cannot get the product: " << dtDigiSimLinksTag_;
       }
+
+      cscStripSimLinksPtr_ = cscStripSimLinks_handle.product();
+      cscWireSimLinksPtr_ = cscWireSimLinks_handle.product();
+      rpcDigiSimLinksPtr_ = rpcDigiSimLinks_handle.product();
+      gemDigiSimLinksPtr_ = gemDigiSimLinks_handle.product();
+      me0DigiSimLinksPtr_ = me0DigiSimLinks_handle.product();
+      dtDigiSimLinksPtr_ = dtDigiSimLinks_handle.product();
     }
   }
 
-  cscStripSimLinksPtr_ = cscStripSimLinks_handle.product();
-  cscWireSimLinksPtr_  = cscWireSimLinks_handle.product();
-  rpcDigiSimLinksPtr_  = rpcDigiSimLinks_handle.product();
-  gemDigiSimLinksPtr_  = gemDigiSimLinks_handle.product();
-  me0DigiSimLinksPtr_  = me0DigiSimLinks_handle.product();
-  dtDigiSimLinksPtr_   = dtDigiSimLinks_handle.product();
+  // Geometry
+  edm::ESHandle<CSCGeometry> cscGeom_handle;
+  edm::ESHandle<RPCGeometry> rpcGeom_handle;
+  edm::ESHandle<GEMGeometry> gemGeom_handle;
+  edm::ESHandle<ME0Geometry> me0Geom_handle;
+  edm::ESHandle<DTGeometry>  dtGeom_handle;
+
+  {
+    const MuonGeometryRecord& geom = iSetup.get<MuonGeometryRecord>();
+    geom.get(cscGeom_handle);
+    geom.get(rpcGeom_handle);
+    geom.get(gemGeom_handle);
+    geom.get(me0Geom_handle);
+    geom.get(dtGeom_handle);
+
+    cscGeomPtr_ = cscGeom_handle.product();
+    rpcGeomPtr_ = rpcGeom_handle.product();
+    gemGeomPtr_ = gemGeom_handle.product();
+    me0GeomPtr_ = me0Geom_handle.product();
+    dtGeomPtr_ = dtGeom_handle.product();
+  }
+  return;
 }
 
 void EMTFMCTruth::makeTrackingParticleLinks(const TrackingParticleCollection& trkPartColl) {
@@ -184,7 +271,6 @@ void EMTFMCTruth::makeTrackingParticleLinks(const TrackingParticleCollection& tr
       trackingParticleLinks_[matchId] = std::distance(trkPartColl.begin(), it_trkpart);
     }
   }
-
   return;
 }
 
@@ -216,7 +302,6 @@ int EMTFMCTruth::findCSCStripSimLink(const l1t::EMTFHit& hit, const std::vector<
       }
     }
   }
-
   return findTrackingParticle(matches, trkPartColl);
 }
 
@@ -247,7 +332,6 @@ int EMTFMCTruth::findCSCWireSimLink(const l1t::EMTFHit& hit, const TrackingParti
       }
     }
   }
-
   return findTrackingParticle(matches, trkPartColl);
 }
 
@@ -358,7 +442,6 @@ int EMTFMCTruth::findGEMDigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
       }
     }
   }
-
   return findTrackingParticle(matches, trkPartColl);
 }
 
@@ -397,7 +480,6 @@ int EMTFMCTruth::findME0DigiSimLink(const l1t::EMTFHit& hit, const TrackingParti
       }
     }
   }
-
   return findTrackingParticle(matches, trkPartColl);
 }
 
@@ -429,45 +511,135 @@ int EMTFMCTruth::findDTDigiSimLink(const l1t::EMTFHit& hit, const TrackingPartic
       }
     }
   }
-
   return findTrackingParticle(matches, trkPartColl);
 }
 
 int EMTFMCTruth::findTrackingParticle(const std::map<SimHitIdpr, float>& matches, const TrackingParticleCollection& trkPartColl) const {
-
-#if 0
-  // Return highest pT
+  // Find the matched TP with the highest weight
   int best_tp = -1;  // index of the tp
-  double highest_pt = 0.;
+  float weight = 0.;
   for (std::map<SimHitIdpr, float>::const_iterator it_match = matches.begin(); it_match != matches.end(); ++it_match) {
     auto found = trackingParticleLinks_.find(it_match->first);
     if (found != trackingParticleLinks_.end()) {
       int tp = found->second;
       auto it_trkpart = trkPartColl.begin();
       std::advance(it_trkpart, tp);
-      if (highest_pt < it_trkpart->pt()) {
-        highest_pt = it_trkpart->pt();
+      if (weight < it_match->second) {
+        weight = it_match->second;
         best_tp = tp;
       }
     }
   }
-#else
-  // Return majority
-  int best_tp = -1;  // index of the tp
-  float majority = 0.;
-  for (std::map<SimHitIdpr, float>::const_iterator it_match = matches.begin(); it_match != matches.end(); ++it_match) {
-    auto found = trackingParticleLinks_.find(it_match->first);
-    if (found != trackingParticleLinks_.end()) {
-      int tp = found->second;
-      auto it_trkpart = trkPartColl.begin();
-      std::advance(it_trkpart, tp);
-      if (majority < it_match->second) {
-        majority = it_match->second;
-        best_tp = tp;
-      }
-    }
-  }
-#endif
-
   return best_tp;
+}
+
+std::vector<EMTFMCTruth::EndcapSimHit> EMTFMCTruth::findEndcapSimHits() const {
+  std::vector<EndcapSimHit> result;
+
+  // CSC
+  for (edm::PSimHitContainer::const_iterator it = cscSimHitsPtr_->begin(); it != cscSimHitsPtr_->end(); ++it) {
+    unsigned int detUnitId = it->detUnitId();
+    unsigned int simTrackId = it->trackId();
+    EncodedEventId eventId = it->eventId();
+    SimHitIdpr matchId(simTrackId, eventId);
+    auto found = trackingParticleLinks_.find(matchId);
+    if (found != trackingParticleLinks_.end()) {
+      const int subsystem = 1;
+      const CSCLayer* layer = cscGeomPtr_->layer(detUnitId);
+      const CSCDetId& id = layer->id();
+      const LocalPoint& lp = it->localPosition();
+      const GlobalPoint& gp = layer->toGlobal(lp);
+
+      EndcapSimHit e_simhit = {subsystem, id.station(), id.ring(), id.layer(), id.chamber(), gp.phi(), gp.theta(), gp.eta(), gp.perp(), gp.z()};
+      result.emplace_back(e_simhit);
+      //std::cout << "type, lay, cmb, phi, theta, eta, r, z: " << e_simhit.type << " " << e_simhit.layer << " " << e_simhit.chamber << " " << e_simhit.phi << " " << e_simhit.theta << " " << e_simhit.eta << " " << e_simhit.r << " " << e_simhit.z << std::endl;
+    }
+  }
+
+  // RPC
+  for (edm::PSimHitContainer::const_iterator it = rpcSimHitsPtr_->begin(); it != rpcSimHitsPtr_->end(); ++it) {
+    unsigned int detUnitId = it->detUnitId();
+    unsigned int simTrackId = it->trackId();
+    EncodedEventId eventId = it->eventId();
+    SimHitIdpr matchId(simTrackId, eventId);
+    auto found = trackingParticleLinks_.find(matchId);
+    if (found != trackingParticleLinks_.end()) {
+      const int subsystem = 2;
+      const RPCRoll* roll = rpcGeomPtr_->roll(detUnitId);
+      const RPCDetId& id = roll->id();
+      if (id.region() == 0)  continue;  // ignore barrel RPC
+      const bool is_irpc = (id.station() == 3 || id.station() == 4) && (id.ring() == 1);
+      const int id_chamber = is_irpc ? ((id.sector() - 1)*3 + id.subsector()) : ((id.sector() - 1)*6 + id.subsector());
+
+      const LocalPoint& lp = it->localPosition();
+      const GlobalPoint& gp = roll->toGlobal(lp);
+
+      EndcapSimHit e_simhit = {subsystem, id.station(), id.ring(), id.layer(), id_chamber, gp.phi(), gp.theta(), gp.eta(), gp.perp(), gp.z()};
+      result.emplace_back(e_simhit);
+      //std::cout << "type, lay, cmb, phi, theta, eta, r, z: " << e_simhit.type << " " << e_simhit.layer << " " << e_simhit.chamber << " " << e_simhit.phi << " " << e_simhit.theta << " " << e_simhit.eta << " " << e_simhit.r << " " << e_simhit.z << std::endl;
+    }
+  }
+
+  // GEM
+  for (edm::PSimHitContainer::const_iterator it = gemSimHitsPtr_->begin(); it != gemSimHitsPtr_->end(); ++it) {
+    unsigned int detUnitId = it->detUnitId();
+    unsigned int simTrackId = it->trackId();
+    EncodedEventId eventId = it->eventId();
+    SimHitIdpr matchId(simTrackId, eventId);
+    auto found = trackingParticleLinks_.find(matchId);
+    if (found != trackingParticleLinks_.end()) {
+      const int subsystem = 3;
+      const GEMEtaPartition* roll = gemGeomPtr_->etaPartition(detUnitId);
+      const GEMDetId& id = roll->id();
+      const LocalPoint& lp = it->localPosition();
+      const GlobalPoint& gp = roll->toGlobal(lp);
+
+      EndcapSimHit e_simhit = {subsystem, id.station(), id.ring(), id.layer(), id.chamber(), gp.phi(), gp.theta(), gp.eta(), gp.perp(), gp.z()};
+      result.emplace_back(e_simhit);
+      //std::cout << "type, lay, cmb, phi, theta, eta, r, z: " << e_simhit.type << " " << e_simhit.layer << " " << e_simhit.chamber << " " << e_simhit.phi << " " << e_simhit.theta << " " << e_simhit.eta << " " << e_simhit.r << " " << e_simhit.z << std::endl;
+    }
+  }
+
+  // ME0
+  for (edm::PSimHitContainer::const_iterator it = me0SimHitsPtr_->begin(); it != me0SimHitsPtr_->end(); ++it) {
+    unsigned int detUnitId = it->detUnitId();
+    unsigned int simTrackId = it->trackId();
+    EncodedEventId eventId = it->eventId();
+    SimHitIdpr matchId(simTrackId, eventId);
+    auto found = trackingParticleLinks_.find(matchId);
+    if (found != trackingParticleLinks_.end()) {
+      const int subsystem = 4;
+      const ME0EtaPartition* roll = me0GeomPtr_->etaPartition(detUnitId);
+      const ME0DetId& id = roll->id();
+      const LocalPoint& lp = it->localPosition();
+      const GlobalPoint& gp = roll->toGlobal(lp);
+
+      EndcapSimHit e_simhit = {subsystem, id.station(), 1, id.layer(), id.chamber(), gp.phi(), gp.theta(), gp.eta(), gp.perp(), gp.z()};
+      result.emplace_back(e_simhit);
+      //std::cout << "type, lay, cmb, phi, theta, eta, r, z: " << e_simhit.type << " " << e_simhit.layer << " " << e_simhit.chamber << " " << e_simhit.phi << " " << e_simhit.theta << " " << e_simhit.eta << " " << e_simhit.r << " " << e_simhit.z << std::endl;
+    }
+  }
+
+  // DT
+  for (edm::PSimHitContainer::const_iterator it = dtSimHitsPtr_->begin(); it != dtSimHitsPtr_->end(); ++it) {
+    unsigned int detUnitId = it->detUnitId();
+    unsigned int simTrackId = it->trackId();
+    EncodedEventId eventId = it->eventId();
+    SimHitIdpr matchId(simTrackId, eventId);
+    auto found = trackingParticleLinks_.find(matchId);
+    if (found != trackingParticleLinks_.end()) {
+      const int subsystem = 0;
+      const DTWireId wireid(detUnitId);
+      const DTLayer* layer = dtGeomPtr_->layer(wireid.layerId());
+      const DTLayerId& id = layer->id();
+      const LocalPoint& lp = it->localPosition();
+      const GlobalPoint& gp = layer->toGlobal(lp);
+
+      EndcapSimHit e_simhit = {subsystem, id.station(), 1, id.layer(), id.sector(), gp.phi(), gp.theta(), gp.eta(), gp.perp(), gp.z()};
+      result.emplace_back(e_simhit);
+      //std::cout << "type, lay, cmb, phi, theta, eta, r, z: " << e_simhit.type << " " << e_simhit.layer << " " << e_simhit.chamber << " " << e_simhit.phi << " " << e_simhit.theta << " " << e_simhit.eta << " " << e_simhit.r << " " << e_simhit.z << std::endl;
+    }
+  }
+
+  return result;
 }

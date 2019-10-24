@@ -150,6 +150,19 @@ private:
   std::unique_ptr<std::vector<int32_t> >  vh_sim_tp2;
   std::unique_ptr<int32_t              >  vh_size;
 
+  // EndcapSimHits
+  std::unique_ptr<std::vector<int16_t> >  vc_type;
+  std::unique_ptr<std::vector<int16_t> >  vc_station;
+  std::unique_ptr<std::vector<int16_t> >  vc_ring;
+  std::unique_ptr<std::vector<int16_t> >  vc_layer;
+  std::unique_ptr<std::vector<int16_t> >  vc_chamber;
+  std::unique_ptr<std::vector<float  > >  vc_phi;
+  std::unique_ptr<std::vector<float  > >  vc_theta;
+  std::unique_ptr<std::vector<float  > >  vc_eta;
+  std::unique_ptr<std::vector<float  > >  vc_r;
+  std::unique_ptr<std::vector<float  > >  vc_z;
+  std::unique_ptr<int32_t              >  vc_size;
+
   // Tracks
   std::unique_ptr<std::vector<float  > >  vt_pt;
   std::unique_ptr<std::vector<float  > >  vt_xml_pt;
@@ -610,6 +623,23 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   (*vh_size) = emuHits_.size();
 
   // ___________________________________________________________________________
+  // EndcapSimHits
+  const std::vector<EMTFMCTruth::EndcapSimHit>& endcapSimHits = truth_.findEndcapSimHits();
+  for (const auto& hit : endcapSimHits) {
+    vc_type       ->push_back(hit.type);
+    vc_station    ->push_back(hit.station);
+    vc_ring       ->push_back(hit.ring);
+    vc_layer      ->push_back(hit.layer);
+    vc_chamber    ->push_back(hit.chamber);
+    vc_phi        ->push_back(hit.phi);
+    vc_theta      ->push_back(hit.theta);
+    vc_eta        ->push_back(hit.eta);
+    vc_r          ->push_back(hit.r);
+    vc_z          ->push_back(hit.z);
+  }
+  (*vc_size) = endcapSimHits.size();
+
+  // ___________________________________________________________________________
   // Tracks
   for (const auto& trk : emuTracks_) {
     const std::vector<int32_t>& hit_refs = get_hit_refs(trk, emuHits_);
@@ -811,6 +841,19 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   vh_sim_tp2    ->clear();
   (*vh_size)    = 0;
 
+  // EndcapSimHits
+  vc_type       ->clear();
+  vc_station    ->clear();
+  vc_ring       ->clear();
+  vc_layer      ->clear();
+  vc_chamber    ->clear();
+  vc_phi        ->clear();
+  vc_theta      ->clear();
+  vc_eta        ->clear();
+  vc_r          ->clear();
+  vc_z          ->clear();
+  (*vc_size)    = 0;
+
   // Tracks
   vt_pt         ->clear();
   vt_xml_pt     ->clear();
@@ -934,6 +977,19 @@ void NtupleMaker::makeTree() {
   vh_sim_tp2    = std::make_unique<std::vector<int32_t> >();
   vh_size       = std::make_unique<int32_t>(0);
 
+  // EndcapSimHits
+  vc_type       = std::make_unique<std::vector<int16_t> >();
+  vc_station    = std::make_unique<std::vector<int16_t> >();
+  vc_ring       = std::make_unique<std::vector<int16_t> >();
+  vc_layer      = std::make_unique<std::vector<int16_t> >();
+  vc_chamber    = std::make_unique<std::vector<int16_t> >();
+  vc_phi        = std::make_unique<std::vector<float  > >();
+  vc_theta      = std::make_unique<std::vector<float  > >();
+  vc_eta        = std::make_unique<std::vector<float  > >();
+  vc_r          = std::make_unique<std::vector<float  > >();
+  vc_z          = std::make_unique<std::vector<float  > >();
+  vc_size       = std::make_unique<int32_t>(0);
+
   // Tracks
   vt_pt         = std::make_unique<std::vector<float  > >();
   vt_xml_pt     = std::make_unique<std::vector<float  > >();
@@ -1037,6 +1093,19 @@ void NtupleMaker::makeTree() {
   tree->Branch("vh_sim_tp1"   , &(*vh_sim_tp1   ));
   tree->Branch("vh_sim_tp2"   , &(*vh_sim_tp2   ));
   tree->Branch("vh_size"      , &(*vh_size      ));
+
+  // EndcapSimHits
+  tree->Branch("vc_type"      , &(*vc_type      ));
+  tree->Branch("vc_station"   , &(*vc_station   ));
+  tree->Branch("vc_ring"      , &(*vc_ring      ));
+  tree->Branch("vc_layer"     , &(*vc_layer     ));
+  tree->Branch("vc_chamber"   , &(*vc_chamber   ));
+  tree->Branch("vc_phi"       , &(*vc_phi       ));
+  tree->Branch("vc_theta"     , &(*vc_theta     ));
+  tree->Branch("vc_eta"       , &(*vc_eta       ));
+  tree->Branch("vc_r"         , &(*vc_r         ));
+  tree->Branch("vc_z"         , &(*vc_z         ));
+  tree->Branch("vc_size"      , &(*vc_size      ));
 
   // Tracks
   tree->Branch("vt_pt"        , &(*vt_pt        ));
