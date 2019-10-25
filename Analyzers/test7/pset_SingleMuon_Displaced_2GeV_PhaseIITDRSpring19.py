@@ -95,10 +95,10 @@ process.VtxSmeared = cms.EDProducer("FlatEvtVtxGenerator2",
     FlatVtxSmearingParameters,
     VtxSmearedCommon
 )
-process.VtxSmeared.MaxX = cms.double(120)            # was 0.0015
-process.VtxSmeared.MaxY = cms.double(120)            # was 0.0015
-process.VtxSmeared.MaxZ = cms.double(30)             # was 5.3
-process.VtxSmeared.MaxT = cms.double(30/29.9792458)  # was 0.176789
+process.VtxSmeared.MaxX = cms.double(150)            # was 0.0015
+process.VtxSmeared.MaxY = cms.double(150)            # was 0.0015
+process.VtxSmeared.MaxZ = cms.double(30)             # was 5.3      # NO EFFECT
+process.VtxSmeared.MaxT = cms.double(30/29.9792458)  # was 0.176789 # NO EFFECT
 process.VtxSmeared.MinX = cms.double(-1*process.VtxSmeared.MaxX.value())
 process.VtxSmeared.MinY = cms.double(-1*process.VtxSmeared.MaxY.value())
 process.VtxSmeared.MinZ = cms.double(-1*process.VtxSmeared.MaxZ.value())
