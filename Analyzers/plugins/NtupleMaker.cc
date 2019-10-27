@@ -35,6 +35,7 @@
 #include "DataFormats/L1TMuon/interface/EMTFTrack.h"
 #include "L1Trigger/L1TMuonEndCap/interface/TrackTools.h"
 
+#include "L1TMuonSimulations/Analyzers/interface/EMTFParticleTools.h"
 #include "L1TMuonSimulations/Analyzers/interface/EMTFMCTruth.h"
 
 
@@ -217,6 +218,8 @@ private:
   std::unique_ptr<std::vector<float  > >  vp_vx;
   std::unique_ptr<std::vector<float  > >  vp_vy;
   std::unique_ptr<std::vector<float  > >  vp_vz;
+  std::unique_ptr<std::vector<float  > >  vp_invpt;
+  std::unique_ptr<std::vector<float  > >  vp_d0;
   std::unique_ptr<std::vector<int16_t> >  vp_q;  // charge
   std::unique_ptr<std::vector<int16_t> >  vp_bx;
   std::unique_ptr<std::vector<int16_t> >  vp_event;
@@ -399,8 +402,8 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
       // Primary+charged: pT > 0.2 GeV, |eta| < 3.0, |rho0| < 0.5 cm, |z0| < 30 cm
       //bool primary = (part.charge() != 0 && part.pt() > 0.2 && std::abs(part.eta()) < 3.0 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 0.5 && std::abs(part.vz()) < 30.0);
 
-      // Primary+secondary pT > 0.5 GeV, |eta| < 3.0, |rho0| < 300 cm, |z0| < 100 cm
-      bool secondary = (part.charge() != 0 && part.pt() > 0.5 && std::abs(part.eta()) < 3.0 && std::sqrt(part.vx() * part.vx() + part.vy() * part.vy()) < 300.0 && std::abs(part.vz()) < 100.0);
+      // Primary+secondary pT > 0.5 GeV, |eta| < 3.0, |x0| < 300 cm, |y0| < 300 cm, |z0| < 500 cm
+      bool secondary = (part.charge() != 0 && part.pt() > 0.5 && std::abs(part.eta()) <= 3.0 && std::abs(part.vx()) <= 300. && std::abs(part.vy()) <= 300. && std::abs(part.vz()) <= 500.);
 
       // Do not decay
       //bool nodecay = (part.decayVertices().empty());
@@ -464,6 +467,10 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   auto isFront = [&](const auto& hit) {
     return isFront_detail(hit.Subsystem(), hit.Station(), hit.Ring(), hit.Chamber(), (hit.Subsystem() == TriggerPrimitive::kRPC ? hit.Subsector_RPC() : hit.Subsector()));
   };
+
+  auto calc_invpt = EMTFInversePt();
+
+  auto calc_d0 = EMTFDZero();
 
   auto prepare_sim_tp = [&]() {
     truth_.makeTrackingParticleLinks(trkParts_);
@@ -747,6 +754,8 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   //  vp_vx         ->push_back(part.vx());
   //  vp_vy         ->push_back(part.vy());
   //  vp_vz         ->push_back(part.vz());
+  //  vp_invpt      ->push_back(calc_invpt(part.charge(), part.pt()));
+  //  vp_d0         ->push_back(calc_d0(calc_invpt(part.charge(), part.pt()), part.phi(), part.vx(), part.vy()));
   //  vp_q          ->push_back(part.charge());
   //  vp_bx         ->push_back(0);
   //  vp_event      ->push_back(0);
@@ -775,6 +784,8 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
     vp_vx         ->push_back(part.vx());
     vp_vy         ->push_back(part.vy());
     vp_vz         ->push_back(part.vz());
+    vp_invpt      ->push_back(calc_invpt(part.charge(), part.pt()));
+    vp_d0         ->push_back(calc_d0(calc_invpt(part.charge(), part.pt()), part.phi(), part.vx(), part.vy()));
     vp_q          ->push_back(part.charge());
     vp_bx         ->push_back(part.eventId().bunchCrossing());
     vp_event      ->push_back(part.eventId().event());
@@ -908,6 +919,8 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   vp_vx         ->clear();
   vp_vy         ->clear();
   vp_vz         ->clear();
+  vp_invpt      ->clear();
+  vp_d0         ->clear();
   vp_q          ->clear();
   vp_bx         ->clear();
   vp_event      ->clear();
@@ -1044,6 +1057,8 @@ void NtupleMaker::makeTree() {
   vp_vx         = std::make_unique<std::vector<float  > >();
   vp_vy         = std::make_unique<std::vector<float  > >();
   vp_vz         = std::make_unique<std::vector<float  > >();
+  vp_invpt      = std::make_unique<std::vector<float  > >();
+  vp_d0         = std::make_unique<std::vector<float  > >();
   vp_q          = std::make_unique<std::vector<int16_t> >();
   vp_bx         = std::make_unique<std::vector<int16_t> >();
   vp_event      = std::make_unique<std::vector<int16_t> >();
@@ -1161,6 +1176,8 @@ void NtupleMaker::makeTree() {
   tree->Branch("vp_vx"        , &(*vp_vx        ));
   tree->Branch("vp_vy"        , &(*vp_vy        ));
   tree->Branch("vp_vz"        , &(*vp_vz        ));
+  tree->Branch("vp_invpt"     , &(*vp_invpt     ));
+  tree->Branch("vp_d0"        , &(*vp_d0        ));
   tree->Branch("vp_q"         , &(*vp_q         ));
   tree->Branch("vp_bx"        , &(*vp_bx        ));
   tree->Branch("vp_event"     , &(*vp_event     ));
