@@ -10,7 +10,7 @@ from emtfpp_algos import *
 
 
 # ______________________________________________________________________________
-# Classes
+# Analyses
 
 class _BaseAnalysis(object):
   """Abstract base class"""
@@ -42,14 +42,14 @@ class DummyAnalysis(_BaseAnalysis):
         print('.. part {0} {1} {2} {3} {4} {5}'.format(0, part.pt, part.eta, part.phi, part.invpt, part.d0))
 
       # Sim hits
-      for isimhit, simhit in enumerate(evt.simhits):
-        if verbosity >= kINFO:
+      if verbosity >= kINFO:
+        for isimhit, simhit in enumerate(evt.simhits):
           simhit_id = (simhit.type, simhit.layer, simhit.chamber)
           print('.. simhit {0} {1} {2} {3}'.format(isimhit, simhit_id, simhit.phi, simhit.theta))
 
       # Trigger primitives
-      for ihit, hit in enumerate(evt.hits):
-        if verbosity >= kINFO:
+      if verbosity >= kINFO:
+        for ihit, hit in enumerate(evt.hits):
           hit_id = (hit.type, hit.station, hit.ring, find_endsec(hit.endcap, hit.sector), hit.fr, hit.bx)
           hit_sim_tp = hit.sim_tp1
           if (hit.type == kCSC) and (hit_sim_tp != hit.sim_tp2):
@@ -67,6 +67,60 @@ class ZoneAnalysis(_BaseAnalysis):
   """
 
   def run(self, algo, pileup=200):
+    # Overwrite eta bins
+    eta_bins = (0.8, 1.2, 1.55, 1.98, 2.5)
+    eta_bins = eta_bins[::-1]
+
+    def find_eta_bin(eta):
+      ieta = np.digitize((np.abs(eta),), eta_bins[1:])[0]  # skip lowest edge
+      ieta = np.clip(ieta, 0, len(eta_bins)-2)
+      return ieta
+
+    nzones = len(eta_bins) - 1
+    out = {}  # dict of dict
+    for zone in range(nzones):
+      out[zone] = {}
+
+    # __________________________________________________________________________
+    # Load tree
+    tree = load_pgun_batch(jobid)
+    verbosity = 1
+
+    # Loop over events
+    for ievt, evt in enumerate(tree):
+      if maxevents != -1 and ievt == maxevents:
+        break
+
+      # Particles (pT > 4 GeV)
+      part = evt.particles[0]  # particle gun
+      if not (part.pt > 4):
+        continue
+
+      zone = find_eta_bin(part.eta)
+
+      # Trigger primitives
+      for ihit, hit in enumerate(evt.hits):
+        lay = find_emtf_layer(hit)
+        d = out[zone]
+        if lay not in d:
+          d[lay] = []
+        d[lay].append(hit.emtf_theta)
+
+    # End loop over events
+
+    # __________________________________________________________________________
+    # Print results
+    for zone in range(nzones):
+      d = out[zone]
+      keys = sorted(d.keys())
+      for k in keys:
+        lay = k
+        alist = d[lay]
+        n = len(alist)
+        if n > 100:
+          p = np.percentile(alist, [1,2,2.5,3], overwrite_input=True)
+          q = np.percentile(alist, [97,97.5,98,99], overwrite_input=True)
+          print(zone, '%03i' % lay, '%5i' % n, p, q)
     return
 
 
@@ -80,14 +134,14 @@ algo = 'default'  # phase 2
 #algo = 'run3'
 
 # Analysis mode (pick one)
-analysis = 'dummy'
-#analysis = 'zone'
+#analysis = 'dummy'
+analysis = 'zone'
 
 # Job id (pick an integer)
 jobid = 0
 
 # Max num of events (-1 means all events)
-maxevents = 100
+maxevents = -1
 
 # Condor or not
 # if 'CONDOR_EXEC' is defined, overwrite the 3 arguments (algo, analysis, jobid)

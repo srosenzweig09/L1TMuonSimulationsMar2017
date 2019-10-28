@@ -10,7 +10,7 @@ from emtfpp_algos import *
 
 
 # ______________________________________________________________________________
-# Classes
+# Analyses
 
 class _BaseAnalysis(object):
   """Abstract base class"""
