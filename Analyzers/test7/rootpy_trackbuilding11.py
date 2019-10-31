@@ -3422,13 +3422,13 @@ def load_minbias_batch_for_effie(k, pileup=200):
 
 def load_displacedmuons_batch(k, pileup=200):
   if pileup == 0:
-    pufiles = [eos_prefix + 'ntuple_DisplacedMuons_Pt2to10_PU0_PhaseIITDRSpring19/DisplacedMuons_Pt2to10_Dxy0to3000-pythia8-gun/CRAB3/191021_191613/0000/ntuple_%i.root' % (i+1) for i in range(5)]
-    pufiles += [eos_prefix + 'ntuple_DisplacedMuons_Pt10to30_PU0_PhaseIITDRSpring19/DisplacedMuons_Pt10to30_Dxy0to3000-pythia8-gun/CRAB3/191021_191728/0000/ntuple_%i.root' % (i+1) for i in range(5)]
-    pufiles += [eos_prefix + 'ntuple_DisplacedMuons_Pt30to100_PU0_PhaseIITDRSpring19/DisplacedMuons_Pt30to100_Dxy0to3000-pythia8-gun/CRAB3/191021_191842/0000/ntuple_%i.root' % (i+1) for i in range(5)]
+    pufiles = [eos_prefix + 'ntuple_DisplacedMuons_Pt2to10_PU0_PhaseIITDRSpring19/DisplacedMuons_Pt2to10_Dxy0to3000-pythia8-gun/CRAB3/191029_223902/0000/ntuple_%i.root' % (i+1) for i in range(5)]
+    pufiles += [eos_prefix + 'ntuple_DisplacedMuons_Pt10to30_PU0_PhaseIITDRSpring19/DisplacedMuons_Pt10to30_Dxy0to3000-pythia8-gun/CRAB3/191029_224011/0000/ntuple_%i.root' % (i+1) for i in range(5)]
+    pufiles += [eos_prefix + 'ntuple_DisplacedMuons_Pt30to100_PU0_PhaseIITDRSpring19/DisplacedMuons_Pt30to100_Dxy0to3000-pythia8-gun/CRAB3/191029_224123/0000/ntuple_%i.root' % (i+1) for i in range(5)]
   elif pileup == 200:
-    pufiles = [eos_prefix + 'ntuple_DisplacedMuons_Pt2to10_PU200_PhaseIITDRSpring19/DisplacedMuons_Pt2to10_Dxy0to3000-pythia8-gun/CRAB3/191021_193046/0000/ntuple_%i.root' % (i+1) for i in range(15)]
-    pufiles += [eos_prefix + 'ntuple_DisplacedMuons_Pt10to30_PU200_PhaseIITDRSpring19/DisplacedMuons_Pt10to30_Dxy0to3000-pythia8-gun/CRAB3/191021_193158/0000/ntuple_%i.root' % (i+1) for i in range(15)]
-    pufiles += [eos_prefix + 'ntuple_DisplacedMuons_Pt30to100_PU200_PhaseIITDRSpring19/DisplacedMuons_Pt30to100_Dxy0to3000-pythia8-gun/CRAB3/191021_193312/0000/ntuple_%i.root' % (i+1) for i in range(11)]
+    pufiles = [eos_prefix + 'ntuple_DisplacedMuons_Pt2to10_PU200_PhaseIITDRSpring19/DisplacedMuons_Pt2to10_Dxy0to3000-pythia8-gun/CRAB3/191029_224232/0000/ntuple_%i.root' % (i+1) for i in range(15)]
+    pufiles += [eos_prefix + 'ntuple_DisplacedMuons_Pt10to30_PU200_PhaseIITDRSpring19/DisplacedMuons_Pt10to30_Dxy0to3000-pythia8-gun/CRAB3/191029_224340/0000/ntuple_%i.root' % (i+1) for i in range(15)]
+    pufiles += [eos_prefix + 'ntuple_DisplacedMuons_Pt30to100_PU200_PhaseIITDRSpring19/DisplacedMuons_Pt30to100_Dxy0to3000-pythia8-gun/CRAB3/191029_224451/0000/ntuple_%i.root' % (i+1) for i in range(11)]
   else:
     raise RuntimeError('Cannot recognize pileup: {0}'.format(pileup))
   #
@@ -3437,10 +3437,10 @@ def load_displacedmuons_batch(k, pileup=200):
 
 def load_darksusy_batch(k, pileup=200):
   if pileup == 200:
-    #pufiles = [eos_prefix + 'ntuple_DarkSUSY_ctau1_PU200_PhaseIITDRSpring19/DarkSUSY_mH_125_mGammaD_20_cT_1_TuneCP5_14TeV_pythia8/CRAB3/191021_195222/0000/ntuple_%i.root' % (i+1) for i in range(10)]
-    #pufiles = [eos_prefix + 'ntuple_DarkSUSY_ctau10_PU200_PhaseIITDRSpring19/DarkSUSY_mH_125_mGammaD_20_cT_10_TuneCP5_14TeV_pythia8/CRAB3/191021_195430/0000/ntuple_%i.root' % (i+1) for i in range(10)]
-    #pufiles = [eos_prefix + 'ntuple_DarkSUSY_ctau100_PU200_PhaseIITDRSpring19/DarkSUSY_mH_125_mGammaD_20_cT_100_TuneCP5_14TeV_pythia8/CRAB3/191021_195541/0000/ntuple_%i.root' % (i+1) for i in range(11)]
-    pufiles = [eos_prefix + 'ntuple_DarkSUSY_ctau1000_PU200_PhaseIITDRSpring19/DarkSUSY_mH_125_mGammaD_20_cT_1000_TuneCP5_14TeV_pythia8/CRAB3/191021_195656/0000/ntuple_%i.root' % (i+1) for i in range(10)]
+    #pufiles = [eos_prefix + 'ntuple_DarkSUSY_ctau1_PU200_PhaseIITDRSpring19/DarkSUSY_mH_125_mGammaD_20_cT_1_TuneCP5_14TeV_pythia8/CRAB3/191029_224601/0000/ntuple_%i.root' % (i+1) for i in range(10)]
+    #pufiles = [eos_prefix + 'ntuple_DarkSUSY_ctau10_PU200_PhaseIITDRSpring19/DarkSUSY_mH_125_mGammaD_20_cT_10_TuneCP5_14TeV_pythia8/CRAB3/191029_224710/0000/ntuple_%i.root' % (i+1) for i in range(10)]
+    #pufiles = [eos_prefix + 'ntuple_DarkSUSY_ctau100_PU200_PhaseIITDRSpring19/DarkSUSY_mH_125_mGammaD_20_cT_100_TuneCP5_14TeV_pythia8/CRAB3/191029_224822/0000/ntuple_%i.root' % (i+1) for i in range(11)]
+    pufiles = [eos_prefix + 'ntuple_DarkSUSY_ctau1000_PU200_PhaseIITDRSpring19/DarkSUSY_mH_125_mGammaD_20_cT_1000_TuneCP5_14TeV_pythia8/CRAB3/191029_224931/0000/ntuple_%i.root' % (i+1) for i in range(10)]
   else:
     raise RuntimeError('Cannot recognize pileup: {0}'.format(pileup))
   #
