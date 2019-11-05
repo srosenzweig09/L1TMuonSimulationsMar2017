@@ -194,53 +194,6 @@ class EMTFZoneCol(object):
     zone_col = (hit.emtf_phi + (emtf_strip_unit//2))//emtf_strip_unit
     return zone_col
 
-# Decide EMTF hit bend
-class EMTFBend(object):
-  def __call__(self, hit):
-    emtf_bend = np.int32(hit.bend)
-    if hit.type == kCSC:
-      # Special case for ME1/1a:
-      # rescale the bend to the same scale as ME1/1b
-      if hit.station == 1 and hit.ring == 4:
-        emtf_bend = np.round(emtf_bend.astype(np.float32) * 0.026331/0.014264).astype(np.int32)
-        emtf_bend = np.clip(emtf_bend, -32, 31)
-      emtf_bend *= hit.endcap
-      emtf_bend = np.round(emtf_bend.astype(np.float32) * 0.5001).astype(np.int32)  # from 1/32-strip unit to 1/16-strip unit
-      emtf_bend = np.clip(emtf_bend, -16, 15)
-    elif hit.type == kME0:
-      emtf_bend = np.round(emtf_bend.astype(np.float32) * 0.5001).astype(np.int32)  # from 1/4-strip unit to 1/2-strip unit
-      emtf_bend = np.clip(emtf_bend, -64, 63)
-    elif hit.type == kDT:
-      if hit.quality >= 4:
-        emtf_bend = np.clip(emtf_bend, -512, 511)
-      else:
-        #emtf_bend = np.int32(0)
-        emtf_bend = np.clip(emtf_bend, -512, 511)
-    else:  # kRPC, kGEM
-      emtf_bend = np.int32(0)
-    return emtf_bend
-
-# Decide EMTF hit bend (old version)
-class EMTFOldBend(object):
-  def __init__(self):
-    self.lut = np.array([5, -5, 4, -4, 3, -3, 2, -2, 1, -1, 0], dtype=np.int32)
-
-  def __call__(self, hit):
-    if hit.type == kCSC:
-      clct = int(hit.pattern)
-      bend = self.lut[clct]
-      bend *= hit.endcap
-    #elif hit.type == kGEM:
-    #  bend = np.int32(hit.bend)
-    #  bend *= hit.endcap
-    elif hit.type == kME0:
-      bend = np.int32(hit.bend)
-    elif hit.type == kDT:
-      bend = np.int32(hit.bend)
-    else:  # kRPC, kGEM
-      bend = np.int32(0)
-    return bend
-
 # Decide EMTF hit phi (integer unit)
 class EMTFPhi(object):
   def __call__(self, hit):
@@ -394,11 +347,82 @@ class EMTFTheta(object):
       pass
     return emtf_theta
 
+# Decide EMTF hit bend
+class EMTFBend(object):
+  def __call__(self, hit):
+    emtf_bend = np.int32(hit.bend)
+    if hit.type == kCSC:
+      # Special case for ME1/1a:
+      # rescale the bend to the same scale as ME1/1b
+      if hit.station == 1 and hit.ring == 4:
+        emtf_bend = np.round(emtf_bend.astype(np.float32) * 0.026331/0.014264).astype(np.int32)
+        emtf_bend = np.clip(emtf_bend, -32, 31)
+      emtf_bend *= hit.endcap
+      emtf_bend = np.round(emtf_bend.astype(np.float32) * 0.5001).astype(np.int32)  # from 1/32-strip unit to 1/16-strip unit
+      emtf_bend = np.clip(emtf_bend, -16, 15)
+    elif hit.type == kME0:
+      emtf_bend = np.round(emtf_bend.astype(np.float32) * 0.5001).astype(np.int32)  # from 1/4-strip unit to 1/2-strip unit
+      emtf_bend = np.clip(emtf_bend, -64, 63)
+    elif hit.type == kDT:
+      if hit.quality >= 4:
+        emtf_bend = np.clip(emtf_bend, -512, 511)
+      else:
+        #emtf_bend = np.int32(0)
+        emtf_bend = np.clip(emtf_bend, -512, 511)
+    else:  # kRPC, kGEM
+      emtf_bend = np.int32(0)
+    return emtf_bend
+
+# Decide EMTF hit bend (old version)
+class EMTFOldBend(object):
+  def __init__(self):
+    self.lut = np.array([5, -5, 4, -4, 3, -3, 2, -2, 1, -1, 0], dtype=np.int32)
+
+  def __call__(self, hit):
+    if hit.type == kCSC:
+      clct = int(hit.pattern)
+      bend = self.lut[clct]
+      bend *= hit.endcap
+    #elif hit.type == kGEM:
+    #  bend = np.int32(hit.bend)
+    #  bend *= hit.endcap
+    elif hit.type == kME0:
+      bend = np.int32(hit.bend)
+    elif hit.type == kDT:
+      bend = np.int32(hit.bend)
+    else:  # kRPC, kGEM
+      bend = np.int32(0)
+    return bend
+
 # Decide EMTF hit quality
+# Currently using F/R for CSC & ME0, time for RPC
 class EMTFQuality(object):
   def __call__(self, hit):
+    emtf_qual = np.int32(0)
+    if hit.type == kCSC or hit.type == kME0:
+      if int(hit.fr) == 1:
+        emtf_qual += 1
+      else:
+        emtf_qual -= 1
+    elif hit.type == kRPC:
+      emtf_qual += hit.time
+      emtf_qual = np.clip(emtf_qual, -8, 7)
+    else:  # kGEM, kDT
+      pass
+    return emtf_qual
+
+# Decide EMTF hit quality (old version)
+class EMTFOldQuality(object):
+  def __call__(self, hit):
     emtf_qual = np.int32(hit.quality)
-    if hit.type == kRPC or hit.type == kGEM:
+    if hit.type == kCSC or hit.type == kME0:
+      # front chamber -> +1
+      # rear chamber  -> -1
+      if int(hit.fr) == 1:
+        emtf_qual *= +1
+      else:
+        emtf_qual *= -1
+    elif hit.type == kRPC or hit.type == kGEM:
       emtf_qual = np.int32(0)
     else:  # kDT
       pass
@@ -407,8 +431,8 @@ class EMTFQuality(object):
 # Decide EMTF hit time (integer unit)
 class EMTFTime(object):
   def __call__(self, hit):
-    emtf_time = hit.time
-    #emtf_time = np.int32(hit.bx)
+    emtf_time = np.int32(hit.time)
+    emtf_time = np.clip(emtf_time, -8, 7)
     return emtf_time
 
 # Functionalize
@@ -416,12 +440,13 @@ find_emtf_layer = EMTFLayer()
 find_emtf_zones = EMTFZone()
 find_emtf_zone_row = EMTFZoneRow()
 find_emtf_zone_col = EMTFZoneCol()
-find_emtf_bend = EMTFBend()
-find_emtf_old_bend = EMTFOldBend()
 find_emtf_phi = EMTFPhi()
 find_emtf_old_phi = EMTFOldPhi()
 find_emtf_theta = EMTFTheta()
+find_emtf_bend = EMTFBend()
+find_emtf_old_bend = EMTFOldBend()
 find_emtf_qual = EMTFQuality()
+find_emtf_old_qual = EMTFOldQuality()
 find_emtf_time = EMTFTime()
 
 # Decide whether hit is very legal and very cool
@@ -430,7 +455,7 @@ def is_emtf_legit_hit(hit):
     if hit.type == kCSC:
       return hit.bx in (-1,0)
     elif hit.type == kDT:
-      return hit.bx in (-1,0)
+      return hit.bx in (-1,0,+1)
     else:
       return hit.bx == 0
   def check_phi(hit):

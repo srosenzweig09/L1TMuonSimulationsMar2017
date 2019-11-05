@@ -104,7 +104,7 @@ class EMTFZoneArtist(object):
       # Pick up theta ambiguities
       assert(len(self.zones[ind]) == 1)
       ahit = self.zones[ind][0]
-      ahit.emtf_theta_alt = ahit.emtf_theta
+      ahit.emtf_theta_alt = 0
       if ahit.type == kCSC:
         for hit in alist:
           if ahit.chamber == hit.chamber and ahit.strip == hit.strip and ahit.wire != hit.wire:
@@ -114,11 +114,11 @@ class EMTFZoneArtist(object):
     if len(self.zones[ind]) == 0:
       return None
 
-    # 8 members: zone, zone_row, emtf_phi, emtf_bend,
-    #            emtf_theta, emtf_theta_alt, emtf_qual, emtf_time
+    # 7 members: zone, zone_row, emtf_phi, emtf_bend,
+    #            emtf_theta, emtf_theta_alt, emtf_qual
     assert(len(self.zones[ind]) == 1)
     hit = self.zones[ind][0]
-    arr = np.zeros(8, dtype=np.int32)
+    arr = np.zeros(7, dtype=np.int32)
     arr[0] = ind[0]
     arr[1] = ind[1]
     arr[2] = hit.emtf_phi
@@ -126,7 +126,6 @@ class EMTFZoneArtist(object):
     arr[4] = hit.emtf_theta
     arr[5] = hit.emtf_theta_alt
     arr[6] = find_emtf_qual(hit)
-    arr[7] = find_emtf_time(hit)
     return arr
 
   def squeeze(self):
@@ -163,16 +162,22 @@ class EMTFZoneScientist(object):
     if len(self.zones[ind]) == 0:
       return None
 
-    # 4 members: zone, zone_row, emtf_phi, emtf_theta
+    # 7 members: zone, zone_row, emtf_phi, emtf_bend,
+    #            emtf_theta, emtf_theta_alt, emtf_qual
     assert(len(self.zones[ind]) >= 1)
-    hits = self.zones[ind]
-    hits_phi = sorted([hit.emtf_phi for hit in hits])
-    hits_theta = sorted([hit.emtf_theta for hit in hits])
-    arr = np.zeros(4, dtype=np.int32)
+    sorted_hits = sorted(self.zones[ind], key=lambda hit: hit.layer)
+    if sorted_hits[0].type == kRPC or sorted_hits[0].type == kGEM:
+      sorted_hits = sorted_hits[0:1]  # only keep one layer
+    hits_phi = [hit.emtf_phi for hit in sorted_hits]
+    hits_theta = [hit.emtf_theta for hit in sorted_hits]
+    arr = np.zeros(7, dtype=np.int32)
     arr[0] = ind[0]
     arr[1] = ind[1]
     arr[2] = pick_the_median(hits_phi)
-    arr[3] = pick_the_median(hits_theta)
+    arr[3] = (hits_phi[-1] - hits_phi[0])
+    arr[4] = pick_the_median(hits_theta)
+    arr[5] = 0
+    arr[6] = 0
     return arr
 
   def squeeze(self):
@@ -264,6 +269,9 @@ class SignalAnalysis(_BaseAnalysis):
           if (hit.type == kCSC) and (hit_sim_tp != hit.sim_tp2):
             hit_sim_tp = -1
           print('.. hit {0} {1} {2} {3} {4} {5} {6} {7} {8}'.format(ihit, hit_id, hit.emtf_phi, hit.emtf_theta, hit.bend, hit.quality, hit_sim_tp, hit.strip, hit.wire))
+        for isimhit, simhit in enumerate(evt.simhits):
+          simhit_id = (simhit.type, simhit.station, simhit.ring, simhit.layer, simhit.chamber)
+          print('.. simhit {0} {1} {2} {3}'.format(isimhit, simhit_id, simhit.phi, simhit.theta))
         print('best sector: {0}'.format(best_sector))
         print('hits:')
         for x in ievt_hits:
