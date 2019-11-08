@@ -31,7 +31,7 @@ public:
   //virtual CLHEP::Hep3Vector* newVertex();
   HepMC::FourVector newVertex(CLHEP::HepRandomEngine*) const override ;
 
-  HepMC::FourVector newVertexFlatD0(CLHEP::HepRandomEngine* engine, double phi) const;
+  HepMC::FourVector newVertexFlatD0(CLHEP::HepRandomEngine* engine, double invpt, double phi) const;
 
   const TMatrixD* GetInvLorentzBoost() const override {
     return nullptr;

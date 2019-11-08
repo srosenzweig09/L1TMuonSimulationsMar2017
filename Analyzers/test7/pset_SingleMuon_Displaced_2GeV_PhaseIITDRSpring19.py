@@ -72,10 +72,10 @@ process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic', '')
 process.generator = cms.EDProducer("FlatRandomPtGunProducer2",
     AddAntiParticle = cms.bool(False),
     PGunParameters = cms.PSet(
-        MaxEta = cms.double(2.6),
+        MaxEta = cms.double(2.8),
         MaxPhi = cms.double(3.14159265359),
         MaxPt = cms.double(7000.0),
-        MinEta = cms.double(1.2),
+        MinEta = cms.double(1.1),
         MinPhi = cms.double(-3.14159265359),
         MinPt = cms.double(2.0),
         PartID = cms.vint32(-13),
@@ -96,7 +96,7 @@ process.VtxSmeared = cms.EDProducer("FlatEvtVtxGenerator2",
     VtxSmearedCommon
 )
 process.VtxSmeared.MaxX = cms.double(150)            # was 0.0015
-process.VtxSmeared.MaxY = cms.double(150)            # was 0.0015
+process.VtxSmeared.MaxY = cms.double(150)            # was 0.0015   # NO EFFECT
 process.VtxSmeared.MaxZ = cms.double(30)             # was 5.3      # NO EFFECT
 process.VtxSmeared.MaxT = cms.double(30/29.9792458)  # was 0.176789 # NO EFFECT
 process.VtxSmeared.MinX = cms.double(-1*process.VtxSmeared.MaxX.value())

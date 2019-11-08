@@ -28,7 +28,7 @@ FlatEvtVtxGenerator2::FlatEvtVtxGenerator2(const edm::ParameterSet& p )
   fMinT = p.getParameter<double>("MinT")*ns*c_light;
   fMaxT = p.getParameter<double>("MaxT")*ns*c_light;
 
-  fVtxSpectrum = p.exists("VtxSpectrum") ? p.getParameter<std::string>("VtxSpectrum") : "flatPhi";
+  fVtxSpectrum = p.exists("VtxSpectrum") ? p.getParameter<std::string>("VtxSpectrum") : "flatVtx";
 
   if (fMinX > fMaxX) {
     throw cms::Exception("Configuration")
@@ -58,29 +58,53 @@ FlatEvtVtxGenerator2::~FlatEvtVtxGenerator2()
 
 //Hep3Vector * FlatEvtVtxGenerator2::newVertex() {
 HepMC::FourVector FlatEvtVtxGenerator2::newVertex(CLHEP::HepRandomEngine* engine) const {
-  double aRho,aPhi,aX,aY,aZ,aT;
-  //aX = CLHEP::RandFlat::shoot(engine, fMinX, fMaxX);
-  //aY = CLHEP::RandFlat::shoot(engine, fMinY, fMaxY);
-  aRho = CLHEP::RandFlat::shoot(engine, 0, fMaxX);
-  aPhi = CLHEP::RandFlat::shoot(engine, -M_PI, M_PI);
-  aX = aRho * std::cos(aPhi);
-  aY = aRho * std::sin(aPhi);
-  //aZ = CLHEP::RandFlat::shoot(engine, fMinZ, fMaxZ);
-  //aT = CLHEP::RandFlat::shoot(engine, fMinT, fMaxT);
-  double fSigmaZ = 5.0 * cm;  // use gaussian for vz
-  aZ = CLHEP::RandGaussQ::shoot(engine, 0., fSigmaZ);
-  aT = CLHEP::RandGaussQ::shoot(engine, 0., fSigmaZ);
+  double aX, aY, aZ, aT;
+  aX = CLHEP::RandFlat::shoot(engine, fMinX, fMaxX);
+  aY = CLHEP::RandFlat::shoot(engine, fMinY, fMaxY);
+  aZ = CLHEP::RandFlat::shoot(engine, fMinZ, fMaxZ);
+  aT = CLHEP::RandFlat::shoot(engine, fMinT, fMaxT);
 
   return HepMC::FourVector(aX,aY,aZ,aT);
 }
 
-HepMC::FourVector FlatEvtVtxGenerator2::newVertexFlatD0(CLHEP::HepRandomEngine* engine, double phi) const {
-  double aRho,aX,aY,aZ,aT;
+HepMC::FourVector FlatEvtVtxGenerator2::newVertexFlatD0(CLHEP::HepRandomEngine* engine, double invpt, double phi) const {
+  double aX,aY,aZ,aT;
   //aX = CLHEP::RandFlat::shoot(engine, fMinX, fMaxX);
   //aY = CLHEP::RandFlat::shoot(engine, fMinY, fMaxY);
-  aRho = CLHEP::RandFlat::shoot(engine, -fMaxX, fMaxX);
-  aX = aRho * -std::sin(phi);
-  aY = aRho * std::cos(phi);
+
+  int ntries = 0;  // try until rho is less than fMaxRho, rho = sqrt(aX*aX + aY*aY)
+  double fMaxRho = 270. * cm;  // contained in solenoid magnet (300 cm with some margin)
+  aX = fMaxRho;
+  aY = fMaxRho;
+
+  while (!(std::hypot(aX, aY) < fMaxRho) && (ntries++ < 1000)) {
+    // Throw two random numbers: d0 & rot. rot is a free rotation that allows
+    // the particle to move along the circle. Assume the original phi is the
+    // phi at the production vertex, the rotated phi is the phi at the point
+    // of closest approach.
+    double d0 = CLHEP::RandFlat::shoot(engine, fMinX, fMaxX);
+    double rot = CLHEP::RandFlat::shoot(engine, -M_PI, M_PI);
+
+    double phi_rotated = phi + rot;
+    if (phi_rotated < -M_PI) {
+      phi_rotated += M_PI * 2;
+    }
+    if (phi_rotated >= M_PI) {
+      phi_rotated -= M_PI * 2;
+    }
+
+    // Find the center of the circle with phi at the point of closest approach
+    double B = 3.811;  // in Tesla
+    double R = -1.0 / (0.003 * B * invpt);  // R = -pT/(0.003 q B)  [cm]
+    R *= cm;
+    double xc = (d0 - R) * std::sin(phi_rotated);
+    double yc = (d0 - R) * -std::cos(phi_rotated);
+
+    // Find the production vertex with phi at the vertex
+    aX = xc + R * std::sin(phi);  // xc = xv - R sin(phi), note that xv is aX
+    aY = yc - R * std::cos(phi);  // yc = yv + R cos(phi), note that yv is aY
+  }
+
   //aZ = CLHEP::RandFlat::shoot(engine, fMinZ, fMaxZ);
   //aT = CLHEP::RandFlat::shoot(engine, fMinT, fMaxT);
   double fSigmaZ = 5.0 * cm;  // use gaussian for vz
@@ -104,17 +128,21 @@ void FlatEvtVtxGenerator2::produce( edm::Event& evt, const edm::EventSetup& )
   std::unique_ptr<edm::HepMCProduct> HepMCEvt(new edm::HepMCProduct(genevt));
   // generate new vertex & apply the shift
   //
-  if (fVtxSpectrum == "flatPhi") {
+  if (fVtxSpectrum == "flatVtx") {
     HepMCEvt->applyVtxGen( newVertex(engine) ) ;
 
   } else if (fVtxSpectrum == "flatD0") {
-    // Find the first particle momentum phi angle
+    // Get the q/pT and phi of the first particle
+    double genevt_invpt = 0;
     double genevt_phi = 0;
     for (auto it = genevt->particles_begin(); it != genevt->particles_end(); ++it) {
+      double genevt_charge = ((*it)->pdg_id() > 0) ? -1 : 1;  // Muon pdgid=13 has q=-1, pdgid=-13 has q=1. (might not work for other particles)
+      double genevt_pt = (*it)->momentum().perp();
+      genevt_invpt = genevt_charge / genevt_pt;
       genevt_phi = (*it)->momentum().phi();
       break;
     }
-    HepMCEvt->applyVtxGen( newVertexFlatD0(engine, genevt_phi) ) ;
+    HepMCEvt->applyVtxGen( newVertexFlatD0(engine, genevt_invpt, genevt_phi) ) ;
   }
 
   //HepMCEvt->LorentzBoost( 0., 142.e-6 );
