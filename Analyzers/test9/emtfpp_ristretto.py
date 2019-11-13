@@ -12,61 +12,43 @@ from emtfpp_algos import *
 # ______________________________________________________________________________
 # Classes
 
-def find_sector_rank(alist):
-  rank = np.int32(0)
-  for hit in alist:
-    hit_lay = find_emtf_layer(hit)
-    a, b, c = hit_lay//100, (hit_lay//10)%10, hit_lay%10
-    if a == 5:
-      rank |= (1 << 10)
-    elif a == 0 and b == 0:
-      rank |= (1 << 9)
-    elif a == 1 and b == 0:
-      rank |= (1 << 8)
-    elif a == 2 and b == 0:
-      rank |= (1 << 7)
-    elif a == 3 and b == 0:
-      rank |= (1 << 6)
-    elif a == 4 and b == 0:
-      rank |= (1 << 5)
-    elif a == 0 and b == 1:
-      rank |= (1 << 4)
-    elif a == 1 and b == 1:
-      rank |= (1 << 3)
-    elif a == 2 and b == 1:
-      rank |= (1 << 2)
-    elif a == 3 and b == 1:
-      rank |= (1 << 1)
-    elif a == 4 and b == 1:
-      rank |= (1 << 0)
-  return rank
-
 class EMTFSectorRanking(object):
-  def __init__(self, find_sector_rank=find_sector_rank):
-    num_sectors = 12
-    self.sectors = np.empty(num_sectors, dtype=np.object)
-    for ind in np.ndindex(self.sectors.shape):
-      self.sectors[ind] = []
-    self.find_sector_rank = find_sector_rank
+  def __init__(self):
+    self.sectors = np.zeros(num_emtf_sectors, dtype=np.int32)
 
   def reset(self):
-    for ind in np.ndindex(self.sectors.shape):
-      del self.sectors[ind][:]
+    self.sectors *= 0
 
-  def append(self, hit):
+  def add(self, hit):
     endsec = find_endsec(hit.endcap, hit.sector)
-    self.sectors[endsec].append(hit)
+    hit_lay = find_emtf_layer(hit)
+    a, b, c = hit_lay//100, (hit_lay//10)%10, hit_lay%10  # type, station, ring
+
+    rank = np.int32(0)
+    if a == 6:              # a = (6,) b = (0,) -> bit position (11,)
+      rank |= (1 << (11 + 0))
+    elif a == 5:            # a = (5,) b = (0,) -> bit position (10,)
+      rank |= (1 << (10 + 0))
+    elif a < 5 and b == 0:  # a = (0,1,2,3,4,) b = (0,) -> bit position (9,8,7,6,5,)
+      rank |= (1 << (5 + (4 - a)))
+    elif a < 5 and b == 1:  # a = (0,1,2,3,4,) b = (1,) -> bit position (4,3,2,1,0,)
+      rank |= (1 << (0 + (4 - a)))
+    self.sectors[endsec] |= rank
 
   def get_best_sector(self):
-    ranks = np.zeros(self.sectors.shape, dtype=np.int32)
-    for ind in np.ndindex(self.sectors.shape):
-      ranks[ind] = self.find_sector_rank(self.sectors[ind])
-    args = np.argsort(ranks)
-    return args[-1]
+    argsorted = np.argsort(self.sectors)
+    best_sector = argsorted[-1]
+    best_sector_rank = self.sectors[best_sector]
+
+    cnt0 = np.sum([bool(best_sector_rank & (1 << i)) for i in range(12)])  # count any station
+    cnt1 = np.sum([bool(best_sector_rank & (1 << i)) for i in range(8,12)])  # count station 1
+    if not (cnt0 >= 2 and cnt1 >= 1):
+      best_sector = None
+    return best_sector
 
 class EMTFZoneArtist(object):
   def __init__(self):
-    num_cols = (80*64)//emtf_strip_unit
+    num_cols = max_emtf_strip//coarse_emtf_strip
     num_rows = 10
     num_zones = 4
     self.zones = np.empty((num_zones, num_rows, num_cols), dtype=np.object)
@@ -75,20 +57,22 @@ class EMTFZoneArtist(object):
 
   def reset(self):
     for ind in np.ndindex(self.zones.shape):
+      if len(self.zones[ind]) == 0:
+        continue
       del self.zones[ind][:]
 
-  def append(self, hit):
+  def add(self, hit):
     zones = find_emtf_zones(hit)
     for zone in zones:
       row = find_emtf_zone_row(hit, zone)
-      col = find_emtf_zone_col(hit, zone)
+      col = find_emtf_zone_col(hit)
       self.zones[zone, row, col].append(hit)
 
   def _uniquify(self):
     def get_sort_criteria(hit):
       ri = 0 if hit.ring == 1 else 1 # prefer ring 1
       fr = 0 if hit.fr == 1 else 1   # prefer front chamber
-      bd = abs(hit.bend)             # prefer smaller bend
+      bd = np.abs(hit.bend)          # prefer smaller bend
       return (ri, fr, bd)
 
     # Sort and select
@@ -114,18 +98,20 @@ class EMTFZoneArtist(object):
     if len(self.zones[ind]) == 0:
       return None
 
-    # 7 members: zone, zone_row, emtf_phi, emtf_bend,
-    #            emtf_theta, emtf_theta_alt, emtf_qual
+    # 8 members: zone, zone_row, zone_col, emtf_phi,
+    #            emtf_bend, emtf_theta, emtf_theta_alt, emtf_qual
     assert(len(self.zones[ind]) == 1)
     hit = self.zones[ind][0]
-    arr = np.zeros(7, dtype=np.int32)
+
+    arr = np.zeros(8, dtype=np.int32)
     arr[0] = ind[0]
     arr[1] = ind[1]
-    arr[2] = hit.emtf_phi
-    arr[3] = find_emtf_bend(hit)
-    arr[4] = hit.emtf_theta
-    arr[5] = hit.emtf_theta_alt
-    arr[6] = find_emtf_qual(hit)
+    arr[2] = ind[2]
+    arr[3] = hit.emtf_phi
+    arr[4] = find_emtf_bend(hit)
+    arr[5] = hit.emtf_theta
+    arr[6] = hit.emtf_theta_alt
+    arr[7] = find_emtf_qual(hit)
     return arr
 
   def squeeze(self):
@@ -149,9 +135,11 @@ class EMTFZoneScientist(object):
 
   def reset(self):
     for ind in np.ndindex(self.zones.shape):
+      if len(self.zones[ind]) == 0:
+        continue
       del self.zones[ind][:]
 
-  def append(self, hit):
+  def add(self, hit):
     zones = find_emtf_zones(hit)
     for zone in zones:
       row = find_emtf_zone_row(hit, zone)
@@ -162,22 +150,23 @@ class EMTFZoneScientist(object):
     if len(self.zones[ind]) == 0:
       return None
 
-    # 7 members: zone, zone_row, emtf_phi, emtf_bend,
-    #            emtf_theta, emtf_theta_alt, emtf_qual
+    # 8 members: zone, zone_row, zone_col, emtf_phi,
+    #            emtf_bend, emtf_theta, emtf_theta_alt, emtf_qual
     assert(len(self.zones[ind]) >= 1)
     sorted_hits = sorted(self.zones[ind], key=lambda hit: hit.layer)
     if sorted_hits[0].type == kRPC or sorted_hits[0].type == kGEM:
       sorted_hits = sorted_hits[0:1]  # only keep one layer
-    hits_phi = [hit.emtf_phi for hit in sorted_hits]
-    hits_theta = [hit.emtf_theta for hit in sorted_hits]
-    arr = np.zeros(7, dtype=np.int32)
+    hit = pick_the_median(sorted_hits)
+
+    arr = np.zeros(8, dtype=np.int32)
     arr[0] = ind[0]
     arr[1] = ind[1]
-    arr[2] = pick_the_median(hits_phi)
-    arr[3] = (hits_phi[-1] - hits_phi[0])
-    arr[4] = pick_the_median(hits_theta)
-    arr[5] = 0
+    arr[2] = find_emtf_zone_col(hit)
+    arr[3] = hit.emtf_phi
+    arr[4] = 0
+    arr[5] = hit.emtf_theta
     arr[6] = 0
+    arr[7] = 0
     return arr
 
   def squeeze(self):
@@ -214,45 +203,57 @@ class SignalAnalysis(_BaseAnalysis):
 
     # __________________________________________________________________________
     # Load tree
-    #tree = load_pgun_batch(jobid)
-    tree = load_pgun_test()
-    verbosity = 0
+    tree = load_pgun_displ_batch(jobid)
+    #tree = load_pgun_test()
 
     # Loop over events
     for ievt, evt in enumerate(tree):
       if maxevents != -1 and ievt == maxevents:
         break
 
+      if (ievt % 1000) == 0:
+        print('Processing event {0}'.format(ievt))
+
+      # Reset
+      sectors.reset()
+      zones.reset()
+      zones_simhits.reset()
+
       # Particles
-      part = evt.particles[0]  # particle gun
+      try:
+        part = evt.particles[0]  # particle gun
+      except:
+        continue
 
       # First, determine the best sector
 
       # Trigger primitives
       for ihit, hit in enumerate(evt.hits):
         if is_emtf_legit_hit(hit):
-          sectors.append(hit)
+          sectors.add(hit)
 
       best_sector = sectors.get_best_sector()
+      if best_sector is None:
+        continue
 
       # Second, fill the zones with trigger primitives
 
       # Trigger primitives
       for ihit, hit in enumerate(evt.hits):
         if is_emtf_legit_hit(hit) and find_endsec(hit.endcap, hit.sector) == best_sector:
-          zones.append(hit)
+          zones.add(hit)
 
       # Third, fill the zones with sim hits
 
       # Sim hits
       for isimhit, simhit in enumerate(evt.simhits):
         simhit.emtf_phi = calc_phi_loc_int(np.rad2deg(simhit.phi), (best_sector%6) + 1)
-        simhit.emtf_theta = calc_theta_int(np.rad2deg(simhit.theta), 1 if (part.eta >= 0) else -1)
-        if 0 <= simhit.emtf_phi < (80*64):
-          zones_simhits.append(simhit)
+        simhit.emtf_theta = calc_theta_int(np.rad2deg(simhit.theta), 1 if ((best_sector//6) == 0) else -1)
+        if 0 <= simhit.emtf_phi < max_emtf_strip:
+          zones_simhits.add(simhit)
 
       # Finally, extract the particle and hits
-      ievt_part = np.array([part.pt, part.eta, part.phi, part.invpt, part.d0, part.vz], dtype=np.float32)
+      ievt_part = np.array([part.pt, part.eta, part.phi, part.invpt, part.d0, part.vx, part.vy, part.vz], dtype=np.float32)
       ievt_hits = zones.squeeze()
       ievt_simhits = zones_simhits.squeeze()
 
@@ -262,7 +263,8 @@ class SignalAnalysis(_BaseAnalysis):
 
       # Debug
       if verbosity >= kINFO:
-        print('Processing event: {0}'.format(ievt))
+        print('Processing event {0}'.format(ievt))
+        print('.. part {0} {1} {2} {3} {4} {5}'.format(0, part.pt, part.eta, part.phi, part.invpt, part.d0))
         for ihit, hit in enumerate(evt.hits):
           hit_id = (hit.type, hit.station, hit.ring, find_endsec(hit.endcap, hit.sector), hit.fr, hit.bx)
           hit_sim_tp = hit.sim_tp1
@@ -279,11 +281,6 @@ class SignalAnalysis(_BaseAnalysis):
         print('simhits:')
         for x in ievt_simhits:
           print(x)
-
-      # Reset
-      sectors.reset()
-      zones.reset()
-      zones_simhits.reset()
 
     # End loop over events
 
@@ -316,25 +313,30 @@ class BkgndAnalysis(_BaseAnalysis):
   def run(self, algo):
     out_hits = []
 
-    num_sectors = 12
-    twelve_zones = [EMTFZoneArtist() for i in range(num_sectors)]
+    sector_zones = [EMTFZoneArtist() for i in range(num_emtf_sectors)]
 
     # __________________________________________________________________________
     # Load tree
     tree = load_mixing_batch(jobid)
-    verbosity = 0
 
     # Loop over events
     for ievt, evt in enumerate(tree):
       if maxevents != -1 and ievt == maxevents:
         break
 
+      if (ievt % 100) == 0:
+        print('Processing event {0}'.format(ievt))
+
+      # Reset
+      for zones in sector_zones:
+        zones.reset()
+
       # First, apply event veto
 
       # Particles
       veto = False
       for ipart, part in enumerate(evt.particles):
-        if (part.bx == 0) and (1.24 <= abs(part.eta) <= 2.4) and (part.pt > 10.):
+        if (part.bx == 0) and (part.pt > 10.) and (1.2 <= np.abs(calc_etastar_from_eta(part.eta, part.vx, part.vy, part.vz)) <= 2.5):
           veto = True
           break
       if veto:
@@ -343,19 +345,19 @@ class BkgndAnalysis(_BaseAnalysis):
       # Second, fill the zones with trigger primitives
 
       # Trigger primitives
-      for sector in range(num_sectors):
+      for sector in range(num_emtf_sectors):
         for ihit, hit in enumerate(evt.hits):
           if is_emtf_legit_hit(hit) and find_endsec(hit.endcap, hit.sector) == sector:
-            twelve_zones[sector].append(hit)
+            sector_zones[sector].add(hit)
 
       # Finally, extract the particle and hits
-      for sector in range(num_sectors):
-        ievt_hits = twelve_zones[sector].squeeze()
+      for zones in sector_zones:
+        ievt_hits = zones.squeeze()
         out_hits.append(ievt_hits)
 
       # Debug
       if verbosity >= kINFO:
-        print('Processing event: {0}'.format(ievt))
+        print('Processing event {0}'.format(ievt))
         for ihit, hit in enumerate(evt.hits):
           hit_id = (hit.type, hit.station, hit.ring, find_endsec(hit.endcap, hit.sector), hit.fr, hit.bx)
           hit_sim_tp = hit.sim_tp1
@@ -363,14 +365,10 @@ class BkgndAnalysis(_BaseAnalysis):
             hit_sim_tp = -1
           print('.. hit {0} {1} {2} {3} {4} {5} {6} {7} {8}'.format(ihit, hit_id, hit.emtf_phi, hit.emtf_theta, hit.bend, hit.quality, hit_sim_tp, hit.strip, hit.wire))
         print('hits:')
-        for sector in range(num_sectors):
-          ievt_hits = twelve_zones[sector].squeeze()
+        for sector in range(num_emtf_sectors):
+          ievt_hits = out_hits[-(12-sector)]
           for x in ievt_hits:
             print(sector, x)
-
-      # Reset
-      for sector in range(num_sectors):
-        twelve_zones[sector].reset()
 
     # End loop over events
 
@@ -379,7 +377,6 @@ class BkgndAnalysis(_BaseAnalysis):
     outfile = 'bkgnd.npz'
     if use_condor:
       outfile = outfile[:-4] + ('_%i.npz' % jobid)
-    random.shuffle(out_hits)  # shuffle
     out_hits = create_ragged_array(out_hits)
     print('[INFO] out_hits: {0}'.format(out_hits.shape))
     out_dict = {
@@ -431,6 +428,9 @@ jobid = 0
 # Max num of events (-1 means all events)
 maxevents = 100
 
+# Verbosity
+verbosity = 1
+
 # Condor or not
 # if 'CONDOR_EXEC' is defined, overwrite the 3 arguments (algo, analysis, jobid)
 use_condor = ('CONDOR_EXEC' in os.environ)
@@ -440,6 +440,7 @@ if use_condor:
   analysis = sys.argv[2]
   jobid = int(sys.argv[3])
   maxevents = -1
+  verbosity = 0
 
 # Main function
 def main():

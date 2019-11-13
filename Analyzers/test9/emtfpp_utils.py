@@ -5,9 +5,8 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import random
 
-from six import iteritems
+import six
 from six.moves import range, zip, map, filter
 
 # ______________________________________________________________________________
@@ -118,6 +117,18 @@ def calc_eta_from_theta_deg(theta_deg, endcap):
     eta = -eta
   return eta
 
+def calc_etastar_from_eta(eta, x0, y0, z0):
+  # Propagate to station 2 (z = 850 cm)
+  # Note: x0, y0, z0 in cm. Assume pT -> inf.
+  zstar = 850.
+  if eta < 0:
+    zstar *= -1
+  r0 = np.hypot(x0, y0)
+  cot = np.sinh(eta)
+  rstar = r0 + np.abs((zstar - z0)/cot)
+  cotstar = zstar/rstar
+  return np.arcsinh(cotstar)
+
 def find_endsec(endcap, sector):
   endsec = (sector - 1) if endcap == 1 else (sector - 1 + 6)
   return endsec
@@ -134,12 +145,13 @@ def save_np_arrays(outfile, outdict):
 def save_root_histograms(outfile, histograms):
   from rootpy.io import root_open
   with root_open(outfile, 'recreate') as f:
-    for (k, v) in histograms.iteritems():
+    for (k, v) in six.iteritems(histograms):
       v.Write()
 
 # Based on
 #   https://www.tensorflow.org/guide/ragged_tensor
 #   https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/ragged/ragged_tensor_value.py
+#   https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/ragged/ragged_getitem.py
 class RaggedTensorValue(object):
   """Represents the value of a `RaggedTensor`."""
 
@@ -175,6 +187,22 @@ class RaggedTensorValue(object):
   def shape(self):
     """A tuple indicating the shape of this RaggedTensorValue."""
     return (self._row_splits.shape[0] - 1,) + (None,) + self._values.shape[1:]
+
+  def __len__(self):
+    return len(self.row_splits[:-1])
+
+  def __getitem__(self, row_key):
+    if isinstance(row_key, slice):
+      raise ValueError("slicing is not supported")
+
+    starts = self.row_splits[:-1]
+    limits = self.row_splits[1:]
+    row = self.values[starts[row_key]:limits[row_key]]
+    return row
+
+  def __iter__(self):
+    for i in range(len(self)):
+      yield self[i]
 
   def to_list(self):
     """Returns this ragged tensor value as a nested Python list."""
@@ -246,7 +274,7 @@ eos_prefix = 'root://cmsxrootd-site.fnal.gov//store/group/l1upgrades/L1MuonTrigg
 
 def load_pgun_test():
   #infile = '../test7/ntuple_SingleMuon_Endcap_2GeV_add.6.root'
-  infile = '../test7/ntuple_SingleMuon_Displaced_2GeV_PhaseIITDRSpring19.4.root'
+  infile = '../test7/ntuple_SingleMuon_Displaced_2GeV_PhaseIITDRSpring19_add.8.root'
   return load_tree(infile)
 
 def load_pgun_batch(k):
@@ -265,15 +293,15 @@ def load_pgun_displ_batch(k):
   #  infiles.append(eos_prefix + 'SingleMuon_Displaced_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/190923_212343/%04i/ntuple_SingleMuon_Displaced_%i.root' % ((i+1)//1000, (i+1)))
   #  infiles.append(eos_prefix + 'SingleMuon_Displaced2_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/190923_212452/%04i/ntuple_SingleMuon_Displaced2_%i.root' % ((i+1)//1000, (i+1)))
   for i in my_range:
-    infiles.append(eos_prefix + 'SingleMuon_Displaced_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/191101_230705/%04i/ntuple_SingleMuon_Displaced_%i.root' % ((i+1)//1000, (i+1)))
-    infiles.append(eos_prefix + 'SingleMuon_Displaced2_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/191101_230824/%04i/ntuple_SingleMuon_Displaced2_%i.root' % ((i+1)//1000, (i+1)))
+    infiles.append(eos_prefix + 'SingleMuon_Displaced_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/191112_182211/%04i/ntuple_%i.root' % ((i+1)//1000, (i+1)))
+    infiles.append(eos_prefix + 'SingleMuon_Displaced2_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/191112_224608/%04i/ntuple_%i.root' % ((i+1)//1000, (i+1)))
   tree = load_tree(infiles)
   return tree
 
 def load_mixing_batch(k):
   infiles = []
-  infiles += [eos_prefix + 'ntuple_SingleNeutrino_PU140_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190926_145646/0000/ntuple_%i.root' % (i+1) for i in range(30)]  # up to 30/63
-  infiles += [eos_prefix + 'ntuple_SingleNeutrino_PU200_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190926_145529/0000/ntuple_%i.root' % (i+1) for i in range(40)]  # up to 40/85
+  #infiles += [eos_prefix + 'ntuple_SingleNeutrino_PU140_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190926_145646/0000/ntuple_%i.root' % (i+1) for i in range(30)]  # up to 30/63
+  #infiles += [eos_prefix + 'ntuple_SingleNeutrino_PU200_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190926_145529/0000/ntuple_%i.root' % (i+1) for i in range(40)]  # up to 40/85
   #infiles += [eos_prefix + 'ntuple_SingleNeutrino_PU250_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/190926_145757/0000/ntuple_%i.root' % (i+1) for i in range(50)]  # up to 50/125
   #infiles += [eos_prefix + 'ntuple_SingleNeutrino_PU300_PhaseIITDRSpring19/Nu_E10-pythia8-gun/CRAB3/191002_214457/0000/ntuple_%i.root' % (i+1) for i in range(50)]  # up to 50/111
   infiles += [eos_prefix + 'ntuple_DoubleElectron_PU140_PhaseIITDRSpring19/DoubleElectron_FlatPt-1To100/CRAB3/190925_044352/0000/ntuple_%i.root' % (i+1) for i in range(25)]

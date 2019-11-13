@@ -12,7 +12,13 @@ from emtfpp_utils import *
 # ______________________________________________________________________________
 # Classes
 
-emtf_strip_unit = 8*2  # 'doublestrip' unit
+num_emtf_sectors = 12
+
+max_emtf_strip = 80*64   # 80 degree
+
+coarse_emtf_strip = 8*2  # 'doublestrip' unit
+
+emtf_eta_bins = (0.8, 1.2, 1.55, 1.98, 2.5)
 
 # Decide EMTF hit layer number
 class EMTFLayer(object):
@@ -190,8 +196,15 @@ class EMTFZoneRow(object):
 
 # Decide EMTF hit column number in a zone
 class EMTFZoneCol(object):
-  def __call__(self, hit, zone):
-    zone_col = (hit.emtf_phi + (emtf_strip_unit//2))//emtf_strip_unit
+  def __init__(self):
+    self.a = coarse_emtf_strip//2
+    self.b = coarse_emtf_strip
+    self.c = (max_emtf_strip//coarse_emtf_strip) - 1
+
+  def __call__(self, hit):
+    zone_col = np.int32(hit.emtf_phi)
+    zone_col = (zone_col + self.a)//self.b
+    zone_col = np.clip(zone_col, 0, self.c)
     return zone_col
 
 # Decide EMTF hit phi (integer unit)
