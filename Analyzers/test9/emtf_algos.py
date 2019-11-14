@@ -6,7 +6,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from emtfpp_utils import *
+from emtf_utils import *
 
 
 # ______________________________________________________________________________
