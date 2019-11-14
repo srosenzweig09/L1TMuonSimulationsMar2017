@@ -233,7 +233,8 @@ private:
   std::unique_ptr<std::vector<uint64_t> > ve_event;
   std::unique_ptr<std::vector<uint32_t> > ve_run;
   std::unique_ptr<std::vector<uint32_t> > ve_lumi;
-  std::unique_ptr<std::vector<float  > >  ve_npv;
+  std::unique_ptr<std::vector<float  > >  ve_npv;  // getTrueNumInteractions()
+  std::unique_ptr<std::vector<int32_t> >  ve_nvtx; // getPU_NumInteractions()
   std::unique_ptr<int32_t              >  ve_size;
 };
 
@@ -800,11 +801,13 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   // ___________________________________________________________________________
   // Event info
   if (pileupInfo_ != nullptr) {
-    float trueNPV = 0;
+    float true_npv = 0;
+    int pu_nvtx = 0;
 
     for (const auto& pui : *pileupInfo_) {
       if (pui.getBunchCrossing() == 0) {
-        trueNPV = pui.getTrueNumInteractions();
+        true_npv = pui.getTrueNumInteractions();
+        pu_nvtx = pui.getPU_NumInteractions();
         break;
       }
     }
@@ -812,7 +815,8 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
     ve_event      ->push_back(iEvent.id().event());
     ve_run        ->push_back(iEvent.id().run());
     ve_lumi       ->push_back(iEvent.id().luminosityBlock());
-    ve_npv        ->push_back(trueNPV);
+    ve_npv        ->push_back(true_npv);
+    ve_nvtx       ->push_back(pu_nvtx);
   }
   (*ve_size) = 1;
 
@@ -935,6 +939,7 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   ve_run        ->clear();
   ve_lumi       ->clear();
   ve_npv        ->clear();
+  ve_nvtx       ->clear();
   (*ve_size)    = 0;
 
   if (firstEvent_)
@@ -1073,6 +1078,7 @@ void NtupleMaker::makeTree() {
   ve_run        = std::make_unique<std::vector<uint32_t> >();
   ve_lumi       = std::make_unique<std::vector<uint32_t> >();
   ve_npv        = std::make_unique<std::vector<float  > >();
+  ve_nvtx       = std::make_unique<std::vector<int32_t> >();
   ve_size       = std::make_unique<int32_t>(0);
 
 
@@ -1192,6 +1198,7 @@ void NtupleMaker::makeTree() {
   tree->Branch("ve_run"       , &(*ve_run       ));
   tree->Branch("ve_lumi"      , &(*ve_lumi      ));
   tree->Branch("ve_npv"       , &(*ve_npv       ));
+  tree->Branch("ve_nvtx"      , &(*ve_nvtx      ));
   tree->Branch("ve_size"      , &(*ve_size      ));
 }
 
