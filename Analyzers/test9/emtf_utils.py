@@ -117,17 +117,31 @@ def calc_eta_from_theta_deg(theta_deg, endcap):
     eta = -eta
   return eta
 
-def calc_etastar_from_eta(eta, x0, y0, z0):
+def calc_simple_d0(phi, xv, yv):
+  d0 = xv * np.sin(phi) - yv * np.cos(phi)
+  return d0
+
+def calc_d0(invpt, phi, xv, yv, B=3.811):
+  R = -1.0 / (0.003 * B * invpt)            # R = -pT/(0.003 q B)  [cm]
+  xc = xv - (R * np.sin(phi))               # xc = xv - R sin(phi)
+  yc = yv + (R * np.cos(phi))               # yc = yv + R cos(phi)
+  d0 = R - (np.sign(R) * np.hypot(xc, yc))  # d0 = R - sign(R) * sqrt(xc^2 + yc^2)
+  return d0
+
+def calc_etastar_from_eta(eta, phi, x0, y0, z0):
   # Propagate to station 2 (z = 850 cm)
   # Note: x0, y0, z0 in cm. Assume pT -> inf.
   zstar = 850.
   if eta < 0:
     zstar *= -1
-  r0 = np.hypot(x0, y0)
   cot = np.sinh(eta)
-  rstar = r0 + np.abs((zstar - z0)/cot)
+  delta_r = np.abs((zstar - z0)/cot)
+  xstar = x0 + np.cos(phi) * delta_r
+  ystar = y0 + np.sin(phi) * delta_r
+  rstar = np.hypot(xstar, ystar)
   cotstar = zstar/rstar
-  return np.arcsinh(cotstar)
+  etastar = np.arcsinh(cotstar)
+  return etastar
 
 def find_endsec(endcap, sector):
   endsec = (sector - 1) if endcap == 1 else (sector - 1 + 6)
@@ -247,6 +261,35 @@ def create_ragged_array(pylist):
     row_splits = np.asarray(row_splits, dtype=np.int32)
     values = RaggedTensorValue(values, row_splits)
   return values
+
+# Copied from https://docs.python.org/2/howto/logging.html
+def get_logger():
+  import logging
+
+  # create logger
+  logger = logging.getLogger('test9')
+  logger.setLevel(logging.DEBUG)
+
+  # create file handler which logs even debug messages
+  fh = logging.FileHandler('test9.log')
+  fh.setLevel(logging.DEBUG)
+
+  # create console handler with a higher log level
+  ch = logging.StreamHandler()
+  ch.setLevel(logging.INFO)
+
+  # create formatter and add it to the handlers
+  #formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+  formatter = logging.Formatter('%(asctime)s [%(levelname)-8s] %(message)s')
+  fh.setFormatter(formatter)
+  formatter = logging.Formatter('[%(levelname)-8s] %(message)s')
+  ch.setFormatter(formatter)
+
+  # add the handlers to the logger
+  if not len(logger.handlers):
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+  return logger
 
 
 # ______________________________________________________________________________

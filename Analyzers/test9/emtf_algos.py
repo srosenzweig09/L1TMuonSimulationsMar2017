@@ -14,7 +14,9 @@ from emtf_utils import *
 
 num_emtf_sectors = 12
 
-max_emtf_strip = 80*64   # 80 degree
+min_emtf_strip = 5*64    # 5 deg
+
+max_emtf_strip = 80*64   # 80 deg
 
 coarse_emtf_strip = 8*2  # 'doublestrip' unit
 
@@ -488,3 +490,8 @@ def is_valid_for_run2(hit):
   is_omtf = (hit.type == kRPC) and ((hit.station == 1 or hit.station == 2) and hit.ring == 3)
   return (is_csc or (is_rpc and not is_irpc and not is_omtf))
 
+# Decide the zone which the particle is belong to
+def find_particle_zone(part):
+  etastar = calc_etastar_from_eta(part.eta, part.phi, part.vx, part.vy, part.vz)
+  ind = np.searchsorted(emtf_eta_bins, np.abs(etastar))
+  return (4 - ind)  # ind = (1,2,3,4) -> zone (3,2,1,0)

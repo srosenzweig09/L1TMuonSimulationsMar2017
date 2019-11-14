@@ -37,14 +37,9 @@ class EMTFSectorRanking(object):
 
   def get_best_sector(self):
     argsorted = np.argsort(self.sectors)
-    best_sector = argsorted[-1]
+    best_sector = argsorted[-1]  # highest
     best_sector_rank = self.sectors[best_sector]
-
-    cnt0 = np.sum([bool(best_sector_rank & (1 << i)) for i in range(12)])  # count any station
-    cnt1 = np.sum([bool(best_sector_rank & (1 << i)) for i in range(8,12)])  # count station 1
-    if not (cnt0 >= 2 and cnt1 >= 1):
-      best_sector = None
-    return best_sector
+    return (best_sector, best_sector_rank)
 
 class EMTFZoneArtist(object):
   def __init__(self):
@@ -80,7 +75,7 @@ class EMTFZoneArtist(object):
       if len(self.zones[ind]) == 0:
         continue
 
-      alist = self.zones[ind][:]  # copy
+      alist = self.zones[ind][:]  # make a copy
       if len(alist) > 1:
         alist.sort(key=get_sort_criteria)  # in-place sorting
         self.zones[ind] = alist[0:1]  # only keep the best one
@@ -117,6 +112,7 @@ class EMTFZoneArtist(object):
   def squeeze(self):
     self._uniquify()
 
+    # List of arrays, each array has 8 members
     out = []
     for ind in np.ndindex(self.zones.shape):
       arr = self._transform(ind)
@@ -126,7 +122,7 @@ class EMTFZoneArtist(object):
 
 class EMTFZoneScientist(object):
   def __init__(self):
-    num_cols = 1
+    num_cols = 1  # only one column for all sim hits
     num_rows = 10
     num_zones = 4
     self.zones = np.empty((num_zones, num_rows, num_cols), dtype=np.object)
@@ -155,7 +151,7 @@ class EMTFZoneScientist(object):
     assert(len(self.zones[ind]) >= 1)
     sorted_hits = sorted(self.zones[ind], key=lambda hit: hit.layer)
     if sorted_hits[0].type == kRPC or sorted_hits[0].type == kGEM:
-      sorted_hits = sorted_hits[0:1]  # only keep one layer
+      sorted_hits = sorted_hits[0:1]  # only keep one layer for RPC and GEM
     hit = pick_the_median(sorted_hits)
 
     arr = np.zeros(8, dtype=np.int32)
@@ -170,6 +166,7 @@ class EMTFZoneScientist(object):
     return arr
 
   def squeeze(self):
+    # List of arrays, each array has 8 members
     out = []
     for ind in np.ndindex(self.zones.shape):
       arr = self._transform(ind)
@@ -232,8 +229,8 @@ class SignalAnalysis(_BaseAnalysis):
         if is_emtf_legit_hit(hit):
           sectors.add(hit)
 
-      best_sector = sectors.get_best_sector()
-      if best_sector is None:
+      (best_sector, best_sector_rank) = sectors.get_best_sector()
+      if best_sector_rank == 0:
         continue
 
       # Second, fill the zones with trigger primitives
@@ -249,14 +246,36 @@ class SignalAnalysis(_BaseAnalysis):
       for isimhit, simhit in enumerate(evt.simhits):
         simhit.emtf_phi = calc_phi_loc_int(np.rad2deg(simhit.phi), (best_sector%6) + 1)
         simhit.emtf_theta = calc_theta_int(np.rad2deg(simhit.theta), 1 if ((best_sector//6) == 0) else -1)
-        if 0 <= simhit.emtf_phi < max_emtf_strip:
+        if min_emtf_strip <= simhit.emtf_phi < max_emtf_strip:
           zones_simhits.add(simhit)
 
-      # Finally, extract the particle and hits
-      ievt_part = np.array([part.pt, part.eta, part.phi, part.invpt, part.d0, part.vx, part.vy, part.vz], dtype=np.float32)
+      # Fourth, extract the particle and hits
+      # Require at least 2 hits and at least 3 sim hits
+      sector_center_phi = 40. + (60. * (best_sector%6)) # sector 1 center is 45 deg. -5 deg as neighbor is included
+      sector_center_phi = np.deg2rad(sector_center_phi)
+      part_zone = find_particle_zone(part)
+      part_info = [part.invpt, part.eta, part.phi, part.vx, part.vy, part.vz,
+                   part.d0, delta_phi(part.phi, sector_center_phi), best_sector, part_zone]
+
+      ievt_part = np.array(part_info, dtype=np.float32)
       ievt_hits = zones.squeeze()
       ievt_simhits = zones_simhits.squeeze()
 
+      aset = set()
+      for x in ievt_hits:
+        if x[0] == part_zone:  # x[0] is zone
+          aset.add(x[1])       # x[1] is zone_row
+      if not (len(aset) >= 2): # at least 2 hits
+        continue
+
+      aset.clear()
+      for x in ievt_simhits:
+        if x[0] == part_zone:  # x[0] is zone
+          aset.add(x[1])       # x[1] is zone_row
+      if not (len(aset) >= 3): # at least 3 sim hits
+        continue
+
+      # Finally, add to output
       out_part.append(ievt_part)
       out_hits.append(ievt_hits)
       out_simhits.append(ievt_simhits)
@@ -336,7 +355,7 @@ class BkgndAnalysis(_BaseAnalysis):
       # Particles
       veto = False
       for ipart, part in enumerate(evt.particles):
-        if (part.bx == 0) and (part.pt > 10.) and (1.2 <= np.abs(calc_etastar_from_eta(part.eta, part.vx, part.vy, part.vz)) <= 2.5):
+        if (part.bx == 0) and (part.pt > 10.) and (find_particle_zone(part) in (0,1,2,3)):
           veto = True
           break
       if veto:
@@ -350,7 +369,7 @@ class BkgndAnalysis(_BaseAnalysis):
           if is_emtf_legit_hit(hit) and find_endsec(hit.endcap, hit.sector) == sector:
             sector_zones[sector].add(hit)
 
-      # Finally, extract the particle and hits
+      # Finally, extract the particle and hits, and add them to output
       for zones in sector_zones:
         ievt_hits = zones.squeeze()
         out_hits.append(ievt_hits)
