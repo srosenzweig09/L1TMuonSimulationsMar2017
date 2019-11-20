@@ -36,8 +36,7 @@ class EMTFSectorRanking(object):
     self.sectors[endsec] |= rank
 
   def get_best_sector(self):
-    argsorted = np.argsort(self.sectors)
-    best_sector = argsorted[-1]  # highest
+    best_sector = np.argmax(self.sectors)
     best_sector_rank = self.sectors[best_sector]
     return (best_sector, best_sector_rank)
 

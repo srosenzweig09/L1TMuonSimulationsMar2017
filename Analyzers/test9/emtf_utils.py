@@ -323,21 +323,28 @@ def load_pgun_test():
 def load_pgun_batch(k):
   my_range = np.split(np.arange(1000), 100)[k]
   infiles = []
+  #for i in my_range:
+  #  infiles.append(eos_prefix + 'SingleMuon_Endcap_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/190923_203236/%04i/ntuple_SingleMuon_Endcap_%i.root' % ((i+1)//1000, (i+1)))
+  #  infiles.append(eos_prefix + 'SingleMuon_Endcap2_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/190923_203346/%04i/ntuple_SingleMuon_Endcap2_%i.root' % ((i+1)//1000, (i+1)))
   for i in my_range:
-    infiles.append(eos_prefix + 'SingleMuon_Endcap_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/190923_203236/%04i/ntuple_SingleMuon_Endcap_%i.root' % ((i+1)//1000, (i+1)))
-    infiles.append(eos_prefix + 'SingleMuon_Endcap2_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/190923_203346/%04i/ntuple_SingleMuon_Endcap2_%i.root' % ((i+1)//1000, (i+1)))
+    infiles.append(eos_prefix + 'SingleMuon_Endcap_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/191115_161447/%04i/ntuple_%i.root' % ((i+1)//1000, (i+1)))
+    infiles.append(eos_prefix + 'SingleMuon_Endcap2_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/191115_172000/%04i/ntuple_%i.root' % ((i+1)//1000, (i+1)))
   tree = load_tree(infiles)
   return tree
 
 def load_pgun_displ_batch(k):
-  my_range = np.split(np.arange(1000), 100)[k]
+  my_range = np.split(np.arange(2000), 200)[k]
   infiles = []
   #for i in my_range:
   #  infiles.append(eos_prefix + 'SingleMuon_Displaced_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/190923_212343/%04i/ntuple_SingleMuon_Displaced_%i.root' % ((i+1)//1000, (i+1)))
   #  infiles.append(eos_prefix + 'SingleMuon_Displaced2_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/190923_212452/%04i/ntuple_SingleMuon_Displaced2_%i.root' % ((i+1)//1000, (i+1)))
   for i in my_range:
-    infiles.append(eos_prefix + 'SingleMuon_Displaced_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/191112_182211/%04i/ntuple_%i.root' % ((i+1)//1000, (i+1)))
-    infiles.append(eos_prefix + 'SingleMuon_Displaced2_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/191112_224608/%04i/ntuple_%i.root' % ((i+1)//1000, (i+1)))
+    if i < 100:
+      infiles.append(eos_prefix + 'SingleMuon_Displaced_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/191112_182211/%04i/ntuple_%i.root' % ((i+1)//1000, (i+1)))
+      infiles.append(eos_prefix + 'SingleMuon_Displaced2_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/191112_224608/%04i/ntuple_%i.root' % ((i+1)//1000, (i+1)))
+    else:
+      infiles.append(eos_prefix + 'SingleMuon_Displaced_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/191120_015414/%04i/ntuple_%i.root' % ((i+1-1000)//1000, (i+1-1000)))
+      infiles.append(eos_prefix + 'SingleMuon_Displaced2_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/191120_020405/%04i/ntuple_%i.root' % ((i+1-1000)//1000, (i+1-1000)))
   tree = load_tree(infiles)
   return tree
 
