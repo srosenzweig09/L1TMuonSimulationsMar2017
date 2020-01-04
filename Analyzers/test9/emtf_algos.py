@@ -198,15 +198,10 @@ class EMTFZoneRow(object):
 
 # Decide EMTF hit column number in a zone
 class EMTFZoneCol(object):
-  def __init__(self):
-    self.a = coarse_emtf_strip//2
-    self.b = coarse_emtf_strip
-    self.c = (max_emtf_strip//coarse_emtf_strip) - 1
-
   def __call__(self, hit):
     zone_col = np.int32(hit.emtf_phi)
-    zone_col = (zone_col + self.a)//self.b
-    zone_col = np.clip(zone_col, 0, self.c)
+    zone_col -= min_emtf_strip
+    zone_col //= coarse_emtf_strip
     return zone_col
 
 # Decide EMTF hit phi (integer unit)

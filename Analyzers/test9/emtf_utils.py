@@ -339,7 +339,7 @@ def load_pgun_displ_batch(k):
   #  infiles.append(eos_prefix + 'SingleMuon_Displaced_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/190923_212343/%04i/ntuple_SingleMuon_Displaced_%i.root' % ((i+1)//1000, (i+1)))
   #  infiles.append(eos_prefix + 'SingleMuon_Displaced2_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/190923_212452/%04i/ntuple_SingleMuon_Displaced2_%i.root' % ((i+1)//1000, (i+1)))
   for i in my_range:
-    if i < 100:
+    if i < 1000:
       infiles.append(eos_prefix + 'SingleMuon_Displaced_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/191112_182211/%04i/ntuple_%i.root' % ((i+1)//1000, (i+1)))
       infiles.append(eos_prefix + 'SingleMuon_Displaced2_2GeV_PhaseIITDRSpring19/ParticleGuns/CRAB3/191112_224608/%04i/ntuple_%i.root' % ((i+1)//1000, (i+1)))
     else:
