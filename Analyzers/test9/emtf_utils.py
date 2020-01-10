@@ -143,6 +143,22 @@ def calc_etastar_from_eta(eta, phi, x0, y0, z0):
   etastar = np.arcsinh(cotstar)
   return etastar
 
+def calc_signed_rvtx(eta, phi, x0, y0, z0):
+  # Propagate to station 2 (z = 850 cm)
+  # Note: x0, y0, z0 in cm. Assume pT -> inf.
+  zstar = 850.
+  if eta < 0:
+    zstar *= -1
+  cot = np.sinh(eta)
+  delta_r = np.abs((zstar - z0)/cot)
+  xstar = x0 + np.cos(phi) * delta_r
+  ystar = y0 + np.sin(phi) * delta_r
+  rstar = np.hypot(xstar, ystar)
+  rvtx = np.hypot(x0, y0)
+  if (rstar - delta_r) <= 0.:
+    rvtx *= -1
+  return rvtx
+
 def find_endsec(endcap, sector):
   endsec = (sector - 1) if endcap == 1 else (sector - 1 + 6)
   return endsec
@@ -161,6 +177,19 @@ def save_root_histograms(outfile, histograms):
   with root_open(outfile, 'recreate') as f:
     for (k, v) in six.iteritems(histograms):
       v.Write()
+
+# Copied from https://github.com/keras-team/keras/blob/master/keras/engine/training_utils.py
+def make_batches(size, batch_size):
+    """Returns a list of batch indices (tuples of indices).
+    # Arguments
+        size: Integer, total size of the data to slice into batches.
+        batch_size: Integer, batch size.
+    # Returns
+        A list of tuples of array indices.
+    """
+    num_batches = (size + batch_size - 1) // batch_size  # round up
+    return [(i * batch_size, min(size, (i + 1) * batch_size))
+            for i in range(num_batches)]
 
 # Based on
 #   https://www.tensorflow.org/guide/ragged_tensor
