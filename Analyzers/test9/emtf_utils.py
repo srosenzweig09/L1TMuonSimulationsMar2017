@@ -191,10 +191,84 @@ def make_batches(size, batch_size):
     return [(i * batch_size, min(size, (i + 1) * batch_size))
             for i in range(num_batches)]
 
+# Copied from https://github.com/keras-team/keras/blob/master/keras/utils/generic_utils.py
+def to_list(x, allow_tuple=False):
+    """Normalizes a list/tensor into a list.
+    If a tensor is passed, we return
+    a list of size 1 containing the tensor.
+    # Arguments
+        x: target object to be normalized.
+        allow_tuple: If False and x is a tuple,
+            it will be converted into a list
+            with a single element (the tuple).
+            Else converts the tuple to a list.
+    # Returns
+        A list.
+    """
+    if isinstance(x, list):
+      return x
+    if allow_tuple and isinstance(x, tuple):
+      return list(x)
+    return [x]
+
+# Copied from https://github.com/keras-team/keras/blob/master/keras/utils/generic_utils.py
+def unpack_singleton(x):
+    """Gets the first element if the iterable has only one value.
+    Otherwise return the iterable.
+    # Argument
+        x: A list or tuple.
+    # Returns
+        The same iterable or the first element.
+    """
+    if len(x) == 1:
+      return x[0]
+    return x
+
+# Copied from https://github.com/keras-team/keras/blob/master/keras/utils/generic_utils.py
+def slice_arrays(arrays, start=None, stop=None):
+    """Slices an array or list of arrays.
+    This takes an array-like, or a list of
+    array-likes, and outputs:
+        - arrays[start:stop] if `arrays` is an array-like
+        - [x[start:stop] for x in arrays] if `arrays` is a list
+    Can also work on list/array of indices: `_slice_arrays(x, indices)`
+    # Arguments
+        arrays: Single array or list of arrays.
+        start: can be an integer index (start index)
+            or a list/array of indices
+        stop: integer (stop index); should be None if
+            `start` was a list.
+    # Returns
+        A slice of the array(s).
+    """
+    if arrays is None:
+      return [None]
+    elif isinstance(arrays, list):
+      # integer array indexing
+      if hasattr(start, '__len__'):
+        # hdf5 datasets only support list objects as indices
+        if hasattr(start, 'shape'):
+          start = start.tolist()
+        return [None if x is None else x[start] for x in arrays]
+      # slicing
+      else:
+        return [None if x is None else x[start:stop] for x in arrays]
+    else:
+      if hasattr(start, '__len__'):
+        if hasattr(start, 'shape'):
+          start = start.tolist()
+        return arrays[start]
+      elif hasattr(start, '__getitem__'):
+        return arrays[start:stop]
+      else:
+        return [None]
+
 # Based on
 #   https://www.tensorflow.org/guide/ragged_tensor
 #   https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/ragged/ragged_tensor_value.py
 #   https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/ragged/ragged_getitem.py
+# Example
+#   ragged = RaggedTensorValue(values=np.array([3, 1, 4, 1, 5, 9, 2]), row_splits=np.array([0, 4, 4, 6, 7]))
 class RaggedTensorValue(object):
   """Represents the value of a `RaggedTensor`."""
 
@@ -231,13 +305,16 @@ class RaggedTensorValue(object):
     """A tuple indicating the shape of this RaggedTensorValue."""
     return (self._row_splits.shape[0] - 1,) + (None,) + self._values.shape[1:]
 
+  def __repr__(self):
+    return "RaggedTensorValue(values=%r, row_splits=%r)" % (
+        self._values, self._row_splits)
+
   def __len__(self):
     return len(self.row_splits[:-1])
 
   def __getitem__(self, row_key):
     if isinstance(row_key, slice):
       raise ValueError("slicing is not supported")
-
     starts = self.row_splits[:-1]
     limits = self.row_splits[1:]
     row = self.values[starts[row_key]:limits[row_key]]
@@ -290,6 +367,63 @@ def create_ragged_array(pylist):
     row_splits = np.asarray(row_splits, dtype=np.int32)
     values = RaggedTensorValue(values, row_splits)
   return values
+
+# Based on
+#   https://www.tensorflow.org/api_docs/python/tf/sparse/SparseTensor
+#   https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/framework/sparse_tensor.py
+# Example
+#   sparse = SparseTensorValue(indices=np.array([[0, 0], [1, 2], [2, 3]]), values=np.array([1, 2, 3]), dense_shape=(3, 4))
+class SparseTensorValue(object):
+  """Represents the value of a `SparseTensor`."""
+
+  def __init__(self, indices, values, dense_shape):
+    """Creates a `SparseTensor`.
+    Args:
+      indices: A 2-D int64 tensor of shape `[N, ndims]`.
+      values: A 1-D tensor of any type and shape `[N]`.
+      dense_shape: A 1-D int64 tensor of shape `[ndims]`.
+    """
+    if not (isinstance(indices, (np.ndarray, np.generic)) and
+            indices.dtype in (np.int64, np.int32) and indices.ndim == 2):
+      raise TypeError("indices must be a 2D int32 or int64 numpy array")
+    if not isinstance(values, (np.ndarray, np.generic)):
+      raise TypeError("values must be a numpy array")
+    self._indices = indices
+    self._values = values
+    self._dense_shape = dense_shape
+
+  indices = property(
+      lambda self: self._indices,
+      doc="""The indices of non-zero values in the represented dense tensor.""")
+  values = property(
+      lambda self: self._values,
+      doc="""The non-zero values in the represented dense tensor.""")
+  dtype = property(
+      lambda self: self._values.dtype,
+      doc="""The numpy dtype of values in this tensor.""")
+  dense_shape = property(
+      lambda self: self._dense_shape,
+      doc="""A tuple representing the shape of the dense tensor.""")
+  shape = property(
+      lambda self: self._dense_shape,
+      doc="""A tuple representing the shape of the dense tensor.""")
+
+  def __repr__(self):
+    return "SparseTensorValue(indices=%r, values=%r, dense_shape=%r)" % (
+        self._indices, self._values, self._dense_shape)
+
+def dense_to_sparse(dense):
+  dense = np.asarray(dense)
+  indices = np.argwhere(dense)
+  values = dense[dense.nonzero()]
+  dense_shape = dense.shape
+  return SparseTensorValue(indices=indices, values=values, dense_shape=dense_shape)
+
+def sparse_to_dense(sparse):
+  dense = np.zeros(sparse.dense_shape, dtype=sparse.dtype)
+  for i in range(len(sparse.indices)):
+    dense[tuple(sparse.indices[i])] = sparse.values[i]
+  return dense
 
 # Copied from https://docs.python.org/2/howto/logging.html
 def get_logger():
