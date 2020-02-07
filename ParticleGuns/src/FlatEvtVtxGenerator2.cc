@@ -69,13 +69,11 @@ HepMC::FourVector FlatEvtVtxGenerator2::newVertex(CLHEP::HepRandomEngine* engine
 
 HepMC::FourVector FlatEvtVtxGenerator2::newVertexFlatD0(CLHEP::HepRandomEngine* engine, double invpt, double phi) const {
   double aX,aY,aZ,aT;
-  //aX = CLHEP::RandFlat::shoot(engine, fMinX, fMaxX);
-  //aY = CLHEP::RandFlat::shoot(engine, fMinY, fMaxY);
-
-  int ntries = 0;  // try until rho is less than fMaxRho, rho = sqrt(aX*aX + aY*aY)
-  double fMaxRho = 270. * cm;  // contained in solenoid magnet (300 cm with some margin)
+  double fMaxRho = 150. * cm;
   aX = fMaxRho;
   aY = fMaxRho;
+
+  int ntries = 0;  // try until rho is less than fMaxRho, rho = sqrt(aX*aX + aY*aY)
 
   while (!(std::hypot(aX, aY) < fMaxRho) && (ntries++ < 1000)) {
     // Throw two random numbers: d0 & rot. rot is a free rotation that allows
