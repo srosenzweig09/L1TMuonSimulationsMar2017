@@ -23,6 +23,8 @@
 
 #include "DataFormats/HepMCCandidate/interface/GenParticle.h"
 #include "DataFormats/HepMCCandidate/interface/GenParticleFwd.h"
+#include "SimDataFormats/Track/interface/SimTrack.h"
+#include "SimDataFormats/Track/interface/SimTrackContainer.h"
 #include "SimDataFormats/TrackingAnalysis/interface/TrackingParticle.h"
 #include "SimDataFormats/TrackingAnalysis/interface/TrackingParticleFwd.h"
 #include "SimDataFormats/PileupSummaryInfo/interface/PileupSummaryInfo.h"
@@ -80,7 +82,13 @@ private:
   typedef TTTrackAssociationMap<Ref_Phase2TrackerDigi_> L1TrackTriggerTrackAssociator;
 
   template<typename T>
-  edm::Handle<T> make_handle(T t)
+  edm::Handle<T> make_handle(T& t)
+  {
+    return edm::Handle<T>();
+  }
+
+  template<typename T>
+  edm::Handle<T> make_handle(T* t)
   {
     return edm::Handle<T>();
   }
@@ -91,6 +99,7 @@ private:
   const edm::InputTag   tkTrackTag_;
   const edm::InputTag   tkTrackAssocTag_;
   const edm::InputTag   genPartTag_;
+  const edm::InputTag   simTrackTag_;
   const edm::InputTag   trkPartTag_;
   const edm::InputTag   pileupInfoTag_;
   const std::string     outFileName_;
@@ -103,17 +112,19 @@ private:
   edm::EDGetTokenT<L1TrackTriggerTrackCollection>   tkTrackToken_;
   edm::EDGetTokenT<L1TrackTriggerTrackAssociator>   tkTrackAssocToken_;
   edm::EDGetTokenT<reco::GenParticleCollection>     genPartToken_;
+  edm::EDGetTokenT<edm::SimTrackContainer>          simTrackToken_;
   edm::EDGetTokenT<TrackingParticleCollection>      trkPartToken_;
   edm::EDGetTokenT<std::vector<PileupSummaryInfo> > pileupInfoToken_;
 
   l1t::EMTFHitCollection        emuHits_;
   l1t::EMTFTrackCollection      emuTracks_;
-  reco::GenParticleCollection   genParts_;
   TrackingParticleCollection    trkParts_;
 
   // For edm products
   const L1TrackTriggerTrackCollection*  tkTracks_;
   const L1TrackTriggerTrackAssociator*  tkTrackAssoc_;
+  const reco::GenParticleCollection*    genParts_;
+  const edm::SimTrackContainer*         simTracks_;
   const std::vector<PileupSummaryInfo>* pileupInfo_;
 
   // TTree
@@ -253,6 +264,7 @@ NtupleMaker::NtupleMaker(const edm::ParameterSet& iConfig) :
     tkTrackTag_     (iConfig.getParameter<edm::InputTag>("tkTrackTag")),
     tkTrackAssocTag_(iConfig.getParameter<edm::InputTag>("tkTrackAssocTag")),
     genPartTag_     (iConfig.getParameter<edm::InputTag>("genPartTag")),
+    simTrackTag_    (iConfig.getParameter<edm::InputTag>("simTrackTag")),
     trkPartTag_     (iConfig.getParameter<edm::InputTag>("trkPartTag")),
     pileupInfoTag_  (iConfig.getParameter<edm::InputTag>("pileupInfoTag")),
     outFileName_    (iConfig.getParameter<std::string>  ("outFileName")),
@@ -267,6 +279,7 @@ NtupleMaker::NtupleMaker(const edm::ParameterSet& iConfig) :
   tkTrackToken_      = consumes<L1TrackTriggerTrackCollection>  (tkTrackTag_);
   tkTrackAssocToken_ = consumes<L1TrackTriggerTrackAssociator>  (tkTrackAssocTag_);
   genPartToken_      = consumes<reco::GenParticleCollection>    (genPartTag_);
+  simTrackToken_     = consumes<edm::SimTrackContainer>         (simTrackTag_);
   trkPartToken_      = consumes<TrackingParticleCollection>     (trkPartTag_);
   pileupInfoToken_   = consumes<std::vector<PileupSummaryInfo> >(pileupInfoTag_);
 }
@@ -307,8 +320,8 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
   }
 
   // Track trigger tracks
-  edm::Handle<L1TrackTriggerTrackCollection> tkTracks_handle;
-  edm::Handle<L1TrackTriggerTrackAssociator> tkTrackAssoc_handle;
+  auto tkTracks_handle = make_handle(tkTracks_);
+  auto tkTrackAssoc_handle = make_handle(tkTrackAssoc_);
 
   if (!tkTrackToken_.isUninitialized()) {
     iEvent.getByToken(tkTrackToken_, tkTracks_handle);
@@ -339,6 +352,24 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
     }
     if (!genParts_handle.isValid()) {
       if (firstEvent_)  edm::LogError("NtupleMaker") << "Cannot get the product: " << genPartTag_;
+      genParts_ = nullptr;
+    } else {
+      genParts_ = genParts_handle.product();
+    }
+  }
+
+  // Sim tracks
+  auto simTracks_handle = make_handle(simTracks_);
+
+  if (!iEvent.isRealData()) {
+    if (!simTrackToken_.isUninitialized()) {
+      iEvent.getByToken(simTrackToken_, simTracks_handle);
+    }
+    if (!simTracks_handle.isValid()) {
+      if (firstEvent_)  edm::LogError("NtupleMaker") << "Cannot get the product: " << simTrackTag_;
+      simTracks_ = nullptr;
+    } else {
+      simTracks_ = simTracks_handle.product();
     }
   }
 
@@ -355,7 +386,7 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
   }
 
   // Pileup info
-  edm::Handle<std::vector<PileupSummaryInfo> > pileupInfo_handle;
+  auto pileupInfo_handle = make_handle(pileupInfo_);
 
   if (!iEvent.isRealData()) {
     if (!pileupInfoToken_.isUninitialized()) {
@@ -384,16 +415,12 @@ void NtupleMaker::getHandles(const edm::Event& iEvent, const edm::EventSetup& iS
     emuTracks_.push_back(trk);
   }
 
-  genParts_.clear();
-  for (const auto& part : (*genParts_handle)) {
-    if (!(part.pt() >= 2.))     continue;  // only pT > 2
-    genParts_.push_back(part);
-  }
-
   trkParts_.clear();
   for (const auto& part : (*trkParts_handle)) {
+
+    int pdgId = std::abs(part.pdgId());
     //if (!(part.pt() >= 2.))     continue;  // only pT > 2
-    if (!(std::abs(part.pdgId()) == 13))  continue;  // only muons
+    if (!(pdgId == 13 || pdgId == 1000015))  continue;  // only muons (or stau)
 
     // Tracking particle selection
     {
@@ -593,8 +620,7 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
 
   if (verbose_ > 0) {
     std::cout << "[DEBUG] # hits: " << emuHits_.size() << " #  tracks: " << emuTracks_.size()
-              << " # gen parts: " << genParts_.size() << " # trk parts: " << trkParts_.size()
-              << std::endl;
+              << " # trk parts: " << trkParts_.size() << std::endl;
   }
 
   // ___________________________________________________________________________
@@ -693,7 +719,7 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   // L1TrackTrigger tracks
   if (tkTracks_ != nullptr && tkTrackAssoc_ != nullptr) {
     int itkTrack = 0;
-    edm::Handle<L1TrackTriggerTrackCollection> tkTracks_handle;
+    auto tkTracks_handle = make_handle(tkTracks_);
 
     for (const auto& trk : *tkTracks_) {
       const GlobalVector& momentum = trk.getMomentum();
@@ -757,7 +783,7 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   // ___________________________________________________________________________
   // Gen particles
   //int igenPart = 0;
-  //for (const auto& part : genParts_) {
+  //for (const auto& part : *genParts_) {
   //  vp_pt         ->push_back(part.pt());
   //  vp_phi        ->push_back(part.phi());
   //  vp_theta      ->push_back(part.theta());
@@ -779,7 +805,17 @@ void NtupleMaker::process(const edm::Event& iEvent, const edm::EventSetup& iSetu
   //
   //  ++igenPart;
   //}
-  //(*vp_size) = genParts_.size();
+  //(*vp_size) = genParts_->size();
+  //assert(static_cast<size_t>(*vp_size) == vp_pt->size());
+
+  // ___________________________________________________________________________
+  // Sim tracks
+  //int isimTrack = 0;
+  //for (const auto& part : *simTracks_) {
+  //
+  //  ++isimTrack;
+  //}
+  //(*vp_size) = simTracks_->size();
   //assert(static_cast<size_t>(*vp_size) == vp_pt->size());
 
   // ___________________________________________________________________________

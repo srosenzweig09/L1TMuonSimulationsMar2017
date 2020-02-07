@@ -6,6 +6,7 @@ ntupler = cms.EDAnalyzer('NtupleMaker',
     tkTrackTag = cms.InputTag('TTTracksFromTracklet', 'Level1TTTracks'),
     tkTrackAssocTag = cms.InputTag('TTTrackAssociatorFromPixelDigis', 'Level1TTTracks'),
     genPartTag = cms.InputTag('genParticles'),
+    simTrackTag = cms.InputTag('g4SimHits'),
     trkPartTag = cms.InputTag('mix', 'MergedTrackTruth'),
     pileupInfoTag = cms.InputTag('addPileupInfo'),
 
