@@ -2450,13 +2450,13 @@ class EffieAnalysis(DummyAnalysis):
 
     # Load tree
     #tree = load_pgun_batch(jobid)
-    #tree = load_pgun_displ_batch(jobid)
+    tree = load_pgun_displ_batch(jobid)
     #tree = load_minbias_batch_for_effie(jobid, pileup=pileup)
 
-    def load_pgun_test():
-      infile = 'ntuple_SingleMuon_Displaced.2.root'
-      return load_tree_single(infile)
-    tree = load_pgun_test()
+    #def load_pgun_test():
+    #  infile = 'ntuple_SingleMuon_Displaced.2.root'
+    #  return load_tree_single(infile)
+    #tree = load_pgun_test()
 
     # Workers
     bank = PatternBank(bankfile)
@@ -2538,7 +2538,7 @@ class EffieAnalysis(DummyAnalysis):
           print("..       y_displ: {0} d0_displ: {1} pt_displ: {2}".format(mytrk.y_displ, mytrk.d0_displ, mytrk.pt_displ))
         for itrk, mytrk in enumerate(evt.tracks):
           print(".. otrk {0} id: {1} pt: {2} eta: {3} mode: {4}".format(itrk, (mytrk.endcap, mytrk.sector, -1, -1, -1), mytrk.pt, mytrk.eta, mytrk.mode))
-          print("..       y_displ: {0} d0_displ: {1} pt_displ: {2}".format(mytrk.invpt_displ, mytrk.dxy, mytrk.pt_dxy))
+          #print("..       y_displ: {0} d0_displ: {1} pt_displ: {2}".format(mytrk.invpt_displ, mytrk.dxy, mytrk.pt_dxy))
 
       # ________________________________________________________________________
       # Fill histograms
@@ -3305,7 +3305,8 @@ if use_condor:
   jobid = int(sys.argv[3])
 
 # Pattern bank
-bankfile = 'pattern_bank_18patt.29.npz'
+#bankfile = 'pattern_bank_18patt.29.npz'
+bankfile = 'pattern_bank_run2.0.npz'
 
 # NN models
 kerasfile = ['model.29.json', 'model_weights.29.h5',
