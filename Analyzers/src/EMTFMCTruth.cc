@@ -544,13 +544,14 @@ std::vector<EMTFMCTruth::EndcapSimHit> EMTFMCTruth::findEndcapSimHits() const {
     SimHitIdpr matchId(simTrackId, eventId);
     auto found = trackingParticleLinks_.find(matchId);
     if (found != trackingParticleLinks_.end()) {
+      int tp = found->second;
       const int subsystem = 1;
       const CSCLayer* layer = cscGeomPtr_->layer(detUnitId);
       const CSCDetId& id = layer->id();
       const LocalPoint& lp = it->localPosition();
       const GlobalPoint& gp = layer->toGlobal(lp);
 
-      EndcapSimHit e_simhit = {subsystem, id.station(), id.ring(), id.layer(), id.chamber(), gp.phi(), gp.theta(), gp.eta(), gp.perp(), gp.z()};
+      EndcapSimHit e_simhit = {subsystem, id.station(), id.ring(), id.layer(), id.chamber(), *it, gp, tp};
       result.emplace_back(e_simhit);
       //std::cout << "type, lay, cmb, phi, theta, eta, r, z: " << e_simhit.type << " " << e_simhit.layer << " " << e_simhit.chamber << " " << e_simhit.phi << " " << e_simhit.theta << " " << e_simhit.eta << " " << e_simhit.r << " " << e_simhit.z << std::endl;
     }
@@ -564,6 +565,7 @@ std::vector<EMTFMCTruth::EndcapSimHit> EMTFMCTruth::findEndcapSimHits() const {
     SimHitIdpr matchId(simTrackId, eventId);
     auto found = trackingParticleLinks_.find(matchId);
     if (found != trackingParticleLinks_.end()) {
+      int tp = found->second;
       const int subsystem = 2;
       const RPCRoll* roll = rpcGeomPtr_->roll(detUnitId);
       const RPCDetId& id = roll->id();
@@ -574,7 +576,7 @@ std::vector<EMTFMCTruth::EndcapSimHit> EMTFMCTruth::findEndcapSimHits() const {
       const LocalPoint& lp = it->localPosition();
       const GlobalPoint& gp = roll->toGlobal(lp);
 
-      EndcapSimHit e_simhit = {subsystem, id.station(), id.ring(), id.layer(), id_chamber, gp.phi(), gp.theta(), gp.eta(), gp.perp(), gp.z()};
+      EndcapSimHit e_simhit = {subsystem, id.station(), id.ring(), id.layer(), id_chamber, *it, gp, tp};
       result.emplace_back(e_simhit);
       //std::cout << "type, lay, cmb, phi, theta, eta, r, z: " << e_simhit.type << " " << e_simhit.layer << " " << e_simhit.chamber << " " << e_simhit.phi << " " << e_simhit.theta << " " << e_simhit.eta << " " << e_simhit.r << " " << e_simhit.z << std::endl;
     }
@@ -588,13 +590,14 @@ std::vector<EMTFMCTruth::EndcapSimHit> EMTFMCTruth::findEndcapSimHits() const {
     SimHitIdpr matchId(simTrackId, eventId);
     auto found = trackingParticleLinks_.find(matchId);
     if (found != trackingParticleLinks_.end()) {
+      int tp = found->second;
       const int subsystem = 3;
       const GEMEtaPartition* roll = gemGeomPtr_->etaPartition(detUnitId);
       const GEMDetId& id = roll->id();
       const LocalPoint& lp = it->localPosition();
       const GlobalPoint& gp = roll->toGlobal(lp);
 
-      EndcapSimHit e_simhit = {subsystem, id.station(), id.ring(), id.layer(), id.chamber(), gp.phi(), gp.theta(), gp.eta(), gp.perp(), gp.z()};
+      EndcapSimHit e_simhit = {subsystem, id.station(), id.ring(), id.layer(), id.chamber(), *it, gp, tp};
       result.emplace_back(e_simhit);
       //std::cout << "type, lay, cmb, phi, theta, eta, r, z: " << e_simhit.type << " " << e_simhit.layer << " " << e_simhit.chamber << " " << e_simhit.phi << " " << e_simhit.theta << " " << e_simhit.eta << " " << e_simhit.r << " " << e_simhit.z << std::endl;
     }
@@ -608,13 +611,14 @@ std::vector<EMTFMCTruth::EndcapSimHit> EMTFMCTruth::findEndcapSimHits() const {
     SimHitIdpr matchId(simTrackId, eventId);
     auto found = trackingParticleLinks_.find(matchId);
     if (found != trackingParticleLinks_.end()) {
+      int tp = found->second;
       const int subsystem = 4;
       const ME0EtaPartition* roll = me0GeomPtr_->etaPartition(detUnitId);
       const ME0DetId& id = roll->id();
       const LocalPoint& lp = it->localPosition();
       const GlobalPoint& gp = roll->toGlobal(lp);
 
-      EndcapSimHit e_simhit = {subsystem, id.station(), 1, id.layer(), id.chamber(), gp.phi(), gp.theta(), gp.eta(), gp.perp(), gp.z()};
+      EndcapSimHit e_simhit = {subsystem, id.station(), 1, id.layer(), id.chamber(), *it, gp, tp};
       result.emplace_back(e_simhit);
       //std::cout << "type, lay, cmb, phi, theta, eta, r, z: " << e_simhit.type << " " << e_simhit.layer << " " << e_simhit.chamber << " " << e_simhit.phi << " " << e_simhit.theta << " " << e_simhit.eta << " " << e_simhit.r << " " << e_simhit.z << std::endl;
     }
@@ -628,6 +632,7 @@ std::vector<EMTFMCTruth::EndcapSimHit> EMTFMCTruth::findEndcapSimHits() const {
     SimHitIdpr matchId(simTrackId, eventId);
     auto found = trackingParticleLinks_.find(matchId);
     if (found != trackingParticleLinks_.end()) {
+      int tp = found->second;
       const int subsystem = 0;
       const DTWireId wireid(detUnitId);
       const DTLayer* layer = dtGeomPtr_->layer(wireid.layerId());
@@ -635,7 +640,7 @@ std::vector<EMTFMCTruth::EndcapSimHit> EMTFMCTruth::findEndcapSimHits() const {
       const LocalPoint& lp = it->localPosition();
       const GlobalPoint& gp = layer->toGlobal(lp);
 
-      EndcapSimHit e_simhit = {subsystem, id.station(), 1, id.layer(), id.sector(), gp.phi(), gp.theta(), gp.eta(), gp.perp(), gp.z()};
+      EndcapSimHit e_simhit = {subsystem, id.station(), 1, id.layer(), id.sector(), *it, gp, tp};
       result.emplace_back(e_simhit);
       //std::cout << "type, lay, cmb, phi, theta, eta, r, z: " << e_simhit.type << " " << e_simhit.layer << " " << e_simhit.chamber << " " << e_simhit.phi << " " << e_simhit.theta << " " << e_simhit.eta << " " << e_simhit.r << " " << e_simhit.z << std::endl;
     }

@@ -68,16 +68,14 @@ public:
 
   // Classes
   struct EndcapSimHit {
-    int   type;
-    int   station;
-    int   ring;
-    int   layer;
-    int   chamber;
-    float phi;
-    float theta;
-    float eta;
-    float r;  // cm
-    float z;  // cm
+    int type;
+    int station;
+    int ring;
+    int layer;
+    int chamber;
+    PSimHit pSimHit;
+    GlobalPoint globalPosition;
+    int sim_tp;
   };
 
   // Constructor

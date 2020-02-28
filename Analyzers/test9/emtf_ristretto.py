@@ -89,15 +89,11 @@ class EMTFZoneArtist(object):
             ahit.emtf_theta_alt = hit.emtf_theta
 
   def _transform(self, ind):
-    if len(self.zones[ind]) == 0:
-      return None
-
-    # 8 members: zone, zone_row, zone_col, emtf_phi,
-    #            emtf_bend, emtf_theta, emtf_theta_alt, emtf_qual
+    # 9 members: zone, zone_row, zone_col, emtf_phi,
+    #            emtf_bend, emtf_theta, emtf_theta_alt, emtf_qual, emtf_time
     assert(len(self.zones[ind]) == 1)
     hit = self.zones[ind][0]
-
-    arr = np.zeros(8, dtype=np.int32)
+    arr = np.zeros(9, dtype=np.int32)
     arr[0] = ind[0]
     arr[1] = ind[1]
     arr[2] = ind[2]
@@ -106,6 +102,7 @@ class EMTFZoneArtist(object):
     arr[5] = hit.emtf_theta
     arr[6] = hit.emtf_theta_alt
     arr[7] = find_emtf_qual(hit)
+    arr[8] = find_emtf_time(hit)
     return arr
 
   def squeeze(self):
@@ -114,9 +111,10 @@ class EMTFZoneArtist(object):
     # List of arrays, each array has 8 members
     out = []
     for ind in np.ndindex(self.zones.shape):
+      if len(self.zones[ind]) == 0:
+        continue
       arr = self._transform(ind)
-      if arr is not None:
-        out.append(arr)
+      out.append(arr)
     return out
 
 class EMTFZoneScientist(object):
@@ -141,19 +139,27 @@ class EMTFZoneScientist(object):
       col = 0
       self.zones[zone, row, col].append(hit)
 
+  def _uniquify(self):
+    # Sort and select
+    for ind in np.ndindex(self.zones.shape):
+      if len(self.zones[ind]) == 0:
+        continue
+
+      alist = self.zones[ind][:]  # make a copy
+      if len(alist) > 1:
+        alist.sort(key=lambda hit: hit.layer)  # sort by layer number
+        if alist[0].type == kRPC or alist[0].type == kGEM:
+          self.zones[ind] = alist[0:1]  # keep the first one for RPC and GEM
+        else:
+          middle = 0 if len(alist) == 0 else (len(alist)-1)//2
+          self.zones[ind] = alist[middle:middle+1]  # keep the median for CSC, ME0, DT
+
   def _transform(self, ind):
-    if len(self.zones[ind]) == 0:
-      return None
-
-    # 8 members: zone, zone_row, zone_col, emtf_phi,
-    #            emtf_bend, emtf_theta, emtf_theta_alt, emtf_qual
-    assert(len(self.zones[ind]) >= 1)
-    sorted_hits = sorted(self.zones[ind], key=lambda hit: hit.layer)
-    if sorted_hits[0].type == kRPC or sorted_hits[0].type == kGEM:
-      sorted_hits = sorted_hits[0:1]  # only keep one layer for RPC and GEM
-    hit = pick_the_median(sorted_hits)
-
-    arr = np.zeros(8, dtype=np.int32)
+    # 9 members: zone, zone_row, zone_col, emtf_phi,
+    #            emtf_bend, emtf_theta, emtf_theta_alt, emtf_qual, emtf_time
+    assert(len(self.zones[ind]) == 1)
+    hit = self.zones[ind][0]
+    arr = np.zeros(9, dtype=np.int32)
     arr[0] = ind[0]
     arr[1] = ind[1]
     arr[2] = find_emtf_zone_col(hit)
@@ -162,15 +168,19 @@ class EMTFZoneScientist(object):
     arr[5] = hit.emtf_theta
     arr[6] = 0
     arr[7] = 0
+    arr[8] = 0
     return arr
 
   def squeeze(self):
+    self._uniquify()
+
     # List of arrays, each array has 8 members
     out = []
     for ind in np.ndindex(self.zones.shape):
+      if len(self.zones[ind]) == 0:
+        continue
       arr = self._transform(ind)
-      if arr is not None:
-        out.append(arr)
+      out.append(arr)
     return out
 
 
@@ -237,7 +247,8 @@ class SignalAnalysis(_BaseAnalysis):
       # Trigger primitives
       for ihit, hit in enumerate(evt.hits):
         if is_emtf_legit_hit(hit) and find_endsec(hit.endcap, hit.sector) == best_sector:
-          zones.add(hit)
+          if min_emtf_strip <= hit.emtf_phi < max_emtf_strip:
+            zones.add(hit)
 
       # Third, fill the zones with sim hits
 
@@ -249,12 +260,10 @@ class SignalAnalysis(_BaseAnalysis):
           zones_simhits.add(simhit)
 
       # Fourth, extract the particle and hits
-      # Require at least 2 hits and at least 3 sim hits
-      sector_center_phi = 40. + (60. * (best_sector%6)) # sector 1 center is 45 deg. -5 deg as neighbor is included
-      sector_center_phi = np.deg2rad(sector_center_phi)
+      # Require at least 2 hits and at least 2 sim hits
       part_zone = find_particle_zone(part)
-      part_info = [part.invpt, part.eta, part.phi, part.vx, part.vy, part.vz,
-                   part.d0, delta_phi(part.phi, sector_center_phi), best_sector, part_zone]
+      part_info = [part.invpt, part.eta, part.phi, part.vx, part.vy, part.vz, part.d0,
+                   best_sector, part_zone]
 
       ievt_part = np.array(part_info, dtype=np.float32)
       ievt_hits = zones.squeeze()
@@ -271,7 +280,7 @@ class SignalAnalysis(_BaseAnalysis):
       for x in ievt_simhits:
         if x[0] == part_zone:  # x[0] is zone
           aset.add(x[1])       # x[1] is zone_row
-      if not (len(aset) >= 3): # at least 3 sim hits
+      if not (len(aset) >= 2): # at least 2 sim hits
         continue
 
       # Finally, add to output
@@ -329,6 +338,7 @@ class BkgndAnalysis(_BaseAnalysis):
   """
 
   def run(self, algo):
+    out_aux = []
     out_hits = []
 
     sector_zones = [EMTFZoneArtist() for i in range(num_emtf_sectors)]
@@ -346,15 +356,15 @@ class BkgndAnalysis(_BaseAnalysis):
         print('Processing event {0}'.format(ievt))
 
       # Reset
-      for zones in sector_zones:
-        zones.reset()
+      for sector in range(num_emtf_sectors):
+        sector_zones[sector].reset()
 
       # First, apply event veto
 
       # Particles
       veto = False
       for ipart, part in enumerate(evt.particles):
-        if (part.bx == 0) and (part.pt > 10.) and (find_particle_zone(part) in (0,1,2,3)):
+        if (part.bx == 0) and (part.pt > 20.) and (find_particle_zone(part) in (0,1,2,3)):
           veto = True
           break
       if veto:
@@ -366,11 +376,16 @@ class BkgndAnalysis(_BaseAnalysis):
       for sector in range(num_emtf_sectors):
         for ihit, hit in enumerate(evt.hits):
           if is_emtf_legit_hit(hit) and find_endsec(hit.endcap, hit.sector) == sector:
-            sector_zones[sector].add(hit)
+            if min_emtf_strip <= hit.emtf_phi < max_emtf_strip:
+              sector_zones[sector].add(hit)
 
       # Finally, extract the particle and hits, and add them to output
-      for zones in sector_zones:
-        ievt_hits = zones.squeeze()
+      for sector in range(num_emtf_sectors):
+        aux_info = [jobid, ievt, sector]
+        ievt_aux = np.array(aux_info, dtype=np.int32)
+        ievt_hits = sector_zones[sector].squeeze()
+
+        out_aux.append(ievt_aux)
         out_hits.append(ievt_hits)
 
       # Debug
@@ -384,7 +399,7 @@ class BkgndAnalysis(_BaseAnalysis):
           print('.. hit {0} {1} {2} {3} {4} {5} {6} {7} {8}'.format(ihit, hit_id, hit.emtf_phi, hit.emtf_theta, hit.bend, hit.quality, hit_sim_tp, hit.strip, hit.wire))
         print('hits:')
         for sector in range(num_emtf_sectors):
-          ievt_hits = out_hits[-(12-sector)]
+          ievt_hits = sector_zones[sector].squeeze()
           for x in ievt_hits:
             print(sector, x)
 
@@ -395,9 +410,11 @@ class BkgndAnalysis(_BaseAnalysis):
     outfile = 'bkgnd.npz'
     if use_condor:
       outfile = outfile[:-4] + ('_%i.npz' % jobid)
+    out_aux = np.asarray(out_aux)
     out_hits = create_ragged_array(out_hits)
     print('[INFO] out_hits: {0}'.format(out_hits.shape))
     out_dict = {
+      'out_aux': out_aux,
       'out_hits_values': out_hits.values,
       'out_hits_row_splits': out_hits.row_splits,
     }
