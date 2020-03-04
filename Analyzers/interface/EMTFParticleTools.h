@@ -5,9 +5,10 @@
 
 struct EMTFInversePt {
   double operator()(double charge, double pt) const {
-    double invpt = 1.0 / (pt + 1e-15);  // protects against division by zero
+    pt = (std::abs(pt) < 1e-15) ? 1e-15 : std::abs(pt); // ensures pT > 0, protects against division by zero
+    double invpt = 1.0 / pt;
     invpt = (invpt < 1e-15) ? 1e-15 : invpt;  // protects against zero
-    invpt *= charge;
+    invpt *= charge;  // charge should be -1 or +1
     return invpt;
   }
 };
